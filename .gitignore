@@ -72,11 +72,12 @@ Intermediate/*
 Plugins/**/Intermediate/*
 
 # Unreal Engine 에셋 파일 무시 (.uasset, .umap 등)
-Content/**/*.uasset
-Content/**/*.umap
-Content/**/*.upack
-Content/**/*.utexture
-Content/**/*.uasset.importsettings
+# Content/**/*.uasset
+# Content/**/*.umap
+# Content/**/*.upack
+# Content/**/*.utexture
+# Content/**/*.uasset.importsettings
+
 
 # Cache files for the editor to use
 DerivedDataCache/*
