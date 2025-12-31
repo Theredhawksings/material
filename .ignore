@@ -1,4 +1,9 @@
+/.git
+/.github
+/.vs
 /.vscode
 /Content
 /Intermediate
+/modeling
 /Saved
+/Weekly_Log
