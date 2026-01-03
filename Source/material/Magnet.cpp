@@ -1,5 +1,3 @@
-// Magnet.cpp
-
 #include "Magnet.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
@@ -9,12 +7,10 @@ AMagnet::AMagnet()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    /* Root Mesh */
     MagnetMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MagnetMesh"));
     RootComponent = MagnetMesh;
     MagnetMesh->SetSimulatePhysics(false);
 
-    /* Magnetic Range */
     MagnetRange = CreateDefaultSubobject<USphereComponent>(TEXT("MagnetRange"));
     MagnetRange->SetupAttachment(MagnetMesh);
     MagnetRange->SetSphereRadius(MaxDistance);
@@ -29,14 +25,11 @@ void AMagnet::BeginPlay()
 {
     Super::BeginPlay();
 
-    // Strength = m_max * g * r0^2
     if (bAutoComputeStrength)
     {
-        const float g = 980.f; // cm/s^2
+        const float g = 980.f;
         Strength = MaxLiftMass * g * FMath::Square(ReferenceDistance);
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("[Magnet] Strength = %e"), Strength);
 
     MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
     MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
@@ -58,39 +51,31 @@ void AMagnet::Tick(float DeltaTime)
 
         const FVector MetalLoc = MetalComp->GetComponentLocation();
         FVector ToMagnet = MagnetLoc - MetalLoc;
-
         float Distance = ToMagnet.Size();
+
         if (Distance < MinDistance || Distance > MaxDistance)
             continue;
 
         FVector Dir = ToMagnet.GetSafeNormal();
+        float ForceMag = Strength / (FMath::Square(Distance) + 100.0f);
 
-        // F = Strength / r^2
-        float ForceMag = Strength / FMath::Square(Distance);
+        FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
+        FVector DampingForce = -CurrentVel * 0.5f;
 
-        // 🔥 핵심: DeltaTime 곱지 않는다 (AddForce는 누적)
-        FVector Force = Dir * ForceMag;
-
-        // 폭주 방지
+        FVector FinalForce = (Dir * ForceMag) + DampingForce;
         const float MaxForce = 1e6f;
-        Force = Force.GetClampedToMaxSize(MaxForce);
+        FinalForce = FinalForce.GetClampedToMaxSize(MaxForce);
 
-        MetalComp->AddForce(Force);
+        MetalComp->AddForce(FinalForce);
 
-        UE_LOG(LogTemp, Warning,
-            TEXT("Pulling %s | Dist=%.1f | Force=%.2e"),
-            *MetalComp->GetName(), Distance, ForceMag);
+        if (MagnetMesh->IsSimulatingPhysics())
+        {
+            MagnetMesh->AddForce(-FinalForce);
+        }
     }
 }
 
-void AMagnet::OnRangeBegin(
-    UPrimitiveComponent* OverlappedComp,
-    AActor* OtherActor,
-    UPrimitiveComponent* OtherComp,
-    int32 OtherBodyIndex,
-    bool bFromSweep,
-    const FHitResult& SweepResult
-)
+void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
     if (!OtherActor || OtherActor == this || !OtherComp)
         return;
@@ -98,16 +83,10 @@ void AMagnet::OnRangeBegin(
     if (OtherActor->ActorHasTag(MetalTag) && OtherComp->IsSimulatingPhysics())
     {
         OverlappingMetals.Add(OtherComp);
-        UE_LOG(LogTemp, Warning, TEXT("[Magnet] Metal Entered"));
     }
 }
 
-void AMagnet::OnRangeEnd(
-    UPrimitiveComponent* OverlappedComp,
-    AActor* OtherActor,
-    UPrimitiveComponent* OtherComp,
-    int32 OtherBodyIndex
-)
+void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
     if (!OtherActor || !OtherComp)
         return;
@@ -115,6 +94,5 @@ void AMagnet::OnRangeEnd(
     if (OtherActor->ActorHasTag(MetalTag))
     {
         OverlappingMetals.Remove(OtherComp);
-        UE_LOG(LogTemp, Warning, TEXT("[Magnet] Metal Left"));
     }
 }
