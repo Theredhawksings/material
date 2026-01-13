@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Engine/EngineTypes.h"
 #include "Temperature.generated.h"
 
 class USphereComponent;
 class UStaticMeshComponent;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
+class UPrimitiveComponent;
 
 UCLASS()
 class MATERIAL_API ATemperature : public AActor
@@ -91,6 +93,8 @@ private:
 	UPROPERTY(Transient)
 	UMaterialInstanceDynamic* HeatMID = nullptr;
 
+	float LastSphereRadius = -1.0f;
+
 	UFUNCTION()
 	void OnSphereBeginOverlap(
 		UPrimitiveComponent* OverlappedComp,
@@ -109,6 +113,7 @@ private:
 		int32 OtherBodyIndex
 	);
 
-	void UpdateSphereRadius();
+	void UpdateSphereRadius(bool bForceOverlaps);
+	void StartHeatingOnAlreadyOverlapping();
 	void UpdateVisuals();
 };

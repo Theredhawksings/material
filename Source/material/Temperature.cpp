@@ -4,7 +4,7 @@
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/ShapeComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -21,9 +21,7 @@ ATemperature::ATemperature()
 	HeatSphere = CreateDefaultSubobject<USphereComponent>(TEXT("HeatSphere"));
 	HeatSphere->SetupAttachment(Root);
 
-	HeatSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	HeatSphere->SetCollisionObjectType(ECC_WorldDynamic);
-	HeatSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+	HeatSphere->SetCollisionProfileName(TEXT("Trigger"));
 	HeatSphere->SetGenerateOverlapEvents(true);
 
 	HeatSphere->bDrawOnlyIfSelected = false;
@@ -35,7 +33,8 @@ ATemperature::ATemperature()
 void ATemperature::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	UpdateSphereRadius();
+
+	UpdateSphereRadius(false);
 	UpdateVisuals();
 }
 
@@ -43,13 +42,16 @@ void ATemperature::BeginPlay()
 {
 	Super::BeginPlay();
 
-	UpdateSphereRadius();
+	UpdateSphereRadius(true);
 	UpdateVisuals();
 
 	if (HeatSphere)
 	{
 		HeatSphere->OnComponentBeginOverlap.AddDynamic(this, &ATemperature::OnSphereBeginOverlap);
 		HeatSphere->OnComponentEndOverlap.AddDynamic(this, &ATemperature::OnSphereEndOverlap);
+
+		HeatSphere->UpdateOverlaps();
+		StartHeatingOnAlreadyOverlapping();
 	}
 }
 
@@ -62,7 +64,7 @@ void ATemperature::Tick(float DeltaTime)
 		Temperature = FMath::Max(0.f, Temperature - CoolRate * DeltaTime);
 	}
 
-	UpdateSphereRadius();
+	UpdateSphereRadius(false);
 	UpdateVisuals();
 }
 
@@ -107,8 +109,13 @@ float ATemperature::GetReceivedPowerW(const FVector& WorldLocation, float Receiv
 	return q * FMath::Max(ReceiverAreaM2, 0.f);
 }
 
-void ATemperature::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void ATemperature::OnSphereBeginOverlap(
+	UPrimitiveComponent* OverlappedComp,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex,
+	bool bFromSweep,
+	const FHitResult& SweepResult)
 {
 	if (!OtherActor || OtherActor == this) return;
 	if (IceClassFilter && !OtherActor->IsA(IceClassFilter)) return;
@@ -122,7 +129,10 @@ void ATemperature::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComp, AAc
 	}
 }
 
-void ATemperature::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+void ATemperature::OnSphereEndOverlap(
+	UPrimitiveComponent* OverlappedComp,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex)
 {
 	if (!OtherActor || OtherActor == this) return;
@@ -135,12 +145,52 @@ void ATemperature::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComp, AActo
 	}
 }
 
-void ATemperature::UpdateSphereRadius()
+void ATemperature::UpdateSphereRadius(bool bForceOverlaps)
 {
 	if (!HeatSphere) return;
 
 	const float R = FMath::Max(0.f, MaxHeatDistance);
-	HeatSphere->SetSphereRadius(R, true);
+
+	const bool bChanged = !FMath::IsNearlyEqual(R, LastSphereRadius, 0.01f);
+	if (bChanged)
+	{
+		HeatSphere->SetSphereRadius(R, true);
+		LastSphereRadius = R;
+	}
+
+	if (bForceOverlaps || bChanged)
+	{
+		HeatSphere->UpdateOverlaps();
+	}
+}
+
+void ATemperature::StartHeatingOnAlreadyOverlapping()
+{
+	if (!HeatSphere) return;
+
+	TArray<AActor*> Overlaps;
+	if (IceClassFilter)
+	{
+		HeatSphere->GetOverlappingActors(Overlaps, IceClassFilter);
+	}
+	else
+	{
+		HeatSphere->GetOverlappingActors(Overlaps);
+	}
+
+	for (AActor* A : Overlaps)
+	{
+		if (!A || A == this) continue;
+		if (IceClassFilter && !A->IsA(IceClassFilter)) continue;
+
+		static const FName FnName(TEXT("StartHeating"));
+		if (UFunction* Fn = A->FindFunction(FnName))
+		{
+			struct FArgs { ATemperature* FireRef; };
+			FArgs Args{ this };
+			A->ProcessEvent(Fn, &Args);
+		}
+	}
 }
 
 void ATemperature::UpdateVisuals()
