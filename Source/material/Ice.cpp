@@ -96,12 +96,7 @@ void AIce::Tick(float DeltaTime)
 		{
 			DebugAcc = 0.0f;
 			const FVector S = GetActorScale3D();
-			const FString Msg = FString::Printf(
-				TEXT("ICE MELT | W=%.1f | J=%.0f | A=%.3f | S=(%.2f,%.2f,%.2f)"),
-				ReceivedPowerW, EnergyAccumJ, MeltAlpha, S.X, S.Y, S.Z
-			);
 			const uint64 Key = (uint64)GetUniqueID();
-			GEngine->AddOnScreenDebugMessage(Key, 0.3f, FColor::Cyan, Msg);
 
 		}
 	}
