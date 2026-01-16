@@ -1,11 +1,15 @@
 #include "Transformation_actor.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Engine/Engine.h"
+#include "Temperature.h"
 
 ATransformation_actor::ATransformation_actor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
 	SetRootComponent(MeshComp);
@@ -18,33 +22,109 @@ ATransformation_actor::ATransformation_actor()
 void ATransformation_actor::BeginPlay()
 {
 	Super::BeginPlay();
-
 	SetForm(CurrentForm);
 }
 
 void ATransformation_actor::OnConstruction(const FTransform& Transform)
 {
-	Super::OnConstruction(Transform);
+    Super::OnConstruction(Transform);
 
-	SetForm(CurrentForm);
+    if (MeshComp && MeshComp->GetStaticMesh() == nullptr)
+    {
+        if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
+        {
+            ApplySpec(*Spec);
+        }
+        if (CurrentForm == EBlockForm::Ice)
+        {
+            EnterIceMode();
+        }
+    }
+}
+
+void ATransformation_actor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (CurrentForm != EBlockForm::Ice) return;
+	if (!bHeating || !CurrentFire || !MeshComp) return;
+	if (MeltAlpha >= 1.0f) return;
+
+	const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+	if (CurrentFire->MaxHeatDistance > 0.0f && DistCm > CurrentFire->MaxHeatDistance) return;
+
+	const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+
+	const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+	float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
+	float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
+
+	if (CurrentFire->MaxHeatDistance > 0.0f)
+	{
+		const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+		ReceivedPowerW *= Fade;
+	}
+
+	if (ReceivedPowerW <= 0.0f) return;
+
+	EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
+	MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+
+	ApplyIceMeltVisual(MeltAlpha);
+
+	if (bDebugMelt && GEngine)
+	{
+		DebugAcc += DeltaTime;
+		if (DebugAcc >= 0.25f)
+		{
+			DebugAcc = 0.0f;
+			const FVector S = MeshComp->GetComponentScale();
+			const FString Msg = FString::Printf(
+				TEXT("ICE MELT | d=%.0fcm | W=%.1f | J=%.0f | A=%.3f | S=(%.2f,%.2f,%.2f)"),
+				DistCm, ReceivedPowerW, EnergyAccumJ, MeltAlpha, S.X, S.Y, S.Z
+			);
+			GEngine->AddOnScreenDebugMessage((uint64)GetUniqueID(), 0.3f, FColor::Cyan, Msg);
+		}
+	}
+
+	if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
+	{
+		Destroy();
+	}
 }
 
 void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
+	if (CurrentForm == NewForm)
+	{
+		if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
+		{
+			ApplySpec(*Spec);
+		}
+		return;
+	}
+
+	if (CurrentForm == EBlockForm::Ice)
+	{
+		ExitIceMode();
+	}
+
 	CurrentForm = NewForm;
 
 	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
 	{
 		ApplySpec(*Spec);
 	}
+
+	if (CurrentForm == EBlockForm::Ice)
+	{
+		EnterIceMode();
+	}
 }
 
-void ATransformation_actor::CycleForm()
+void ATransformation_actor::NextForm()
 {
-	if (CycleOrder.Num() <= 0)
-	{
-		return;
-	}
+	if (CycleOrder.Num() <= 0) return;
 
 	int32 Idx = CycleOrder.Find(CurrentForm);
 	if (Idx == INDEX_NONE)
@@ -55,36 +135,40 @@ void ATransformation_actor::CycleForm()
 
 	Idx = (Idx + 1) % CycleOrder.Num();
 	SetForm(CycleOrder[Idx]);
+
+	
 }
 
-bool ATransformation_actor::GetCurrentSpec(FBlockFormSpec& OutSpec) const
+void ATransformation_actor::StartHeating(ATemperature* FireRef)
 {
-	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
+	if (CurrentForm != EBlockForm::Ice) return;
+	CurrentFire = FireRef;
+	bHeating = (CurrentFire != nullptr);
+
+	if (bDebugMelt && GEngine)
 	{
-		OutSpec = *Spec;
-		return true;
+		GEngine->AddOnScreenDebugMessage((uint64)GetUniqueID() + 1ULL, 1.0f, FColor::Green, TEXT("StartHeating OK"));
 	}
-	return false;
+}
+
+void ATransformation_actor::StopHeating()
+{
+	bHeating = false;
+	CurrentFire = nullptr;
 }
 
 const FBlockFormSpec* ATransformation_actor::FindSpec(EBlockForm Form) const
 {
 	for (const FBlockFormSpec& S : FormSpecs)
 	{
-		if (S.Form == Form)
-		{
-			return &S;
-		}
+		if (S.Form == Form) return &S;
 	}
 	return nullptr;
 }
 
 void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
 {
-	if (!MeshComp)
-	{
-		return;
-	}
+	if (!MeshComp) return;
 
 	if (Spec.Mesh)
 	{
@@ -103,7 +187,6 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
 	}
 
 	MeshComp->SetSimulatePhysics(Spec.bSimulatePhysics);
-
 	MeshComp->SetLinearDamping(Spec.LinearDamping);
 	MeshComp->SetAngularDamping(Spec.AngularDamping);
 
@@ -115,5 +198,110 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
 	if (Spec.bOverrideMass)
 	{
 		MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
+	}
+	
+	if (GEngine)
+{
+    const FString Msg = FString::Printf(TEXT("ApplySpec: %d  Mesh=%s  Mats=%d"),
+        (int32)Spec.Form,
+        Spec.Mesh ? *Spec.Mesh->GetName() : TEXT("None"),
+        Spec.Materials.Num()
+    );
+    GEngine->AddOnScreenDebugMessage((uint64)GetUniqueID() + 777ULL, 1.0f, FColor::Yellow, Msg);
+}
+}
+
+void ATransformation_actor::EnterIceMode()
+{
+	if (!MeshComp) return;
+
+	BaseScaleBeforeMelt = MeshComp->GetComponentScale();
+	MeltAlpha = 0.0f;
+	EnergyAccumJ = 0.0f;
+	DebugAcc = 0.0f;
+
+	RecalcIceMassAndEnergy();
+
+	IceMID = nullptr;
+
+	if (IceMeltMaterial)
+	{
+		IceMID = UMaterialInstanceDynamic::Create(IceMeltMaterial, this);
+		if (IceMID)
+		{
+			MeshComp->SetMaterial(0, IceMID);
+		}
+	}
+	else
+	{
+		UMaterialInterface* M0 = MeshComp->GetMaterial(0);
+		if (M0)
+		{
+			IceMID = UMaterialInstanceDynamic::Create(M0, this);
+			if (IceMID)
+			{
+				MeshComp->SetMaterial(0, IceMID);
+			}
+		}
+	}
+
+	ApplyIceMeltVisual(0.0f);
+}
+
+void ATransformation_actor::ExitIceMode()
+{
+	StopHeating();
+
+	MeltAlpha = 0.0f;
+	EnergyAccumJ = 0.0f;
+	IceMID = nullptr;
+
+	if (MeshComp)
+	{
+		MeshComp->SetWorldScale3D(BaseScaleBeforeMelt);
+	}
+}
+
+void ATransformation_actor::RecalcIceMassAndEnergy()
+{
+	if (!MeshComp)
+	{
+		VolumeM3 = 1.0f;
+		EffectiveAreaM2 = 1.0f;
+		TotalMeltEnergyJ = IceDensityKgM3 * VolumeM3 * LatentHeatJPerKg;
+		return;
+	}
+
+	const FBoxSphereBounds B = MeshComp->Bounds;
+	const FVector SizeCm = B.BoxExtent * 2.0f;
+	const FVector SizeM = SizeCm / 100.0f;
+
+	VolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
+
+	const float Axy = SizeM.X * SizeM.Y;
+	const float Axz = SizeM.X * SizeM.Z;
+	const float Ayz = SizeM.Y * SizeM.Z;
+	EffectiveAreaM2 = FMath::Max3(Axy, Axz, Ayz);
+
+	const float MassKg = IceDensityKgM3 * VolumeM3;
+	TotalMeltEnergyJ = FMath::Max(MassKg * LatentHeatJPerKg, 1.0f);
+}
+
+void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
+{
+	if (!MeshComp) return;
+
+	const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
+	const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
+
+	const FVector From = BaseScaleBeforeMelt;
+	const FVector To = BaseScaleBeforeMelt * Ratio;
+	const FVector NewScale = FMath::Lerp(From, To, A);
+
+	MeshComp->SetWorldScale3D(NewScale);
+
+	if (IceMID)
+	{
+		IceMID->SetScalarParameterValue(MeltParamName, A);
 	}
 }
