@@ -1,5 +1,3 @@
-// Temperature.cpp
-
 #include "Temperature.h"
 
 #include "Components/SphereComponent.h"
@@ -66,6 +64,7 @@ void ATemperature::Tick(float DeltaTime)
 
 	UpdateSphereRadius(false);
 	UpdateVisuals();
+	CheckAndUpdateIceObjects();  // ← 추가!
 }
 
 float ATemperature::GetTotalRadiantPowerW() const
@@ -214,5 +213,45 @@ void ATemperature::UpdateVisuals()
 	if (bUseCPD)
 	{
 		MeshComp->SetCustomPrimitiveDataFloat(CPDIndex_Temperature, Temperature);
+	}
+}
+
+void ATemperature::CheckAndUpdateIceObjects()
+{
+	if (!HeatSphere) return;
+
+	TArray<AActor*> OverlappingActors;
+	if (IceClassFilter)
+	{
+		HeatSphere->GetOverlappingActors(OverlappingActors, IceClassFilter);
+	}
+	else
+	{
+		HeatSphere->GetOverlappingActors(OverlappingActors);
+	}
+
+	static const FName StartFn(TEXT("StartHeating"));
+	static const FName IsHeatingFn(TEXT("IsHeating"));
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		if (!Actor || Actor == this) continue;
+		if (IceClassFilter && !Actor->IsA(IceClassFilter)) continue;
+
+		bool bAlreadyHeating = false;
+		if (UFunction* CheckFn = Actor->FindFunction(IsHeatingFn))
+		{
+			Actor->ProcessEvent(CheckFn, &bAlreadyHeating);
+		}
+
+		if (!bAlreadyHeating)
+		{
+			if (UFunction* Fn = Actor->FindFunction(StartFn))
+			{
+				struct FArgs { ATemperature* FireRef; };
+				FArgs Args{ this };
+				Actor->ProcessEvent(Fn, &Args);
+			}
+		}
 	}
 }

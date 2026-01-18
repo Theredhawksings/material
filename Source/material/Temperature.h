@@ -116,4 +116,5 @@ private:
 	void UpdateSphereRadius(bool bForceOverlaps);
 	void StartHeatingOnAlreadyOverlapping();
 	void UpdateVisuals();
+	void CheckAndUpdateIceObjects();
 };
