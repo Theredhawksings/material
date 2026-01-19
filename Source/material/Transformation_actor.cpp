@@ -22,7 +22,17 @@ ATransformation_actor::ATransformation_actor()
 void ATransformation_actor::BeginPlay()
 {
 	Super::BeginPlay();
-	SetForm(CurrentForm);
+	
+	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
+	{
+		ApplySpec(*Spec);
+	}
+	
+	if (CurrentForm == EBlockForm::Ice)
+	{
+		BaseScaleBeforeMelt = MeshComp->GetComponentScale();
+		EnterIceMode();
+	}
 }
 
 void ATransformation_actor::OnConstruction(const FTransform& Transform)
@@ -108,7 +118,8 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 	float SavedEnergyAccumJ = EnergyAccumJ;
 	ATemperature* SavedFire = CurrentFire;
 	bool bWasHeating = bHeating;
-	FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);  
+	FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);
+	FVector SavedBaseScale = BaseScaleBeforeMelt; 
 
 	if (CurrentForm == EBlockForm::Ice)
 	{
@@ -129,17 +140,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 
 	if (CurrentForm == EBlockForm::Ice)
 	{
-		if (SavedMeltAlpha > 0.0f)
-		{
-			const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
-			const float InverseLerp = SavedMeltAlpha;
-			const float ScaleFactor = FMath::Lerp(1.0f, Ratio, InverseLerp);
-			BaseScaleBeforeMelt = SavedCurrentScale / ScaleFactor;
-		}
-		else
-		{
-			BaseScaleBeforeMelt = SavedCurrentScale;
-		}
+		BaseScaleBeforeMelt = SavedBaseScale;
 		
 		EnterIceMode();
 		
@@ -230,7 +231,6 @@ void ATransformation_actor::EnterIceMode()
 
 	if (MeltAlpha == 0.0f)
 	{
-		BaseScaleBeforeMelt = MeshComp->GetComponentScale();
 		EnergyAccumJ = 0.0f;
 	}
 	
@@ -269,29 +269,35 @@ void ATransformation_actor::ExitIceMode()
 
 void ATransformation_actor::RecalcIceMassAndEnergy()
 {
-	if (!MeshComp)
-	{
-		VolumeM3 = 1.0f;
-		EffectiveAreaM2 = 1.0f;
-		TotalMeltEnergyJ = IceDensityKgM3 * VolumeM3 * LatentHeatJPerKg;
-		return;
-	}
+    if (!MeshComp || !MeshComp->GetStaticMesh())
+    {
+        VolumeM3 = 1.0f;
+        EffectiveAreaM2 = 1.0f;
+        TotalMeltEnergyJ = IceDensityKgM3 * VolumeM3 * LatentHeatJPerKg;
+        return;
+    }
 
-	const FBoxSphereBounds B = MeshComp->Bounds;
-	const FVector SizeCm = B.BoxExtent * 2.0f;
-	const FVector SizeM = SizeCm / 100.0f;
+    const FBoxSphereBounds LocalBounds = MeshComp->GetStaticMesh()->GetBounds();
+    
+    const FVector SafeBaseScale = FVector(
+        FMath::Max(BaseScaleBeforeMelt.X, 0.01f),
+        FMath::Max(BaseScaleBeforeMelt.Y, 0.01f),
+        FMath::Max(BaseScaleBeforeMelt.Z, 0.01f)
+    );
 
-	VolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
+    const FVector OriginalSizeCm = LocalBounds.BoxExtent * 2.0f * SafeBaseScale;
+    const FVector SizeM = OriginalSizeCm / 100.0f;
 
-	const float Axy = SizeM.X * SizeM.Y;
-	const float Axz = SizeM.X * SizeM.Z;
-	const float Ayz = SizeM.Y * SizeM.Z;
-	EffectiveAreaM2 = FMath::Max3(Axy, Axz, Ayz);
+    VolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
 
-	const float MassKg = IceDensityKgM3 * VolumeM3;
-	TotalMeltEnergyJ = FMath::Max(MassKg * LatentHeatJPerKg, 1.0f);
+    const float Axy = SizeM.X * SizeM.Y;
+    const float Axz = SizeM.X * SizeM.Z;
+    const float Ayz = SizeM.Y * SizeM.Z;
+    EffectiveAreaM2 = FMath::Max3(Axy, Axz, Ayz);
+
+    const float MassKg = IceDensityKgM3 * VolumeM3;
+    TotalMeltEnergyJ = FMath::Max(MassKg * LatentHeatJPerKg, 1.0f);
 }
-
 void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
 {
 	if (!MeshComp) return;
