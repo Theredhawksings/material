@@ -22,7 +22,17 @@ ATransformation_actor::ATransformation_actor()
 void ATransformation_actor::BeginPlay()
 {
 	Super::BeginPlay();
-	SetForm(CurrentForm);
+	
+	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
+	{
+		ApplySpec(*Spec);
+	}
+	
+	if (CurrentForm == EBlockForm::Ice)
+	{
+		BaseScaleBeforeMelt = MeshComp->GetComponentScale();
+		EnterIceMode();
+	}
 }
 
 void ATransformation_actor::OnConstruction(const FTransform& Transform)
@@ -108,7 +118,8 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 	float SavedEnergyAccumJ = EnergyAccumJ;
 	ATemperature* SavedFire = CurrentFire;
 	bool bWasHeating = bHeating;
-	FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);  
+	FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);
+	FVector SavedBaseScale = BaseScaleBeforeMelt;  // BaseScale도 저장!
 
 	if (CurrentForm == EBlockForm::Ice)
 	{
@@ -129,17 +140,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 
 	if (CurrentForm == EBlockForm::Ice)
 	{
-		if (SavedMeltAlpha > 0.0f)
-		{
-			const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
-			const float InverseLerp = SavedMeltAlpha;
-			const float ScaleFactor = FMath::Lerp(1.0f, Ratio, InverseLerp);
-			BaseScaleBeforeMelt = SavedCurrentScale / ScaleFactor;
-		}
-		else
-		{
-			BaseScaleBeforeMelt = SavedCurrentScale;
-		}
+		BaseScaleBeforeMelt = SavedBaseScale;
 		
 		EnterIceMode();
 		
@@ -230,7 +231,6 @@ void ATransformation_actor::EnterIceMode()
 
 	if (MeltAlpha == 0.0f)
 	{
-		BaseScaleBeforeMelt = MeshComp->GetComponentScale();
 		EnergyAccumJ = 0.0f;
 	}
 	
