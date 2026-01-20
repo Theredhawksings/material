@@ -13,7 +13,7 @@ class UUserWidget;
  *  Basic PlayerController class for a third person game
  *  Manages input mappings
  */
-UCLASS(abstract)
+UCLASS()  // abstract 제거!
 class AmaterialPlayerController : public APlayerController
 {
 	GENERATED_BODY()
@@ -35,6 +35,10 @@ protected:
 	/** Pointer to the mobile controls widget */
 	TObjectPtr<UUserWidget> MobileControlsWidget;
 
+public:
+	AmaterialPlayerController();  // 생성자 추가
+
+protected:
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
 

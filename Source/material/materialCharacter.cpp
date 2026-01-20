@@ -1,133 +1,170 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "materialCharacter.h"
-#include "Engine/LocalPlayer.h"
+
 #include "Camera/CameraComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "GameFramework/Controller.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
 #include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
-#include "material.h"
+#include "InputAction.h"
+
+DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 AmaterialCharacter::AmaterialCharacter()
 {
-	// Set size for collision capsule
-	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
-	bUseControllerRotationPitch = false;
+	PrimaryActorTick.bCanEverTick = false;
+
 	bUseControllerRotationYaw = false;
+	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
 
-	// Configure character movement
 	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 540.f, 0.f);
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
-
-	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f;
+	CameraBoom->SetupAttachment(GetRootComponent());
+	CameraBoom->TargetArmLength = 300.f;
 	CameraBoom->bUsePawnControlRotation = true;
 
-	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+	FollowCamera->SetupAttachment(CameraBoom);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(
+		TEXT("/Game/modeling/Character/Astronier.Astronier")
+	);
+
+	if (MeshAsset.Succeeded())
+	{
+		GetMesh()->SetSkeletalMesh(MeshAsset.Object);
+		GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -90.f));
+		GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	}
+
+	// Input Actions 로드
+	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionAsset(
+		TEXT("/Game/Input/Actions/IA_Move")
+	);
+	if (MoveActionAsset.Succeeded())
+	{
+		MoveAction = MoveActionAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> LookActionAsset(
+		TEXT("/Game/Input/Actions/IA_Look")
+	);
+	if (LookActionAsset.Succeeded())
+	{
+		LookAction = LookActionAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> MouseLookActionAsset(
+		TEXT("/Game/Input/Actions/IA_MouseLook")
+	);
+	if (MouseLookActionAsset.Succeeded())
+	{
+		MouseLookAction = MouseLookActionAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> JumpActionAsset(
+		TEXT("/Game/Input/Actions/IA_Jump")
+	);
+	if (JumpActionAsset.Succeeded())
+	{
+		JumpAction = JumpActionAsset.Object;
+	}
+}
+
+void AmaterialCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Character BeginPlay called"));
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-		// Moving
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	if (!EIC) 
+	{
+		UE_LOG(LogTemplateCharacter, Error, TEXT("Failed to cast to EnhancedInputComponent"));
+		return;
+	}
 
-		// Looking
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+	if (MoveAction)
+	{
+		EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
+		UE_LOG(LogTemplateCharacter, Log, TEXT("MoveAction bound successfully"));
 	}
 	else
 	{
-		UE_LOG(Logmaterial, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		UE_LOG(LogTemplateCharacter, Error, TEXT("MoveAction is NULL"));
+	}
+
+	if (LookAction)
+	{
+		EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+		UE_LOG(LogTemplateCharacter, Log, TEXT("LookAction bound successfully"));
+	}
+
+	if (MouseLookAction)
+	{
+		EIC->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+		UE_LOG(LogTemplateCharacter, Log, TEXT("MouseLookAction bound successfully"));
+	}
+
+	if (JumpAction)
+	{
+		EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &AmaterialCharacter::DoJumpStart);
+		EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &AmaterialCharacter::DoJumpEnd);
+		UE_LOG(LogTemplateCharacter, Log, TEXT("JumpAction bound successfully"));
 	}
 }
 
 void AmaterialCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D MovementVector = Value.Get<FVector2D>();
-
-	// route the input
-	DoMove(MovementVector.X, MovementVector.Y);
+	const FVector2D Axis = Value.Get<FVector2D>();
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Move called: X=%f, Y=%f"), Axis.X, Axis.Y);
+	DoMove(Axis.X, Axis.Y);
 }
 
 void AmaterialCharacter::Look(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// route the input
-	DoLook(LookAxisVector.X, LookAxisVector.Y);
+	const FVector2D Axis = Value.Get<FVector2D>();
+	DoLook(Axis.X, Axis.Y);
 }
 
 void AmaterialCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() != nullptr)
+	if (!Controller) 
 	{
-		// find out which way is forward
-		const FRotator Rotation = GetController()->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		// add movement 
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("Controller is NULL in DoMove"));
+		return;
 	}
+
+	const FRotator YawRot(0.f, Controller->GetControlRotation().Yaw, 0.f);
+
+	const FVector ForwardDir = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+	const FVector RightDir   = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+
+	AddMovementInput(ForwardDir, Forward);
+	AddMovementInput(RightDir, Right);
 }
 
 void AmaterialCharacter::DoLook(float Yaw, float Pitch)
 {
-	if (GetController() != nullptr)
-	{
-		// add yaw and pitch input to controller
-		AddControllerYawInput(Yaw);
-		AddControllerPitchInput(Pitch);
-	}
+	AddControllerYawInput(Yaw);
+	AddControllerPitchInput(Pitch);
 }
 
 void AmaterialCharacter::DoJumpStart()
 {
-	// signal the character to jump
 	Jump();
 }
 
 void AmaterialCharacter::DoJumpEnd()
 {
-	// signal the character to stop jumping
 	StopJumping();
 }
