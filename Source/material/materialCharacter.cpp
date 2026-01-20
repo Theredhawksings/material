@@ -27,7 +27,7 @@ AmaterialCharacter::AmaterialCharacter()
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.f;
+	CameraBoom->TargetArmLength = 350.f;
 	CameraBoom->SocketOffset = FVector(0.f, 0.f, 80.f);
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bEnableCameraLag = true;
