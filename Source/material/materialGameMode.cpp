@@ -5,7 +5,8 @@
 AmaterialGameMode::AmaterialGameMode()
 {
     DefaultPawnClass = AmaterialCharacter::StaticClass();
-    PlayerControllerClass = AmaterialPlayerController::StaticClass(); 
-
-    UE_LOG(LogTemp, Log, TEXT("GameMode Constructor: PlayerControllerClass set to materialPlayerController"));
+    PlayerControllerClass = AmaterialPlayerController::StaticClass();
+    
+    UE_LOG(LogTemp, Warning, TEXT("GameMode Constructor - PlayerControllerClass: %s"), 
+           PlayerControllerClass ? *PlayerControllerClass->GetName() : TEXT("NULL"));
 }
