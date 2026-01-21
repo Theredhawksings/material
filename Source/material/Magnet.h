@@ -62,14 +62,33 @@ protected:
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bAutoComputeStrength = true;
 
-    /* ===== Runtime ===== */
 
     /** 자기장 안의 금속들 */
     UPROPERTY()
     TSet<UPrimitiveComponent*> OverlappingMetals;
 
-    /* ===== Overlap ===== */
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    float MagneticDecayExponent = 2.0f;
 
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    float VelocityDampingFactor = 0.3f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    float MaxAttractVelocity = 500.f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    bool bUseTorque = true;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    bool bApplyInitialImpulse = false;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet")
+    float InitialImpulseStrength = 100.f;
+
+    UPROPERTY(EditAnywhere, Category = "Debug")
+    bool bDebugDraw = false;
+    
+    
     UFUNCTION()
     void OnRangeBegin(
         UPrimitiveComponent* OverlappedComp,
