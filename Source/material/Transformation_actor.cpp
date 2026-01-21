@@ -1,3 +1,4 @@
+// Transformation_actor.cpp 수정
 #include "Transformation_actor.h"
 
 #include "Components/StaticMeshComponent.h"
@@ -26,6 +27,12 @@ void ATransformation_actor::BeginPlay()
 	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
 	{
 		ApplySpec(*Spec);
+	}
+	
+	// 시작 시 현재 형태에 맞는 태그 추가
+	if (bAutoUpdateTags)
+	{
+		UpdateTagsForForm(CurrentForm);
 	}
 	
 	if (CurrentForm == EBlockForm::Ice)
@@ -128,6 +135,12 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 
 	CurrentForm = NewForm;
 
+	// 형태가 바뀔 때 태그 업데이트
+	if (bAutoUpdateTags)
+	{
+		UpdateTagsForForm(NewForm);
+	}
+
 	if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
 	{
 		ApplySpec(*Spec);
@@ -166,6 +179,44 @@ void ATransformation_actor::NextForm()
 
 	Idx = (Idx + 1) % CycleOrder.Num();
 	SetForm(CycleOrder[Idx]);
+}
+
+void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)
+{
+	// 기존 형태 태그들 모두 제거
+	ClearAllFormTags();
+
+	// 새로운 형태에 맞는 태그 추가
+	switch (Form)
+	{
+	case EBlockForm::Ice:
+		Tags.AddUnique(IceTag);
+		break;
+		
+	case EBlockForm::Metal:
+		Tags.AddUnique(MetalTag);
+		break;
+		
+	case EBlockForm::Wood:
+		Tags.AddUnique(WoodTag);
+		break;
+		
+	case EBlockForm::Rubber:
+		Tags.AddUnique(RubberTag);
+		break;
+		
+	default:
+		break;
+	}
+}
+
+void ATransformation_actor::ClearAllFormTags()
+{
+	// 모든 형태 관련 태그 제거
+	Tags.Remove(IceTag);
+	Tags.Remove(MetalTag);
+	Tags.Remove(WoodTag);
+	Tags.Remove(RubberTag);
 }
 
 void ATransformation_actor::StartHeating(ATemperature* FireRef)
@@ -298,6 +349,7 @@ void ATransformation_actor::RecalcIceMassAndEnergy()
     const float MassKg = IceDensityKgM3 * VolumeM3;
     TotalMeltEnergyJ = FMath::Max(MassKg * LatentHeatJPerKg, 1.0f);
 }
+
 void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
 {
 	if (!MeshComp) return;
