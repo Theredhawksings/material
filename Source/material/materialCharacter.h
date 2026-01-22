@@ -42,8 +42,23 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	UPROPERTY()
 	UInputAction* IA_ChangeForm;
 
+	UPROPERTY()
+	UInputAction* IA_Hold;  
+
 	UPROPERTY(EditAnywhere, Category = "Interaction")
 	float InteractRange = 2000.f;
+	
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	FName PickupTag = TEXT("Metal");
+
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	FName HoldSocketName = TEXT("hand_RSocket");
+
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	float PickupRange = 2000.f;
+
+	UPROPERTY()
+	AActor* HeldActor = nullptr;
 
 public:
 	AmaterialCharacter();
@@ -57,6 +72,10 @@ protected:
 	void JumpStarted();
 	void JumpStopped();
 	void ChangeForm();
+
+	void HoldPressed();
+	bool TryPickup();
+	void DropHeld();
 
 public:
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }

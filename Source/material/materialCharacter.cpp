@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 
 #include "Components/InputComponent.h"
+#include "Components/PrimitiveComponent.h"
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -107,6 +108,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
 	PlayerInputComponent->BindAction("ChangeForm", IE_Pressed, this, &AmaterialCharacter::ChangeForm);
+	PlayerInputComponent->BindAction("Hold", IE_Pressed, this, &AmaterialCharacter::HoldPressed);
 
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC) return;
@@ -174,4 +176,70 @@ void AmaterialCharacter::ChangeForm()
 	{
 		TransformActor->NextForm();
 	}
+}
+
+void AmaterialCharacter::HoldPressed()
+{
+	if (HeldActor)
+	{
+		DropHeld();
+		return;
+	}
+	TryPickup();
+
+	
+	
+}
+
+bool AmaterialCharacter::TryPickup()
+{
+	if (!FollowCamera) return false;
+
+	const FVector Start = FollowCamera->GetComponentLocation();
+	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange;
+
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Camera, Params);
+	if (!bHit) return false;
+
+	AActor* Target = Hit.GetActor();
+	if (!Target) return false;
+
+	if (!Target->ActorHasTag(PickupTag)) return false;
+
+	TArray<UPrimitiveComponent*> PrimComps;
+	Target->GetComponents<UPrimitiveComponent>(PrimComps);
+	for (UPrimitiveComponent* PC : PrimComps)
+	{
+		if (!PC) continue;
+		PC->SetSimulatePhysics(false);
+		PC->SetEnableGravity(false);
+		PC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	Target->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, HoldSocketName);
+	HeldActor = Target;
+	return true;
+}
+
+void AmaterialCharacter::DropHeld()
+{
+	if (!HeldActor) return;
+
+	HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	TArray<UPrimitiveComponent*> PrimComps;
+	HeldActor->GetComponents<UPrimitiveComponent>(PrimComps);
+	for (UPrimitiveComponent* PC : PrimComps)
+	{
+		if (!PC) continue;
+		PC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		PC->SetEnableGravity(true);
+		PC->SetSimulatePhysics(true);
+	}
+
+	HeldActor = nullptr;
 }
