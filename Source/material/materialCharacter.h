@@ -55,7 +55,7 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	FName HoldSocketName = TEXT("hand_RSocket");
 
 	UPROPERTY(EditAnywhere, Category="Pickup")
-	float PickupRange = 2000.f;
+	float PickupRange = 500.f;
 
 	UPROPERTY()
 	AActor* HeldActor = nullptr;
