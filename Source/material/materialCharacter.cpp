@@ -4,6 +4,8 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
+#include "Components/InputComponent.h"
+
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -11,10 +13,13 @@
 #include "InputActionValue.h"
 
 #include "UObject/ConstructorHelpers.h"
+#include "Transformation_actor.h"
 
 AmaterialCharacter::AmaterialCharacter()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	AutoPossessPlayer = EAutoReceiveInput::Player0;
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -101,23 +106,14 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
+	PlayerInputComponent->BindAction("ChangeForm", IE_Pressed, this, &AmaterialCharacter::ChangeForm);
+
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC) return;
 
-	if (IA_Move)
-	{
-		EIC->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
-	}
-
-	if (IA_Look)
-	{
-		EIC->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
-	}
-
-	if (IA_MouseLook)
-	{
-		EIC->BindAction(IA_MouseLook, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
-	}
+	if (IA_Move)      EIC->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
+	if (IA_Look)      EIC->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+	if (IA_MouseLook) EIC->BindAction(IA_MouseLook, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
 
 	if (IA_Jump)
 	{
@@ -156,4 +152,26 @@ void AmaterialCharacter::JumpStarted()
 void AmaterialCharacter::JumpStopped()
 {
 	StopJumping();
+}
+
+void AmaterialCharacter::ChangeForm()
+{
+	if (!FollowCamera) return;
+
+	const FVector Start = FollowCamera->GetComponentLocation();
+	const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
+
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
+
+	if (!bHit) return;
+
+	ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor());
+	if (TransformActor)
+	{
+		TransformActor->NextForm();
+	}
 }
