@@ -1,4 +1,3 @@
-// Transformation_actor.cpp 수정
 #include "Transformation_actor.h"
 
 #include "Components/StaticMeshComponent.h"
