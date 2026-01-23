@@ -49,7 +49,7 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	float InteractRange = 2000.f;
 	
 	UPROPERTY(EditAnywhere, Category="Pickup")
-	FName PickupTag = TEXT("Metal");
+	TArray<FName> PickupTags;
 
 	UPROPERTY(EditAnywhere, Category="Pickup")
 	FName HoldSocketName = TEXT("hand_RSocket");

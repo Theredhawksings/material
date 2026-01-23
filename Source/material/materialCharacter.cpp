@@ -84,6 +84,15 @@ AmaterialCharacter::AmaterialCharacter()
 		TEXT("InputAction'/Game/Input/Actions/IA_Jump.IA_Jump'")
 	);
 	if (IA_JumpAsset.Succeeded()) IA_Jump = IA_JumpAsset.Object;
+
+	if (PickupTags.Num() == 0)
+	{
+	PickupTags.Add(TEXT("Metal"));
+	PickupTags.Add(TEXT("Rubber"));
+	PickupTags.Add(TEXT("Ice"));
+	PickupTags.Add(TEXT("Wood"));
+	}
+
 }
 
 void AmaterialCharacter::BeginPlay()
@@ -208,7 +217,18 @@ bool AmaterialCharacter::TryPickup()
 	AActor* Target = Hit.GetActor();
 	if (!Target) return false;
 
-	if (!Target->ActorHasTag(PickupTag)) return false;
+	bool bAllowed = false;
+	for (const FName& Tag : PickupTags)
+	{
+	if (Target->ActorHasTag(Tag))
+	{
+		bAllowed = true;
+		break;
+	}
+	}
+	
+	if (!bAllowed) return false;
+
 
 	TArray<UPrimitiveComponent*> PrimComps;
 	Target->GetComponents<UPrimitiveComponent>(PrimComps);
