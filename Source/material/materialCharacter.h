@@ -6,8 +6,8 @@
 
 class USpringArmComponent;
 class UCameraComponent;
-class UInputAction;
 class UInputMappingContext;
+class UInputAction;
 struct FInputActionValue;
 
 UCLASS()
@@ -15,10 +15,10 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
 
 	UPROPERTY()
@@ -39,15 +39,45 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	UPROPERTY()
 	UInputAction* IA_Jump;
 
+	UPROPERTY()
+	UInputAction* IA_ChangeForm;
+
+	UPROPERTY()
+	UInputAction* IA_Hold;  
+
+	UPROPERTY(EditAnywhere, Category = "Interaction")
+	float InteractRange = 2000.f;
+	
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	TArray<FName> PickupTags;
+
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	FName HoldSocketName = TEXT("hand_RSocket");
+
+	UPROPERTY(EditAnywhere, Category="Pickup")
+	float PickupRange = 500.f;
+
+	UPROPERTY()
+	AActor* HeldActor = nullptr;
+
+public:
+	AmaterialCharacter();
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void JumpStarted();
 	void JumpStopped();
+	void ChangeForm();
+
+	void HoldPressed();
+	bool TryPickup();
+	void DropHeld();
 
 public:
-	AmaterialCharacter();
+	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 };

@@ -115,7 +115,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Debug")
 	bool bDebugMelt = true;
 
+	UPROPERTY(EditAnywhere, Category = "Transformation|Tags")
+	bool bAutoUpdateTags = true;
+
+	UPROPERTY(EditAnywhere, Category = "Transformation|Tags")
+	FName IceTag = "Ice";
+
+	UPROPERTY(EditAnywhere, Category = "Transformation|Tags")
+	FName MetalTag = "Metal";
+
+	UPROPERTY(EditAnywhere, Category = "Transformation|Tags")
+	FName WoodTag = "Wood";
+
+	UPROPERTY(EditAnywhere, Category = "Transformation|Tags")
+	FName RubberTag = "Rubber";
+
 private:
+	void UpdateTagsForForm(EBlockForm Form);
+	void ClearAllFormTags();
 	const FBlockFormSpec* FindSpec(EBlockForm Form) const;
 	void ApplySpec(const FBlockFormSpec& Spec);
 
