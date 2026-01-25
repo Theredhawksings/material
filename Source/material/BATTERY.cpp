@@ -41,7 +41,7 @@ void ABATTERY::BeginPlay()
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ABATTERY::RefreshConnectedWires, 0.2f, false);
 }
 
-void ABATTERY::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void ABATTERY::EndPlay(const EEndPlayReason::Type EndPlayReason){
 
     RemoveInputBinding();
 
