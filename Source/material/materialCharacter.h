@@ -60,6 +60,9 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	UPROPERTY()
 	AActor* HeldActor = nullptr;
 
+	UPROPERTY(EditAnywhere, Category="Rendering")
+	int32 CustomDepthStencilValue = 125;	
+
 public:
 	AmaterialCharacter();
 

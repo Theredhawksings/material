@@ -110,6 +110,12 @@ void AmaterialCharacter::BeginPlay()
 
 	if (IMC_Default) Subsystem->AddMappingContext(IMC_Default, 0);
 	if (IMC_MouseLook) Subsystem->AddMappingContext(IMC_MouseLook, 1);
+	
+	if (GetMesh())
+	{
+		GetMesh()->SetRenderCustomDepth(true);
+		GetMesh()->SetCustomDepthStencilValue(CustomDepthStencilValue);
+	}
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
