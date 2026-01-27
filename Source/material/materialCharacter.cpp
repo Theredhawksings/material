@@ -6,6 +6,7 @@
 
 #include "Components/InputComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"   
 
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -93,6 +94,22 @@ AmaterialCharacter::AmaterialCharacter()
 	PickupTags.Add(TEXT("Wood"));
 	}
 
+	BackpackComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackpackComp"));
+	BackpackComp->SetupAttachment(GetMesh()); 
+
+	BackpackComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BackpackComp->SetGenerateOverlapEvents(false);
+	BackpackComp->SetSimulatePhysics(false);
+	BackpackComp->SetEnableGravity(false);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> BackpackMeshAsset(
+	TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'")
+	);
+	if (BackpackMeshAsset.Succeeded())
+	{
+	BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
+	}
+
 }
 
 void AmaterialCharacter::BeginPlay()
@@ -115,7 +132,21 @@ void AmaterialCharacter::BeginPlay()
 	{
 		GetMesh()->SetRenderCustomDepth(true);
 		GetMesh()->SetCustomDepthStencilValue(CustomDepthStencilValue);
+	}	
+
+	if (BackpackComp && GetMesh())
+	{
+	BackpackComp->AttachToComponent(
+		GetMesh(),
+		FAttachmentTransformRules::SnapToTargetNotIncludingScale, 
+		BackpackSocketName
+	);
+
+	BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
+	BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
+	BackpackComp->SetRelativeScale3D(BackpackRelativeScale); 
 	}
+
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

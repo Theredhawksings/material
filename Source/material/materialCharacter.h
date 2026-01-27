@@ -62,6 +62,20 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 
 	UPROPERTY(EditAnywhere, Category="Rendering")
 	int32 CustomDepthStencilValue = 125;	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Equipment", meta=(AllowPrivateAccess="true"))
+	UStaticMeshComponent* BackpackComp;
+
+	UPROPERTY(EditAnywhere, Category="Equipment")
+	FName BackpackSocketName = TEXT("spine_002Socket");
+
+	UPROPERTY(EditAnywhere, Category="Equipment")
+	FVector BackpackRelativeLocation = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, Category="Equipment")
+	FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -90.f);
+
+	UPROPERTY(EditAnywhere, Category="Equipment")
+	FVector BackpackRelativeScale = FVector(0.5f, 0.5f, 0.5f);
 
 public:
 	AmaterialCharacter();
