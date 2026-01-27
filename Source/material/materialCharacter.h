@@ -69,13 +69,13 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 	FName BackpackSocketName = TEXT("spine_002Socket");
 
 	UPROPERTY(EditAnywhere, Category="Equipment")
-	FVector BackpackRelativeLocation = FVector::ZeroVector;
+	FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
 
 	UPROPERTY(EditAnywhere, Category="Equipment")
-	FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -90.f);
+	FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -93.f);
 
 	UPROPERTY(EditAnywhere, Category="Equipment")
-	FVector BackpackRelativeScale = FVector(0.5f, 0.5f, 0.5f);
+	FVector BackpackRelativeScale = FVector(0.55f, 0.55f, 0.55f);
 
 public:
 	AmaterialCharacter();
