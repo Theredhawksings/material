@@ -188,7 +188,6 @@ void AMagnet::ApplyInducedMagnetism()
 {
     const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
     
-    // 각 철 오브젝트가 다른 철 오브젝트를 끌어당김
     TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
     
     for (int32 i = 0; i < MetalArray.Num(); ++i)
@@ -199,18 +198,15 @@ void AMagnet::ApplyInducedMagnetism()
 
         const FVector MetalALoc = MetalA->GetComponentLocation();
         float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
-        
-        // 자석과 너무 멀면 자화 안 됨
+
         if (DistAToMagnet > MinDistanceForInduction)
             continue;
         
-        // 자석과의 거리에 따라 유도 자기력 계산 (가까울수록 강하게 자화됨)
         float InducedStrength = CalculateInducedStrength(DistAToMagnet, Strength);
-        
-        // 이 철(MetalA)이 다른 철들(MetalB)을 끌어당김
+
         for (int32 j = 0; j < MetalArray.Num(); ++j)
         {
-            if (i == j) continue;  // 자기 자신은 제외
+            if (i == j) continue; 
             
             UPrimitiveComponent* MetalB = MetalArray[j];
             if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics())
@@ -219,31 +215,25 @@ void AMagnet::ApplyInducedMagnetism()
             const FVector MetalBLoc = MetalB->GetComponentLocation();
             FVector AtoB = MetalBLoc - MetalALoc;
             float DistAtoB = AtoB.Size();
-            
-            // 유도 자석의 범위 체크
+
             if (DistAtoB < 10.f || DistAtoB > InductionRange)
                 continue;
             
             FVector Dir = AtoB.GetSafeNormal();
-            
-            // 자석과 MetalA를 잇는 방향 벡터
+
             FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
             
-            // MetalA의 자극 방향 (자석 방향)
             float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
             
-            // 같은 방향이면 끌어당기고 (양수), 반대면 밀어냄 (음수)
             float DirectionMult = FMath::Sign(AlignmentFactor) * FMath::Abs(AlignmentFactor);
-            
-            // 유도 자기력 공식: F = k * m / r^2
+
             float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(DirectionMult)) 
                            / FMath::Pow(DistAtoB, MagneticDecayExponent);
             
             float MetalBMass = MetalB->GetMass();
             float MassScale = FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
             ForceMag *= MassScale;
-            
-            // 속도 댐핑
+
             FVector CurrentVel = MetalB->GetPhysicsLinearVelocity();
             float VelTowardsA = FVector::DotProduct(CurrentVel, Dir);
             float VelocityDamping = 1.0f;
@@ -260,12 +250,10 @@ void AMagnet::ApplyInducedMagnetism()
             
             MetalB->AddForce(FinalForce, NAME_None, false);
             
-            // 반작용으로 MetalA도 힘을 받음
             MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
             
             if (bDebugDraw)
             {
-                // 유도 자력은 노란색 선으로 표시
                 DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, 
                     FColor::Yellow, false, -1.f, 0, 1.f);
             }
@@ -275,8 +263,6 @@ void AMagnet::ApplyInducedMagnetism()
 
 float AMagnet::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const
 {
-    // 자석과 가까울수록 강하게 자화됨
-    // 거리의 역제곱으로 감쇠
     if (DistanceToMagnet < 1.0f)
         DistanceToMagnet = 1.0f;
     
