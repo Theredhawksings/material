@@ -1,8 +1,10 @@
+// Magnet.cpp - 적당하게 조정 + N값만 표시
 #include "Magnet.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
 
 AMagnet::AMagnet()
 {
@@ -18,12 +20,6 @@ AMagnet::AMagnet()
     MagnetRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     MagnetRange->SetCollisionResponseToAllChannels(ECR_Ignore);
     MagnetRange->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
-
-    Strength = 0.f;
-    MagneticDecayExponent = 2.0f;
-    VelocityDampingFactor = 0.3f;
-    MaxAttractVelocity = 500.f;
-    bUseTorque = true;
 }
 
 void AMagnet::BeginPlay()
@@ -36,13 +32,23 @@ void AMagnet::BeginPlay()
         Strength = MaxLiftMass * g * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
     }
 
+    MagnetRange->SetSphereRadius(MaxDistance);
     MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
     MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
+
+    RefreshOverlappingMetals();
 }
 
 void AMagnet::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+
+    TimeSinceLastRefresh += DeltaTime;
+    if (TimeSinceLastRefresh >= RefreshInterval)
+    {
+        TimeSinceLastRefresh = 0.f;
+        RefreshOverlappingMetals();
+    }
 
     if (OverlappingMetals.Num() == 0)
         return;
@@ -65,27 +71,27 @@ void AMagnet::Tick(float DeltaTime)
         FVector Dir = ToMagnet.GetSafeNormal();
         
         float DirectionFactor = FVector::DotProduct(Dir, MagnetForward);
-        DirectionFactor = FMath::Lerp(0.5f, 1.0f, (DirectionFactor + 1.0f) * 0.5f);
+        DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirectionFactor + 1.0f) * 0.5f);
         
-        float ForceMag = (Strength * DirectionFactor) / FMath::Pow(Distance, MagneticDecayExponent);
+        float ForceMag = (Strength * DirectionFactor * ForceMultiplier) / FMath::Pow(Distance, MagneticDecayExponent);
 
         float MetalMass = MetalComp->GetMass();
-        float MassScale = FMath::Clamp(MetalMass / 10.0f, 0.1f, 2.0f);
+        float MassScale = FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
         ForceMag *= MassScale;
 
         FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
         float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
         
         float VelocityDamping = 1.0f;
-        if (VelTowardsMagnet > MaxAttractVelocity * 0.5f)
+        if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
         {
-            VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.2f, 1.0f);
+            VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
         }
         
         FVector DampingForce = -CurrentVel * VelocityDampingFactor * MetalMass;
 
         FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
-        const float MaxForce = 1e6f;
+        const float MaxForce = 6e7f;
         FinalForce = FinalForce.GetClampedToMaxSize(MaxForce);
 
         MetalComp->AddForce(FinalForce, NAME_None, false);
@@ -94,7 +100,7 @@ void AMagnet::Tick(float DeltaTime)
         {
             FVector MetalForward = MetalComp->GetForwardVector();
             FVector CrossProduct = FVector::CrossProduct(MetalForward, Dir);
-            float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.1f;
+            float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
             
             if (TorqueMagnitude > 0.01f)
             {
@@ -105,13 +111,39 @@ void AMagnet::Tick(float DeltaTime)
 
         if (MagnetMesh->IsSimulatingPhysics())
         {
-            MagnetMesh->AddForce(-FinalForce * 0.5f, NAME_None, false);
+            MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
         }
 
         if (bDebugDraw)
         {
             DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, FColor::Cyan, false, -1.f, 0, 2.f);
-            DrawDebugSphere(GetWorld(), MetalLoc, 20.f, 8, FColor::Red, false, -1.f);
+            DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
+            
+            FString ForceInfo = FString::Printf(TEXT("%.0f N"), FinalForce.Size());
+            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50), ForceInfo, nullptr, FColor::Yellow, 0.0f);
+        }
+    }
+}
+
+void AMagnet::RefreshOverlappingMetals()
+{
+    if (!MagnetRange)
+        return;
+
+    TArray<UPrimitiveComponent*> OverlappingComps;
+    MagnetRange->GetOverlappingComponents(OverlappingComps);
+
+    OverlappingMetals.Empty();
+
+    for (UPrimitiveComponent* Comp : OverlappingComps)
+    {
+        if (!Comp || !Comp->IsSimulatingPhysics())
+            continue;
+
+        AActor* CompOwner = Comp->GetOwner();
+        if (CompOwner && CompOwner != this && CompOwner->ActorHasTag(MetalTag))
+        {
+            OverlappingMetals.Add(Comp);
         }
     }
 }

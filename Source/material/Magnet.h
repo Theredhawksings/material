@@ -1,4 +1,4 @@
-// Magnet.h
+// Magnet.h - 적당한 강도로 조정
 #pragma once
 
 #include "CoreMinimal.h"
@@ -16,79 +16,75 @@ class MATERIAL_API AMagnet : public AActor
 
 public:
     AMagnet();
-
     virtual void Tick(float DeltaTime) override;
 
 protected:
     virtual void BeginPlay() override;
 
-    /* ===== Components ===== */
-
-    /** 자석 본체 */
     UPROPERTY(VisibleAnywhere, Category="Magnet")
     UStaticMeshComponent* MagnetMesh;
 
-    /** 자기장 범위 */
     UPROPERTY(VisibleAnywhere, Category="Magnet")
     USphereComponent* MagnetRange;
 
-    /* ===== Gameplay Params ===== */
-
-    /** 금속 판정 태그 */
     UPROPERTY(EditAnywhere, Category="Magnet")
     FName MetalTag = "Metal";
 
-    /** 힘 계수 (자동 계산됨) */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float Strength;
 
-    /** 기준 거리 r0 (cm) */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ReferenceDistance = 300.f;
+    float ReferenceDistance = 80.f;
 
-    /** 들어올릴 수 있는 최대 질량 (kg) */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxLiftMass = 500.f;
+    float MaxLiftMass = 70.f;
 
-    /** 최소 거리 (폭주 방지) */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MinDistance = 50.f;
+    float MinDistance = 10.f;
 
-    /** 최대 거리 (자기장 범위) */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxDistance = 800.f;
+    float MaxDistance = 600.f;
 
-    /** 시작 시 Strength 자동 계산 */
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bAutoComputeStrength = true;
 
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float ForceMultiplier = 100.0f;  // 50 -> 10
 
-    /** 자기장 안의 금속들 */
     UPROPERTY()
     TSet<UPrimitiveComponent*> OverlappingMetals;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float MagneticDecayExponent = 2.0f;
+    float MagneticDecayExponent = 1.3f;  // 1.0 -> 1.3
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float VelocityDampingFactor = 0.3f;
+    float VelocityDampingFactor = 0.15f;  // 0.05 -> 0.15
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float MaxAttractVelocity = 500.f;
+    float MaxAttractVelocity = 2000.f;  // 5000 -> 2000
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
     bool bUseTorque = true;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    bool bApplyInitialImpulse = false;
+    bool bApplyInitialImpulse = false;  // true -> false
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float InitialImpulseStrength = 100.f;
+    float InitialImpulseStrength = 200.f;
 
     UPROPERTY(EditAnywhere, Category = "Debug")
-    bool bDebugDraw = false;
-    
-    
+    bool bDebugDraw = true;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Advanced")
+    float RefreshInterval = 0.1f;
+
+    float TimeSinceLastRefresh = 0.f;
+
+public:
+    UFUNCTION(BlueprintCallable, Category = "Magnet")
+    void RefreshOverlappingMetals();
+
+protected:
     UFUNCTION()
     void OnRangeBegin(
         UPrimitiveComponent* OverlappedComp,
