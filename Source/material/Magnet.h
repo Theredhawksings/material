@@ -21,6 +21,7 @@ public:
 protected:
     virtual void BeginPlay() override;
 
+    // Magnet.h
     UPROPERTY(VisibleAnywhere, Category="Magnet")
     UStaticMeshComponent* MagnetMesh;
 
@@ -34,7 +35,7 @@ protected:
     float Strength;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ReferenceDistance = 80.f;
+    float ReferenceDistance = 100.f;  // 80 -> 100
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float MaxLiftMass = 70.f;
@@ -43,31 +44,31 @@ protected:
     float MinDistance = 10.f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxDistance = 600.f;
+    float MaxDistance = 800.f;  // 600 -> 800 (범위 증가)
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bAutoComputeStrength = true;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ForceMultiplier = 100.0f;  // 50 -> 10
+    float ForceMultiplier = 30.0f;  // 50 -> 30 (약하게)
 
     UPROPERTY()
     TSet<UPrimitiveComponent*> OverlappingMetals;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float MagneticDecayExponent = 1.3f;  // 1.0 -> 1.3
+    float MagneticDecayExponent = 1.5f;  // 1.3 -> 1.5 (거리 감쇠 증가)
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float VelocityDampingFactor = 0.15f;  // 0.05 -> 0.15
+    float VelocityDampingFactor = 0.2f;  // 0.15 -> 0.2 (댐핑 증가)
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    float MaxAttractVelocity = 2000.f;  // 5000 -> 2000
+    float MaxAttractVelocity = 1500.f;  // 2000 -> 1500 (속도 제한)
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
     bool bUseTorque = true;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
-    bool bApplyInitialImpulse = false;  // true -> false
+    bool bApplyInitialImpulse = false;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
     float InitialImpulseStrength = 200.f;
@@ -79,6 +80,25 @@ protected:
     float RefreshInterval = 0.1f;
 
     float TimeSinceLastRefresh = 0.f;
+    // 기존 protected 섹션에 추가
+    
+    // 자기 유도 관련
+    UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
+    bool bEnableInduction = true;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
+    float InductionStrengthRatio = 0.3f;  // 유도 자석은 원본의 30% 힘
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
+    float InductionRange = 250.f;  // 유도 자석의 작용 범위
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
+    float MinDistanceForInduction = 200.f;  // 자석으로부터 이 거리 이내면 자화됨
+
+private:
+    // private 섹션에 추가
+    void ApplyInducedMagnetism();
+    float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const;
 
 public:
     UFUNCTION(BlueprintCallable, Category = "Magnet")
