@@ -8,8 +8,6 @@ class USceneComponent;
 class USplineComponent;
 class USplineMeshComponent;
 class UMaterialInterface;
-class UMaterialInstanceDynamic;
-class UStaticMesh;
 class USphereComponent;
 
 UCLASS()
@@ -54,19 +52,15 @@ protected:
     TObjectPtr<UStaticMesh> SegmentMesh;
 
     UPROPERTY(EditAnywhere, Category="Wire|Build")
-    TObjectPtr<UMaterialInterface> SegmentMaterial;
-
-    UPROPERTY(EditAnywhere, Category="Wire|Build")
     FVector2D SegmentScale = FVector2D(0.03f, 0.03f);
 
-    // Wire.h 수정
-	UPROPERTY(EditAnywhere, Category="Wire|Visual")
-	TObjectPtr<UMaterialInterface> OffMaterial; // 여기에 꺼진 머터리얼 드래그
+    UPROPERTY(EditAnywhere, Category="Wire|Visual")
+    TObjectPtr<UMaterialInterface> OffMaterial;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Visual")
-	TObjectPtr<UMaterialInterface> OnMaterial;  // 여기에 켜진 머터리얼 드래그
+    UPROPERTY(EditAnywhere, Category="Wire|Visual")
+    TObjectPtr<UMaterialInterface> OnMaterial;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Power", meta=(AllowPrivateAccess="true"))
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Power")
     bool bPowered = false;
 
     UPROPERTY(EditAnywhere, Category="Wire|Connection")
@@ -78,12 +72,9 @@ protected:
     UPROPERTY(EditAnywhere, Category="Wire|Connection")
     float RefreshInterval = 0.05f;
 
-    UPROPERTY(EditAnywhere, Category="Wire|Connection")
-    bool bCheckBothEnds = false;
-
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Connection")
     TArray<TObjectPtr<AActor>> ConnectedActors;
-	
+    
 private:
     void ClearGeneratedMeshes();
     void GatherOverlapsAt(const FVector& WorldPos, TArray<AActor*>& OutActors) const;
@@ -91,11 +82,8 @@ private:
     void UpdateConnectionPoint();
 
 private:
-    UPROPERTY(Transient)
+    UPROPERTY()
     TArray<TObjectPtr<USplineMeshComponent>> SegmentMeshes;
-
-    UPROPERTY(Transient)
-    TArray<TObjectPtr<UMaterialInstanceDynamic>> MIDArray;
 
     FTimerHandle RefreshTimerHandle;
 };
