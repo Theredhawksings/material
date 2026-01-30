@@ -10,83 +10,92 @@ class USplineMeshComponent;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class UStaticMesh;
+class USphereComponent;
 
 UCLASS()
-class AWire : public AActor
+class MATERIAL_API AWire : public AActor
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AWire();
+    AWire();
 
-	UFUNCTION(BlueprintCallable, Category="Wire|Power")
-	void SetPowered(bool bNewPowered);
+    UFUNCTION(BlueprintCallable, Category="Wire|Power")
+    void SetPowered(bool bNewPowered);
 
-	UFUNCTION(BlueprintPure, Category="Wire|Power")
-	bool IsPowered() const { return bPowered; }
+    UFUNCTION(BlueprintPure, Category="Wire|Power")
+    bool IsPowered() const { return bPowered; }
 
-	UFUNCTION(BlueprintCallable, Category="Wire|Connection")
-	void RefreshConnectedActors();
+    UFUNCTION(BlueprintCallable, Category="Wire|Connection")
+    void RefreshConnectedActors();
 
-	UFUNCTION(BlueprintCallable, Category="Wire|Visual")
-	void ApplyPower();
+    UFUNCTION(BlueprintCallable, Category="Wire|Visual")
+    void ApplyPower();
 
-	UFUNCTION(BlueprintCallable, Category="Wire|Build")
-	void RebuildSplineMeshes();
-
-protected:
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void OnConstruction(const FTransform& Transform) override;
+    UFUNCTION(BlueprintCallable, Category="Wire|Build")
+    void RebuildSplineMeshes();
 
 protected:
-	UPROPERTY(VisibleAnywhere, Category="Wire|Components")
-	TObjectPtr<USceneComponent> Root;
+    virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void OnConstruction(const FTransform& Transform) override;
 
-	UPROPERTY(VisibleAnywhere, Category="Wire|Components")
-	TObjectPtr<USplineComponent> Spline;
+protected:
+    UPROPERTY(VisibleAnywhere, Category="Wire|Components")
+    TObjectPtr<USceneComponent> Root;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Build")
-	TObjectPtr<UStaticMesh> SegmentMesh;
+    UPROPERTY(VisibleAnywhere, Category="Wire|Components")
+    TObjectPtr<USplineComponent> Spline;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Build")
-	TObjectPtr<UMaterialInterface> SegmentMaterial;
+    UPROPERTY(VisibleAnywhere, Category="Wire|Components")
+    TObjectPtr<USphereComponent> ConnectionSphere;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Build")
-	FVector2D SegmentScale = FVector2D(0.03f, 0.03f);
+    UPROPERTY(EditAnywhere, Category="Wire|Build")
+    TObjectPtr<UStaticMesh> SegmentMesh;
+
+    UPROPERTY(EditAnywhere, Category="Wire|Build")
+    TObjectPtr<UMaterialInterface> SegmentMaterial;
+
+    UPROPERTY(EditAnywhere, Category="Wire|Build")
+    FVector2D SegmentScale = FVector2D(0.03f, 0.03f);
+
+    // Wire.h 수정
+	UPROPERTY(EditAnywhere, Category="Wire|Visual")
+	TObjectPtr<UMaterialInterface> OffMaterial; // 여기에 꺼진 머터리얼 드래그
 
 	UPROPERTY(EditAnywhere, Category="Wire|Visual")
-	FName PowerParamName = TEXT("Progress");
+	TObjectPtr<UMaterialInterface> OnMaterial;  // 여기에 켜진 머터리얼 드래그
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Power", meta=(AllowPrivateAccess="true"))
-	bool bPowered = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Power", meta=(AllowPrivateAccess="true"))
+    bool bPowered = false;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Connection")
-	float OverlapRadius = 30.f;
+    UPROPERTY(EditAnywhere, Category="Wire|Connection")
+    float OverlapRadius = 30.f;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Connection")
-	TSubclassOf<AActor> ConnectableClass;
+    UPROPERTY(EditAnywhere, Category="Wire|Connection")
+    TSubclassOf<AActor> ConnectableClass;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Connection")
-	float RefreshInterval = 0.05f;
+    UPROPERTY(EditAnywhere, Category="Wire|Connection")
+    float RefreshInterval = 0.05f;
 
-	UPROPERTY(EditAnywhere, Category="Wire|Connection")
-	bool bCheckBothEnds = true;
+    UPROPERTY(EditAnywhere, Category="Wire|Connection")
+    bool bCheckBothEnds = false;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Connection")
-	TArray<TObjectPtr<AActor>> ConnectedActors;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Connection")
+    TArray<TObjectPtr<AActor>> ConnectedActors;
+	
+private:
+    void ClearGeneratedMeshes();
+    void GatherOverlapsAt(const FVector& WorldPos, TArray<AActor*>& OutActors) const;
+    void PropagatePowerToConnected();
+    void UpdateConnectionPoint();
 
 private:
-	void ClearGeneratedMeshes();
-	void GatherOverlapsAt(const FVector& WorldPos, TArray<AActor*>& OutActors) const;
-	void PropagatePowerToConnected();
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<USplineMeshComponent>> SegmentMeshes;
 
-private:
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<USplineMeshComponent>> SegmentMeshes;
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> MIDArray;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> MIDArray;
-
-	FTimerHandle RefreshTimerHandle;
+    FTimerHandle RefreshTimerHandle;
 };
