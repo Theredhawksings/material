@@ -15,7 +15,6 @@
 #include "Animation/AnimSequence.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Transformation_actor.h"
-#include "TimerManager.h"
 
 AmaterialCharacter::AmaterialCharacter()
 {
@@ -79,25 +78,10 @@ AmaterialCharacter::AmaterialCharacter()
         PickupTags.Add(TEXT("Wood"));
     }
 
-    // Walk 애니메이션 로드
     static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'"));
     if (WalkAsset.Succeeded())
     {
         WalkAnim = WalkAsset.Object;
-    }
-
-    // Bring 애니메이션 로드
-    static ConstructorHelpers::FObjectFinder<UAnimSequence> BringAsset(TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"));
-    if (BringAsset.Succeeded())
-    {
-        BringAnim = BringAsset.Object;
-    }
-
-    // Walk_bring 애니메이션 로드
-    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkBringAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring.Walk_bring'"));
-    if (WalkBringAsset.Succeeded())
-    {
-        WalkBringAnim = WalkBringAsset.Object;
     }
 
     BackpackComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackpackComp"));
@@ -153,12 +137,7 @@ void AmaterialCharacter::BeginPlay()
 void AmaterialCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
-    // Bring 애니메이션 재생 중이 아닐 때만 UpdateAnimation 실행
-    if (!bIsPlayingBringAnim)
-    {
-        UpdateAnimation();
-    }
+    UpdateAnimation();
 }
 
 void AmaterialCharacter::UpdateAnimation()
@@ -167,51 +146,27 @@ void AmaterialCharacter::UpdateAnimation()
 
     float Speed = GetVelocity().Size2D();
 
-    // 물체를 들고 있을 때
-    if (HeldActor)
+    if (Speed > 10.f && WalkAnim)
     {
-        // 걷는 중
-        if (Speed > 10.f && WalkBringAnim)
+        if (!bIsPlayingWalk)
         {
-            PlayAnimation(WalkBringAnim, true);
-        }
-        // 멈춰 있을 때
-        else
-        {
-            GetMesh()->Stop();
-            CurrentAnim = nullptr;
+            GetMesh()->PlayAnimation(WalkAnim, true);
+            
+            if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
+            {
+                SingleNode->SetPlayRate(WalkPlayRate);
+            }
+            
+            bIsPlayingWalk = true;
         }
     }
-    // 물체를 들고 있지 않을 때
     else
     {
-        // 걷는 중
-        if (Speed > 10.f && WalkAnim)
-        {
-            PlayAnimation(WalkAnim, true);
-        }
-        // 멈춰 있을 때
-        else
+        if (bIsPlayingWalk)
         {
             GetMesh()->Stop();
-            CurrentAnim = nullptr;
+            bIsPlayingWalk = false;
         }
-    }
-}
-
-void AmaterialCharacter::PlayAnimation(UAnimSequence* Anim, bool bLoop)
-{
-    if (!Anim || !GetMesh()) return;
-    
-    // 이미 재생 중인 애니메이션과 같으면 무시
-    if (CurrentAnim == Anim) return;
-    
-    CurrentAnim = Anim;
-    GetMesh()->PlayAnimation(Anim, bLoop);
-    
-    if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
-    {
-        SingleNode->SetPlayRate(AnimPlayRate);
     }
 }
 
@@ -296,31 +251,7 @@ void AmaterialCharacter::HoldPressed()
         DropHeld();
         return;
     }
-    
-    // 물체 들기 시도
-    if (TryPickup())
-    {
-        // 물체를 성공적으로 잡았을 때만 BringAnim 재생
-        if (BringAnim && GetMesh())
-        {
-            bIsPlayingBringAnim = true;
-            CurrentAnim = BringAnim;
-            GetMesh()->PlayAnimation(BringAnim, false); // false = 루프 안 함
-            
-            if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
-            {
-                SingleNode->SetPlayRate(AnimPlayRate);
-            }
-            
-            // 애니메이션 길이만큼 타이머 설정
-            float AnimDuration = BringAnim->GetPlayLength() / AnimPlayRate;
-            FTimerHandle TimerHandle;
-            GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
-            {
-                bIsPlayingBringAnim = false;
-            }, AnimDuration, false);
-        }
-    }
+    TryPickup();
 }
 
 bool AmaterialCharacter::TryPickup()
