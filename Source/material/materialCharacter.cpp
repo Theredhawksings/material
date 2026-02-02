@@ -98,13 +98,24 @@ AmaterialCharacter::AmaterialCharacter()
         PickupTags.Add(TEXT("Wood"));
     }
 
-    // Walk 애니메이션 로드
     static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(
         TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'")
     );
     if (WalkAsset.Succeeded())
     {
         WalkAnim = WalkAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> BringAsset(TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"));
+    if (BringAsset.Succeeded())
+    {
+        BringAnim = BringAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkBringAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring.Walk_bring'"));
+    if (WalkBringAsset.Succeeded())
+    {
+        WalkBringAnim = WalkBringAsset.Object;
     }
 
     BackpackComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackpackComp"));

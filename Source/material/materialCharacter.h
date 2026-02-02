@@ -3,13 +3,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Animation/AnimSequence.h"
 #include "materialCharacter.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
+class UAnimSequence;
 struct FInputActionValue;
 
 UCLASS()
@@ -76,6 +76,12 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
 
     UPROPERTY(EditAnywhere, Category="Animation")
     UAnimSequence* WalkAnim = nullptr;
+
+    UPROPERTY(EditAnywhere, Category="Animation")
+    UAnimSequence* BringAnim = nullptr;
+
+    UPROPERTY(EditAnywhere, Category="Animation")
+    UAnimSequence* WalkBringAnim = nullptr;
 
     UPROPERTY(EditAnywhere, Category="Animation")
     float WalkPlayRate = 1.0f;
