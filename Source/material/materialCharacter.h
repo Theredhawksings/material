@@ -78,9 +78,6 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
     UAnimSequence* WalkAnim = nullptr;
 
     UPROPERTY(EditAnywhere, Category="Animation")
-    UAnimSequence* BringAnim = nullptr;
-
-    UPROPERTY(EditAnywhere, Category="Animation")
     UAnimSequence* WalkBringAnim = nullptr;
 
     UPROPERTY(EditAnywhere, Category="Animation")

@@ -1,30 +1,25 @@
 // materialCharacter.cpp
 #include "materialCharacter.h"
-
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-
 #include "Components/InputComponent.h"
 #include "Components/PrimitiveComponent.h"
-#include "Components/StaticMeshComponent.h"   
-
+#include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
-
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimSequence.h"
-
 #include "UObject/ConstructorHelpers.h"
 #include "Transformation_actor.h"
+#include "TimerManager.h"
 
 AmaterialCharacter::AmaterialCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
-
     AutoPossessPlayer = EAutoReceiveInput::Player0;
 
     bUseControllerRotationPitch = false;
@@ -50,9 +45,7 @@ AmaterialCharacter::AmaterialCharacter()
     FollowCamera->SetupAttachment(CameraBoom);
     FollowCamera->bUsePawnControlRotation = false;
 
-    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(
-        TEXT("SkeletalMesh'/Game/modeling/Character/Astronier.Astronier'")
-    );
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("SkeletalMesh'/Game/modeling/Character/Astronier.Astronier'"));
     if (MeshAsset.Succeeded())
     {
         GetMesh()->SetSkeletalMesh(MeshAsset.Object);
@@ -60,34 +53,22 @@ AmaterialCharacter::AmaterialCharacter()
         GetMesh()->SetRelativeRotation(FRotator(0.f, 90.f, 0.f));
     }
 
-    static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_DefaultAsset(
-        TEXT("InputMappingContext'/Game/Input/IMC_Default.IMC_Default'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_DefaultAsset(TEXT("InputMappingContext'/Game/Input/IMC_Default.IMC_Default'"));
     if (IMC_DefaultAsset.Succeeded()) IMC_Default = IMC_DefaultAsset.Object;
 
-    static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_MouseLookAsset(
-        TEXT("InputMappingContext'/Game/Input/IMC_MouseLook.IMC_MouseLook'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_MouseLookAsset(TEXT("InputMappingContext'/Game/Input/IMC_MouseLook.IMC_MouseLook'"));
     if (IMC_MouseLookAsset.Succeeded()) IMC_MouseLook = IMC_MouseLookAsset.Object;
 
-    static ConstructorHelpers::FObjectFinder<UInputAction> IA_MoveAsset(
-        TEXT("InputAction'/Game/Input/Actions/IA_Move.IA_Move'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputAction> IA_MoveAsset(TEXT("InputAction'/Game/Input/Actions/IA_Move.IA_Move'"));
     if (IA_MoveAsset.Succeeded()) IA_Move = IA_MoveAsset.Object;
 
-    static ConstructorHelpers::FObjectFinder<UInputAction> IA_LookAsset(
-        TEXT("InputAction'/Game/Input/Actions/IA_Look.IA_Look'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputAction> IA_LookAsset(TEXT("InputAction'/Game/Input/Actions/IA_Look.IA_Look'"));
     if (IA_LookAsset.Succeeded()) IA_Look = IA_LookAsset.Object;
 
-    static ConstructorHelpers::FObjectFinder<UInputAction> IA_MouseLookAsset(
-        TEXT("InputAction'/Game/Input/Actions/IA_MouseLook.IA_MouseLook'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputAction> IA_MouseLookAsset(TEXT("InputAction'/Game/Input/Actions/IA_MouseLook.IA_MouseLook'"));
     if (IA_MouseLookAsset.Succeeded()) IA_MouseLook = IA_MouseLookAsset.Object;
 
-    static ConstructorHelpers::FObjectFinder<UInputAction> IA_JumpAsset(
-        TEXT("InputAction'/Game/Input/Actions/IA_Jump.IA_Jump'")
-    );
+    static ConstructorHelpers::FObjectFinder<UInputAction> IA_JumpAsset(TEXT("InputAction'/Game/Input/Actions/IA_Jump.IA_Jump'"));
     if (IA_JumpAsset.Succeeded()) IA_Jump = IA_JumpAsset.Object;
 
     if (PickupTags.Num() == 0)
@@ -98,20 +79,21 @@ AmaterialCharacter::AmaterialCharacter()
         PickupTags.Add(TEXT("Wood"));
     }
 
-    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(
-        TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'")
-    );
+    // Walk 애니메이션 로드
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'"));
     if (WalkAsset.Succeeded())
     {
         WalkAnim = WalkAsset.Object;
     }
 
+    // Bring 애니메이션 로드
     static ConstructorHelpers::FObjectFinder<UAnimSequence> BringAsset(TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"));
     if (BringAsset.Succeeded())
     {
         BringAnim = BringAsset.Object;
     }
 
+    // Walk_bring 애니메이션 로드
     static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkBringAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring.Walk_bring'"));
     if (WalkBringAsset.Succeeded())
     {
@@ -120,15 +102,12 @@ AmaterialCharacter::AmaterialCharacter()
 
     BackpackComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackpackComp"));
     BackpackComp->SetupAttachment(GetMesh()); 
-
     BackpackComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     BackpackComp->SetGenerateOverlapEvents(false);
     BackpackComp->SetSimulatePhysics(false);
     BackpackComp->SetEnableGravity(false);
     
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> BackpackMeshAsset(
-        TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'")
-    );
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BackpackMeshAsset(TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'"));
     if (BackpackMeshAsset.Succeeded())
     {
         BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
@@ -159,18 +138,12 @@ void AmaterialCharacter::BeginPlay()
 
     if (BackpackComp && GetMesh())
     {
-        BackpackComp->AttachToComponent(
-            GetMesh(),
-            FAttachmentTransformRules::SnapToTargetNotIncludingScale, 
-            BackpackSocketName
-        );
-
+        BackpackComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, BackpackSocketName);
         BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
         BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
         BackpackComp->SetRelativeScale3D(BackpackRelativeScale); 
     }
 
-    // SingleNode 모드로 설정 (처음엔 T-Pose)
     if (GetMesh())
     {
         GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
@@ -181,7 +154,11 @@ void AmaterialCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     
-    UpdateAnimation();
+    // Bring 애니메이션 재생 중이 아닐 때만 UpdateAnimation 실행
+    if (!bIsPlayingBringAnim)
+    {
+        UpdateAnimation();
+    }
 }
 
 void AmaterialCharacter::UpdateAnimation()
@@ -190,29 +167,51 @@ void AmaterialCharacter::UpdateAnimation()
 
     float Speed = GetVelocity().Size2D();
 
-    // 걷고 있을 때
-    if (Speed > 10.f && WalkAnim)
+    // 물체를 들고 있을 때
+    if (HeldActor)
     {
-        if (!bIsPlayingWalk)
+        // 걷는 중
+        if (Speed > 10.f && WalkBringAnim)
         {
-            GetMesh()->PlayAnimation(WalkAnim, true);
-            
-            if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
-            {
-                SingleNode->SetPlayRate(WalkPlayRate);
-            }
-            
-            bIsPlayingWalk = true;
+            PlayAnimation(WalkBringAnim, true);
         }
-    }
-    // 멈췄을 때 - T-Pose로 돌아감
-    else
-    {
-        if (bIsPlayingWalk)
+        // 멈춰 있을 때
+        else
         {
             GetMesh()->Stop();
-            bIsPlayingWalk = false;
+            CurrentAnim = nullptr;
         }
+    }
+    // 물체를 들고 있지 않을 때
+    else
+    {
+        // 걷는 중
+        if (Speed > 10.f && WalkAnim)
+        {
+            PlayAnimation(WalkAnim, true);
+        }
+        // 멈춰 있을 때
+        else
+        {
+            GetMesh()->Stop();
+            CurrentAnim = nullptr;
+        }
+    }
+}
+
+void AmaterialCharacter::PlayAnimation(UAnimSequence* Anim, bool bLoop)
+{
+    if (!Anim || !GetMesh()) return;
+    
+    // 이미 재생 중인 애니메이션과 같으면 무시
+    if (CurrentAnim == Anim) return;
+    
+    CurrentAnim = Anim;
+    GetMesh()->PlayAnimation(Anim, bLoop);
+    
+    if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
+    {
+        SingleNode->SetPlayRate(AnimPlayRate);
     }
 }
 
@@ -226,8 +225,8 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
     UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
     if (!EIC) return;
 
-    if (IA_Move)      EIC->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
-    if (IA_Look)      EIC->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
+    if (IA_Move) EIC->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
+    if (IA_Look) EIC->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
     if (IA_MouseLook) EIC->BindAction(IA_MouseLook, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
 
     if (IA_Jump)
@@ -246,7 +245,7 @@ void AmaterialCharacter::Move(const FInputActionValue& Value)
     const FRotator YawRot(0.f, Yaw, 0.f);
 
     const FVector Forward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
-    const FVector Right   = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+    const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
 
     AddMovementInput(Forward, Axis.Y);
     AddMovementInput(Right, Axis.X);
@@ -281,7 +280,6 @@ void AmaterialCharacter::ChangeForm()
     Params.AddIgnoredActor(this);
 
     const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
-
     if (!bHit) return;
 
     ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor());
@@ -298,7 +296,31 @@ void AmaterialCharacter::HoldPressed()
         DropHeld();
         return;
     }
-    TryPickup();
+    
+    // 물체 들기 시도
+    if (TryPickup())
+    {
+        // 물체를 성공적으로 잡았을 때만 BringAnim 재생
+        if (BringAnim && GetMesh())
+        {
+            bIsPlayingBringAnim = true;
+            CurrentAnim = BringAnim;
+            GetMesh()->PlayAnimation(BringAnim, false); // false = 루프 안 함
+            
+            if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
+            {
+                SingleNode->SetPlayRate(AnimPlayRate);
+            }
+            
+            // 애니메이션 길이만큼 타이머 설정
+            float AnimDuration = BringAnim->GetPlayLength() / AnimPlayRate;
+            FTimerHandle TimerHandle;
+            GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+            {
+                bIsPlayingBringAnim = false;
+            }, AnimDuration, false);
+        }
+    }
 }
 
 bool AmaterialCharacter::TryPickup()
