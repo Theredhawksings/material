@@ -5,8 +5,7 @@
 #include "Components/BoxComponent.h"
 #include "Battery.generated.h"
 
-// Forward declaration
-class ABP_Wire;
+class AWire; // AWire로 클래스명 통일 (스크린샷 기준)
 
 UCLASS()
 class MATERIAL_API ABATTERY : public AActor
@@ -48,20 +47,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Battery")
     void UpdateWiresPower();
 
-private:
     UFUNCTION()
-    void OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
-                                      AActor* OtherActor, 
-                                      UPrimitiveComponent* OtherComp, 
-                                      int32 OtherBodyIndex, 
-                                      bool bFromSweep, 
-                                      const FHitResult& SweepResult);
+    void OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
     UFUNCTION()
-    void OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, 
-                                    AActor* OtherActor, 
-                                    UPrimitiveComponent* OtherComp, 
-                                    int32 OtherBodyIndex);
+    void OnConnectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+private:
+    UFUNCTION()
+    void OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+    UFUNCTION()
+    void OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
     void OnHoldPressed();
     void OnHoldReleased();
@@ -69,7 +66,12 @@ private:
     void SetupInputBinding();
     void RemoveInputBinding();
 
+    UPROPERTY()
     APlayerController* CachedPlayerController;
+
+    // [추가] 중복 바인딩 방지를 위한 전용 입력 컴포넌트
+    UPROPERTY()
+    UInputComponent* BatteryInputComponent;
     
     FTimerHandle RefreshTimerHandle;
 };

@@ -61,17 +61,31 @@ void AWire::UpdateFinalPower()
 {
     const bool bNewFinal = (bPoweredBySource || bPoweredByMetal);
     if (bPoweredFinal == bNewFinal) return;
+
     bPoweredFinal = bNewFinal;
     ApplyPower();
-    PropagatePowerToConnected();
+
+    PropagatePowerToConnected(); 
+    
+    if (!bPoweredFinal)
+    {
+        RefreshConnectedActors();
+    }
 }
 
 void AWire::SetPowered(bool bNewPowered)
 {
     if (bPoweredBySource == bNewPowered) return;
     bPoweredBySource = bNewPowered;
+
+    if (!bNewPowered)
+    {
+        bPoweredByMetal = false; 
+    }
+
     UpdateFinalPower();
 }
+
 
 void AWire::SetPoweredByMetal(bool bNewPoweredByMetal)
 {

@@ -5,7 +5,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
-#include "Wire.h"
+#include "Wire.h" // 프로젝트의 실제 전선 헤더 이름 확인 필요
 
 ABATTERY::ABATTERY()
 {
@@ -16,20 +16,22 @@ ABATTERY::ABATTERY()
 
     InteractionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionBox"));
     InteractionBox->SetupAttachment(RootComponent);
-    InteractionBox->SetBoxExtent(FVector(200.0f, 200.0f, 200.0f));
+    InteractionBox->SetBoxExtent(FVector(250.0f, 250.0f, 250.0f));
     InteractionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     InteractionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     InteractionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 
     ConnectionOutlet = CreateDefaultSubobject<UBoxComponent>(TEXT("ConnectionOutlet"));
     ConnectionOutlet->SetupAttachment(RootComponent);
-    ConnectionOutlet->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
+    // [판정 상향] 전선 연결 박스 크기를 더 넉넉하게 설정
+    ConnectionOutlet->SetBoxExtent(FVector(150.0f, 150.0f, 150.0f)); 
     ConnectionOutlet->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     ConnectionOutlet->SetCollisionResponseToAllChannels(ECR_Overlap);
 
     bPowered = false;
     bPlayerInRange = false;
     CachedPlayerController = nullptr;
+    BatteryInputComponent = nullptr;
 }
 
 void ABATTERY::BeginPlay()
@@ -39,7 +41,12 @@ void ABATTERY::BeginPlay()
     InteractionBox->OnComponentBeginOverlap.AddDynamic(this, &ABATTERY::OnInteractionBoxBeginOverlap);
     InteractionBox->OnComponentEndOverlap.AddDynamic(this, &ABATTERY::OnInteractionBoxEndOverlap);
 
-    GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ABATTERY::RefreshConnectedWires, 0.2f, false);
+    // [추가] 실시간 오버랩 감지 (전선을 갖다 대는 즉시 반응)
+    ConnectionOutlet->OnComponentBeginOverlap.AddDynamic(this, &ABATTERY::OnConnectionOverlap);
+    ConnectionOutlet->OnComponentEndOverlap.AddDynamic(this, &ABATTERY::OnConnectionEndOverlap);
+
+    RefreshConnectedWires();
+    GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ABATTERY::RefreshConnectedWires, 0.2f, true);
 }
 
 void ABATTERY::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -52,23 +59,28 @@ void ABATTERY::SetupInputBinding()
 {
     if (!CachedPlayerController) return;
 
-    if (!InputComponent)
+    // [수정] 컴포넌트가 없을 때만 생성하고 바인딩은 딱 한 번만 수행
+    if (!BatteryInputComponent)
     {
-        InputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass(), TEXT("BatteryInput"));
-        InputComponent->RegisterComponent();
+        BatteryInputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass(), TEXT("BatteryInputInstance"));
+        BatteryInputComponent->RegisterComponent();
+        BatteryInputComponent->BindAction("Hold", IE_Pressed, this, &ABATTERY::OnHoldPressed);
+        BatteryInputComponent->BindAction("Hold", IE_Released, this, &ABATTERY::OnHoldReleased);
+        // 필요 시 우선순위 상향
+        BatteryInputComponent->Priority = 10;
     }
 
-    InputComponent->BindAction("Hold", IE_Pressed, this, &ABATTERY::OnHoldPressed);
-    InputComponent->BindAction("Hold", IE_Released, this, &ABATTERY::OnHoldReleased);
-
+    // 현재 액터의 InputComponent에 우리가 만든 것을 할당하고 활성화
+    InputComponent = BatteryInputComponent;
     EnableInput(CachedPlayerController);
 }
 
 void ABATTERY::RemoveInputBinding()
 {
-    if (CachedPlayerController && InputComponent)
+    if (CachedPlayerController)
     {
         DisableInput(CachedPlayerController);
+        InputComponent = nullptr;
     }
 }
 
@@ -105,15 +117,20 @@ void ABATTERY::OnHoldPressed()
     }
 }
 
-void ABATTERY::OnHoldReleased()
-{
-    // 필요한 경우 로직 추가
-}
+void ABATTERY::OnHoldReleased() {}
 
 void ABATTERY::TogglePower()
 {
     bPowered = !bPowered;
+
+    // 전기를 보내기 직전 즉시 갱신
+    RefreshConnectedWires();
     UpdateWiresPower();
+
+    if (GEngine) {
+        GEngine->AddOnScreenDebugMessage(1, 2.0f, bPowered ? FColor::Green : FColor::Red, 
+            FString::Printf(TEXT("Battery Toggle: %s | Wires: %d"), bPowered ? TEXT("ON") : TEXT("OFF"), ConnectedWires.Num()));
+    }
 }
 
 void ABATTERY::RefreshConnectedWires()
@@ -145,5 +162,23 @@ void ABATTERY::UpdateWiresPower()
         {
             Wire->SetPowered(bPowered);
         }
+    }
+}
+
+void ABATTERY::OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+    if (AWire* Wire = Cast<AWire>(OtherActor))
+    {
+        ConnectedWires.AddUnique(Wire);
+        Wire->SetPowered(bPowered);
+    }
+}
+
+void ABATTERY::OnConnectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+    if (AWire* Wire = Cast<AWire>(OtherActor))
+    {
+        ConnectedWires.Remove(Wire);
+        Wire->SetPowered(false);
     }
 }
