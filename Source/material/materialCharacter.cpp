@@ -1,4 +1,3 @@
-// materialCharacter.cpp
 #include "materialCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -11,7 +10,6 @@
 #include "InputMappingContext.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
-#include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimSequence.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Transformation_actor.h"
@@ -52,6 +50,12 @@ AmaterialCharacter::AmaterialCharacter()
         GetMesh()->SetRelativeRotation(FRotator(0.f, 90.f, 0.f));
     }
 
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'"));
+    if (WalkAsset.Succeeded())
+    {
+        WalkAnim = WalkAsset.Object;
+    }
+
     static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_DefaultAsset(TEXT("InputMappingContext'/Game/Input/IMC_Default.IMC_Default'"));
     if (IMC_DefaultAsset.Succeeded()) IMC_Default = IMC_DefaultAsset.Object;
 
@@ -76,12 +80,6 @@ AmaterialCharacter::AmaterialCharacter()
         PickupTags.Add(TEXT("Rubber"));
         PickupTags.Add(TEXT("Ice"));
         PickupTags.Add(TEXT("Wood"));
-    }
-
-    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'"));
-    if (WalkAsset.Succeeded())
-    {
-        WalkAnim = WalkAsset.Object;
     }
 
     BackpackComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackpackComp"));
@@ -118,6 +116,7 @@ void AmaterialCharacter::BeginPlay()
     {
         GetMesh()->SetRenderCustomDepth(true);
         GetMesh()->SetCustomDepthStencilValue(CustomDepthStencilValue);
+        GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
     }    
 
     if (BackpackComp && GetMesh())
@@ -126,11 +125,6 @@ void AmaterialCharacter::BeginPlay()
         BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
         BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
         BackpackComp->SetRelativeScale3D(BackpackRelativeScale); 
-    }
-
-    if (GetMesh())
-    {
-        GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
     }
 }
 
@@ -151,12 +145,6 @@ void AmaterialCharacter::UpdateAnimation()
         if (!bIsPlayingWalk)
         {
             GetMesh()->PlayAnimation(WalkAnim, true);
-            
-            if (UAnimSingleNodeInstance* SingleNode = GetMesh()->GetSingleNodeInstance())
-            {
-                SingleNode->SetPlayRate(WalkPlayRate);
-            }
-            
             bIsPlayingWalk = true;
         }
     }

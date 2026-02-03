@@ -1,6 +1,5 @@
-// materialAnimInstance.cpp
 #include "materialAnimInstance.h"
-#include "Animation/AnimSequence.h"
+#include "GameFramework/PawnMovementComponent.h"
 
 UmaterialAnimInstance::UmaterialAnimInstance()
 {
@@ -10,15 +9,35 @@ void UmaterialAnimInstance::NativeInitializeAnimation()
 {
     Super::NativeInitializeAnimation();
 
-    // 올바른 경로 형식 - /Game/경로/파일명.파일명
+    OwnerPawn = TryGetPawnOwner();
+
     WalkAnimation = LoadObject<UAnimSequence>(nullptr, 
         TEXT("/Game/modeling/Animation/Walk.Walk"));
+}
 
-    if (WalkAnimation)
+void UmaterialAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+{
+    Super::NativeUpdateAnimation(DeltaSeconds);
+
+    if (!OwnerPawn) return;
+
+    Speed = OwnerPawn->GetVelocity().Size2D();
+
+    if (USkeletalMeshComponent* SkelMesh = GetSkelMeshComponent())
     {
-        if (USkeletalMeshComponent* SkelMesh = GetSkelMeshComponent())
+        if (Speed > 10.f && WalkAnimation)
         {
-            SkelMesh->PlayAnimation(WalkAnimation, true);
+            if (!SkelMesh->IsPlaying())
+            {
+                SkelMesh->PlayAnimation(WalkAnimation, true);
+            }
+        }
+        else
+        {
+            if (SkelMesh->IsPlaying())
+            {
+                SkelMesh->Stop();
+            }
         }
     }
 }

@@ -1,4 +1,3 @@
-// materialAnimInstance.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -14,8 +13,15 @@ public:
     UmaterialAnimInstance();
 
     virtual void NativeInitializeAnimation() override;
+    virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
     UPROPERTY(EditAnywhere, Category = "Animation")
-    UAnimSequence* WalkAnimation;
+    UAnimSequence* WalkAnimation = nullptr;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Animation")
+    float Speed = 0.f;
+
+    UPROPERTY()
+    APawn* OwnerPawn = nullptr;
 };
