@@ -69,20 +69,33 @@ void ATransformation_actor::OnConstruction(const FTransform& Transform)
 void ATransformation_actor::SetPowered(bool bNewPowered)
 {
     if (CurrentForm != EBlockForm::Metal) return;
+    
+    // 상태가 같으면 무시
+    if (bElectrified == bNewPowered) return;
 
     SetElectrified(bNewPowered);
-    if (bNewPowered)
-    {
-        EnergizeWiresIfElectrified();
-    }
+    
+    // 전기화될 때만 Wire에 전기 전달 (다음 RefreshConnectedWires에서 처리)
 }
 
 void ATransformation_actor::RefreshConnectedWires()
 {
     if (CurrentForm != EBlockForm::Metal || !MeshComp)
     {
+        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
+        {
+            if (AWire* W = It->Get())
+            {
+                W->SetPoweredByMetal(false);
+            }
+        }
+        WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
-        SetElectrified(false);
+        
+        if (bElectrified)
+        {
+            SetElectrified(false);
+        }
         return;
     }
 
@@ -98,7 +111,6 @@ void ATransformation_actor::RefreshConnectedWires()
     const float Radius = FMath::Max(MeshComp->Bounds.SphereRadius + WireSenseExtraRadius, 5.f);
 
     FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
-
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MetalWireSense), false);
     Q.AddIgnoredActor(this);
 
@@ -111,7 +123,7 @@ void ATransformation_actor::RefreshConnectedWires()
     }
 
     ConnectedWires.Empty();
-    bool bAnyPowered = false;
+    bool bAnySourcePowered = false;
 
     for (const FOverlapResult& H : Hits)
     {
@@ -123,14 +135,20 @@ void ATransformation_actor::RefreshConnectedWires()
 
         ConnectedWires.AddUnique(Wire);
         
-        // IsPowered()는 bPoweredFinal을 반환 (Source든 Metal이든 전기 있으면 true)
-        if (Wire->IsPowered()) 
+        // 핵심: Source에서 직접 전기가 오는 Wire만 체크
+        if (Wire->IsSourcePowered()) 
         {
-            bAnyPowered = true;
+            bAnySourcePowered = true;
         }
     }
 
-    SetElectrified(bAnyPowered);
+    // 상태 변경 체크 - 같으면 아무것도 안함
+    if (bElectrified == bAnySourcePowered)
+    {
+        return;
+    }
+
+    SetElectrified(bAnySourcePowered);
 
     if (bElectrified)
     {
@@ -148,6 +166,7 @@ void ATransformation_actor::RefreshConnectedWires()
         WiresEnergizedByMetal.Empty();
     }
 }
+
 
 void ATransformation_actor::SetElectrified(bool bNewElectrified)
 {
@@ -173,30 +192,18 @@ void ATransformation_actor::SetElectrified(bool bNewElectrified)
 
 void ATransformation_actor::EnergizeWiresIfElectrified()
 {
-    TSet<TWeakObjectPtr<AWire>> Current;
+    if (!bElectrified) return;
 
     for (AWire* Wire : ConnectedWires)
     {
-        if (!Wire) continue;
-
-        Wire->SetPoweredByMetal(true);
-        Current.Add(Wire);
-    }
-
-    for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-    {
-        if (!Current.Contains(*It))
+        if (Wire)
         {
-            if (AWire* W = It->Get())
-            {
-                W->SetPoweredByMetal(false);
-            }
+            // 전선에게 전기를 주고, 전선이 즉시 자기 상태를 업데이트하게 만듭니다.
+            Wire->SetPoweredByMetal(true);
+            Wire->RefreshConnectedActors(); // 즉시 갱신 강제 호출
         }
     }
-
-    WiresEnergizedByMetal = MoveTemp(Current);
 }
-
 void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);

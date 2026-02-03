@@ -65,7 +65,7 @@ public:
     ATransformation_actor();
 
     void SetPowered(bool bNewPowered);
-
+    bool IsElectrified() const { return bElectrified; } 
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
