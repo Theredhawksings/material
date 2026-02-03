@@ -1,3 +1,4 @@
+// Wire.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,6 +10,8 @@ class USplineComponent;
 class USplineMeshComponent;
 class UMaterialInterface;
 class USphereComponent;
+class UStaticMesh;
+class ATransformation_actor;
 
 UCLASS()
 class MATERIAL_API AWire : public AActor
@@ -18,19 +21,14 @@ class MATERIAL_API AWire : public AActor
 public:
     AWire();
 
-    UFUNCTION(BlueprintCallable, Category="Wire|Power")
     void SetPowered(bool bNewPowered);
+    void SetPoweredByMetal(bool bNewPoweredByMetal);
 
-    UFUNCTION(BlueprintPure, Category="Wire|Power")
-    bool IsPowered() const { return bPowered; }
+    bool IsPowered() const { return bPoweredFinal; }
+    bool IsSourcePowered() const { return bPoweredBySource; }
 
-    UFUNCTION(BlueprintCallable, Category="Wire|Connection")
     void RefreshConnectedActors();
-
-    UFUNCTION(BlueprintCallable, Category="Wire|Visual")
     void ApplyPower();
-
-    UFUNCTION(BlueprintCallable, Category="Wire|Build")
     void RebuildSplineMeshes();
 
 protected:
@@ -61,29 +59,37 @@ protected:
     TObjectPtr<UMaterialInterface> OnMaterial;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Power")
-    bool bPowered = false;
+    bool bPoweredFinal = false;
 
     UPROPERTY(EditAnywhere, Category="Wire|Connection")
     float OverlapRadius = 30.f;
 
     UPROPERTY(EditAnywhere, Category="Wire|Connection")
-    TSubclassOf<AActor> ConnectableClass;
+    float RefreshInterval = 0.10f;
 
-    UPROPERTY(EditAnywhere, Category="Wire|Connection")
-    float RefreshInterval = 0.05f;
+    UPROPERTY(EditAnywhere, Category="Wire|Debug")
+    bool bDebugWire = true;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Wire|Connection")
-    TArray<TObjectPtr<AActor>> ConnectedActors;
-    
+    UPROPERTY(EditAnywhere, Category="Wire|Debug")
+    bool bDebugOnScreen = true;
+
 private:
     void ClearGeneratedMeshes();
-    void GatherOverlapsAt(const FVector& WorldPos, TArray<AActor*>& OutActors) const;
-    void PropagatePowerToConnected();
     void UpdateConnectionPoint();
+    void UpdateFinalPower();
+    void PropagatePowerToConnected();
 
 private:
     UPROPERTY()
     TArray<TObjectPtr<USplineMeshComponent>> SegmentMeshes;
 
+    UPROPERTY()
+    TArray<TObjectPtr<AActor>> ConnectedActors;
+
     FTimerHandle RefreshTimerHandle;
+
+    bool bPoweredBySource = false;
+    bool bPoweredByMetal = false;
+
+    float LastDebugTime = -1000.f;
 };
