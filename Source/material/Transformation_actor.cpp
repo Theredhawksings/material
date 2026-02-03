@@ -70,12 +70,14 @@ void ATransformation_actor::SetPowered(bool bNewPowered)
 {
     if (CurrentForm != EBlockForm::Metal) return;
     
-    // 상태가 같으면 무시
+    // 1. 이미 그 상태라면 절대 아무것도 하지 마세요. (루프 방지 핵심)
     if (bElectrified == bNewPowered) return;
 
+    // 2. 상태 변경
     SetElectrified(bNewPowered);
     
-    // 전기화될 때만 Wire에 전기 전달 (다음 RefreshConnectedWires에서 처리)
+    // 3. 상태가 바뀌었을 때만 주변 전선에 전파
+    EnergizeWiresIfElectrified();
 }
 
 void ATransformation_actor::RefreshConnectedWires()
@@ -123,47 +125,36 @@ void ATransformation_actor::RefreshConnectedWires()
     }
 
     ConnectedWires.Empty();
-    bool bAnySourcePowered = false;
+   bool bAnyPowerFound = false; // 이름도 명확하게 변경
 
     for (const FOverlapResult& H : Hits)
     {
-        AActor* A = H.GetActor();
-        if (!A || A == this) continue;
-
-        AWire* Wire = Cast<AWire>(A);
+        AWire* Wire = Cast<AWire>(H.GetActor());
         if (!Wire) continue;
 
         ConnectedWires.AddUnique(Wire);
         
-        // 핵심: Source에서 직접 전기가 오는 Wire만 체크
-        if (Wire->IsSourcePowered()) 
+        // [수정] 발전기 전선뿐만 아니라, 이미 켜져 있는 모든 전선에서 전기를 받음!
+        if (Wire->IsPowered()) 
         {
-            bAnySourcePowered = true;
+            bAnyPowerFound = true;
         }
     }
 
-    // 상태 변경 체크 - 같으면 아무것도 안함
-    if (bElectrified == bAnySourcePowered)
+    // [핵심] 상태가 정말로 바뀔 때만 SetElectrified를 부름 (그래야 진동이 멈춤)
+    if (bElectrified != bAnyPowerFound)
     {
-        return;
-    }
+        SetElectrified(bAnyPowerFound);
 
-    SetElectrified(bAnySourcePowered);
-
-    if (bElectrified)
-    {
-        EnergizeWiresIfElectrified();
-    }
-    else
-    {
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-        {
-            if (AWire* W = It->Get())
-            {
-                W->SetPoweredByMetal(false);
+        if (bElectrified) {
+            EnergizeWiresIfElectrified();
+        } else {
+            // 전기가 끊겼을 때만 주변 전선을 끄라고 명령
+            for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It) {
+                if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
             }
+            WiresEnergizedByMetal.Empty();
         }
-        WiresEnergizedByMetal.Empty();
     }
 }
 
@@ -192,17 +183,31 @@ void ATransformation_actor::SetElectrified(bool bNewElectrified)
 
 void ATransformation_actor::EnergizeWiresIfElectrified()
 {
-    if (!bElectrified) return;
+    // 철 블록이 전기 상태가 아니면 주변 전선들도 전기를 끊음
+    if (!bElectrified)
+    {
+        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
+        {
+            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
+        }
+        WiresEnergizedByMetal.Empty();
+        return;
+    }
 
+    TSet<TWeakObjectPtr<AWire>> Current;
     for (AWire* Wire : ConnectedWires)
     {
-        if (Wire)
-        {
-            // 전선에게 전기를 주고, 전선이 즉시 자기 상태를 업데이트하게 만듭니다.
-            Wire->SetPoweredByMetal(true);
-            Wire->RefreshConnectedActors(); // 즉시 갱신 강제 호출
-        }
+        if (!Wire) continue;
+        if (Wire->IsSourcePowered()) continue;
+
+        // 1. 전선에게 전기가 들어왔음을 직접 알림
+        Wire->SetPoweredByMetal(true);
+        // 2. [핵심] 전선이 스스로 주변을 다시 검사하도록 강제 호출
+        Wire->RefreshConnectedActors(); 
+        
+        Current.Add(Wire);
     }
+    WiresEnergizedByMetal = MoveTemp(Current);
 }
 void ATransformation_actor::Tick(float DeltaTime)
 {

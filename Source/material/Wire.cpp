@@ -136,12 +136,12 @@ void AWire::RebuildSplineMeshes()
     ApplyPower();
 }
 
+// 링커 에러를 잡기 위해 구현부가 정확히 있어야 하는 함수
 void AWire::RefreshConnectedActors()
 {
     ConnectedActors.Empty();
-    bool bFoundPowerFromMetal = false;
+    bool bFoundPower = false;
 
-    // 1. 모든 세그먼트(SplineMesh)에서 주변 철 블록 감지
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
         if (!Segment) continue;
@@ -154,36 +154,22 @@ void AWire::RefreshConnectedActors()
 
             if (A->ActorHasTag(FName("Metal")))
             {
-                ConnectedActors.AddUnique(A);
                 if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
                 {
-                    // 주변 철이 켜져있으면 나(전선)도 켜짐
-                    if (Metal->IsElectrified()) bFoundPowerFromMetal = true;
+                    ConnectedActors.AddUnique(Metal); // 나중에 전기를 줄 명단
+                    // 주변 철이 이미 전기화 되어있다면 나도 전기를 받음
+                    if (Metal->IsElectrified()) bFoundPower = true;
                 }
             }
         }
     }
 
-    // 2. [추가] 전선의 시작점 구체(ConnectionSphere)에서도 한번 더 감지 (ㄱ자 꺾임 대비)
-    if (!bFoundPowerFromMetal && ConnectionSphere)
-    {
-        TArray<AActor*> SphereOverlaps;
-        ConnectionSphere->GetOverlappingActors(SphereOverlaps);
-        for (AActor* A : SphereOverlaps)
-        {
-            if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
-            {
-                if (Metal->IsElectrified()) 
-                {
-                    ConnectedActors.AddUnique(A);
-                    bFoundPowerFromMetal = true;
-                }
-            }
-        }
-    }
-
-    SetPoweredByMetal(bFoundPowerFromMetal);
-    PropagatePowerToConnected();
+    // 전선 자신의 상태 업데이트 (UpdateFinalPower가 내부에서 호출됨)
+    SetPoweredByMetal(bFoundPower);
+    
+    // [중요] 내 전기가 바뀌었을 때만 주변 철들에게 알림
+    // PropagatePowerToConnected()는 UpdateFinalPower() 내부에서만 
+    // 실제 값이 변했을 때 호출되도록 설계되어 있는지 확인하세요.
 }
 
 void AWire::PropagatePowerToConnected()
