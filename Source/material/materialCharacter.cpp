@@ -379,6 +379,14 @@ void AmaterialCharacter::OnPickupAnimFinished()
     if (PendingPickupActor)
     {
         PendingPickupActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, HoldSocketName);
+        
+        FVector Origin, BoxExtent;
+        PendingPickupActor->GetActorBounds(false, Origin, BoxExtent);
+        
+        float OffsetX = -BoxExtent.X * 0.005f;
+        float OffsetY = -BoxExtent.Y * 0.005f;
+        PendingPickupActor->SetActorRelativeLocation(FVector(OffsetX, OffsetY, 0.f));
+        
         HeldActor = PendingPickupActor;
         PendingPickupActor = nullptr;
     }
