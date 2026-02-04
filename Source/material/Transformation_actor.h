@@ -1,4 +1,3 @@
-// Transformation_actor.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -65,7 +64,8 @@ public:
     ATransformation_actor();
 
     void SetPowered(bool bNewPowered);
-    bool IsElectrified() const { return bElectrified; } 
+    bool IsElectrified() const { return bElectrified; }
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -96,17 +96,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="Ice|Heating")
     void StopHeating();
 
-    // Metal Electric
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
-    bool bDebugElectric = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
-    bool bDrawElectricDebug = true;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
     float WireSenseExtraRadius = 8.f;
 
-    // Ice Visual
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")
     UMaterialInterface* IceMeltMaterial = nullptr;
 
@@ -128,10 +120,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
     float SimTimeScale = 3600.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Debug")
-    bool bDebugMelt = true;
-
-    // Tags
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     bool bAutoUpdateTags = true;
 
@@ -185,7 +173,6 @@ private:
     float TotalMeltEnergyJ = 1.0f;
 
     FVector BaseScaleBeforeMelt = FVector(1.0f);
-    float DebugAcc = 0.0f;
 
     FTimerHandle RefreshTimerHandle;
 };

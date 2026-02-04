@@ -1,4 +1,3 @@
-// Transformation_actor.cpp
 #include "Transformation_actor.h"
 
 #include "Components/StaticMeshComponent.h"
@@ -9,7 +8,6 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
-#include "DrawDebugHelpers.h"
 
 #include "Temperature.h"
 #include "Wire.h"
@@ -69,14 +67,9 @@ void ATransformation_actor::OnConstruction(const FTransform& Transform)
 void ATransformation_actor::SetPowered(bool bNewPowered)
 {
     if (CurrentForm != EBlockForm::Metal) return;
-    
-    // 1. 이미 그 상태라면 절대 아무것도 하지 마세요. (루프 방지 핵심)
     if (bElectrified == bNewPowered) return;
 
-    // 2. 상태 변경
     SetElectrified(bNewPowered);
-    
-    // 3. 상태가 바뀌었을 때만 주변 전선에 전파
     EnergizeWiresIfElectrified();
 }
 
@@ -119,13 +112,8 @@ void ATransformation_actor::RefreshConnectedWires()
     TArray<FOverlapResult> Hits;
     World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj, FCollisionShape::MakeSphere(Radius), Q);
 
-    if (bDrawElectricDebug)
-    {
-        DrawDebugSphere(World, Center, Radius, 18, bElectrified ? FColor::Green : FColor::Yellow, false, 0.21f, 0, 2.0f);
-    }
-
     ConnectedWires.Empty();
-   bool bAnyPowerFound = false; // 이름도 명확하게 변경
+    bool bAnyPowerFound = false;
 
     for (const FOverlapResult& H : Hits)
     {
@@ -134,23 +122,24 @@ void ATransformation_actor::RefreshConnectedWires()
 
         ConnectedWires.AddUnique(Wire);
         
-        // [수정] 발전기 전선뿐만 아니라, 이미 켜져 있는 모든 전선에서 전기를 받음!
         if (Wire->IsPowered()) 
         {
             bAnyPowerFound = true;
         }
     }
 
-    // [핵심] 상태가 정말로 바뀔 때만 SetElectrified를 부름 (그래야 진동이 멈춤)
     if (bElectrified != bAnyPowerFound)
     {
         SetElectrified(bAnyPowerFound);
 
-        if (bElectrified) {
+        if (bElectrified)
+        {
             EnergizeWiresIfElectrified();
-        } else {
-            // 전기가 끊겼을 때만 주변 전선을 끄라고 명령
-            for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It) {
+        }
+        else
+        {
+            for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
+            {
                 if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
             }
             WiresEnergizedByMetal.Empty();
@@ -158,32 +147,14 @@ void ATransformation_actor::RefreshConnectedWires()
     }
 }
 
-
 void ATransformation_actor::SetElectrified(bool bNewElectrified)
 {
     if (bElectrified == bNewElectrified) return;
-
     bElectrified = bNewElectrified;
-
-    if (bDebugElectric)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[Metal] %s Electrified=%s"), *GetName(), bElectrified ? TEXT("ON") : TEXT("OFF"));
-
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(
-                (uint64)GetUniqueID(),
-                1.2f,
-                bElectrified ? FColor::Cyan : FColor::Red,
-                FString::Printf(TEXT("IRON [%s] ELECTRIFIED: %s"), *GetName(), bElectrified ? TEXT("ON") : TEXT("OFF"))
-            );
-        }
-    }
 }
 
 void ATransformation_actor::EnergizeWiresIfElectrified()
 {
-    // 철 블록이 전기 상태가 아니면 주변 전선들도 전기를 끊음
     if (!bElectrified)
     {
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
@@ -200,15 +171,14 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
         if (!Wire) continue;
         if (Wire->IsSourcePowered()) continue;
 
-        // 1. 전선에게 전기가 들어왔음을 직접 알림
         Wire->SetPoweredByMetal(true);
-        // 2. [핵심] 전선이 스스로 주변을 다시 검사하도록 강제 호출
         Wire->RefreshConnectedActors(); 
         
         Current.Add(Wire);
     }
     WiresEnergizedByMetal = MoveTemp(Current);
 }
+
 void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
@@ -236,21 +206,6 @@ void ATransformation_actor::Tick(float DeltaTime)
     EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
     ApplyIceMeltVisual(MeltAlpha);
-
-    if (bDebugMelt && GEngine)
-    {
-        DebugAcc += DeltaTime;
-        if (DebugAcc >= 0.25f)
-        {
-            DebugAcc = 0.0f;
-            const FVector S = MeshComp->GetComponentScale();
-            const FString Msg = FString::Printf(
-                TEXT("ICE MELT | d=%.0fcm | W=%.1f | J=%.0f | A=%.3f | S=(%.2f,%.2f,%.2f)"),
-                DistCm, ReceivedPowerW, EnergyAccumJ, MeltAlpha, S.X, S.Y, S.Z
-            );
-            GEngine->AddOnScreenDebugMessage((uint64)GetUniqueID(), 0.3f, FColor::Cyan, Msg);
-        }
-    }
 
     if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
     {
@@ -399,7 +354,6 @@ void ATransformation_actor::EnterIceMode()
 {
     if (!MeshComp) return;
     if (MeltAlpha == 0.0f) EnergyAccumJ = 0.0f;
-    DebugAcc = 0.0f;
     RecalcIceMassAndEnergy();
     IceMID = nullptr;
 

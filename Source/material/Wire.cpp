@@ -18,7 +18,7 @@ AWire::AWire()
     Spline->SetupAttachment(Root);
     ConnectionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("ConnectionSphere"));
     ConnectionSphere->SetupAttachment(Root);
-    ConnectionSphere->SetSphereRadius(30.f);
+    ConnectionSphere->SetSphereRadius(OverlapRadius);
     ConnectionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
@@ -61,31 +61,19 @@ void AWire::UpdateFinalPower()
 {
     const bool bNewFinal = (bPoweredBySource || bPoweredByMetal);
     if (bPoweredFinal == bNewFinal) return;
-
     bPoweredFinal = bNewFinal;
     ApplyPower();
-
     PropagatePowerToConnected(); 
-    
-    if (!bPoweredFinal)
-    {
-        RefreshConnectedActors();
-    }
+    if (!bPoweredFinal) RefreshConnectedActors();
 }
 
 void AWire::SetPowered(bool bNewPowered)
 {
     if (bPoweredBySource == bNewPowered) return;
     bPoweredBySource = bNewPowered;
-
-    if (!bNewPowered)
-    {
-        bPoweredByMetal = false; 
-    }
-
+    if (!bNewPowered) bPoweredByMetal = false; 
     UpdateFinalPower();
 }
-
 
 void AWire::SetPoweredByMetal(bool bNewPoweredByMetal)
 {
@@ -104,7 +92,6 @@ void AWire::ApplyPower()
         {
             const int32 NumMaterials = Mesh->GetNumMaterials();
             for (int32 i = 0; i < NumMaterials; ++i) Mesh->SetMaterial(i, TargetMat);
-            Mesh->MarkRenderStateDirty();
         }
     }
 }
@@ -133,10 +120,13 @@ void AWire::RebuildSplineMeshes()
         SplineMesh->SetupAttachment(Spline);
         SplineMesh->SetStaticMesh(SegmentMesh);
         SplineMesh->SetForwardAxis(ESplineMeshAxis::Z, false);
-        SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        SplineMesh->SetCollisionObjectType(ECC_WorldDynamic);
-        SplineMesh->SetGenerateOverlapEvents(true);
-        SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
+        
+        SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);          // 겹침/차단만(물리 밀침 X)
+        SplineMesh->SetGenerateOverlapEvents(true);                             // Overlap 감지 필수
+        SplineMesh->SetCollisionObjectType(ECC_WorldDynamic);                   // 보통 와이어는 WorldDynamic로
+
+        SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);             // 기본: 전부 Overlap
+        SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);  
         SplineMesh->RegisterComponent();
         SegmentMeshes.Add(SplineMesh);
         const FVector StartPos = Spline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
@@ -150,40 +140,29 @@ void AWire::RebuildSplineMeshes()
     ApplyPower();
 }
 
-// 링커 에러를 잡기 위해 구현부가 정확히 있어야 하는 함수
 void AWire::RefreshConnectedActors()
 {
     ConnectedActors.Empty();
     bool bFoundPower = false;
-
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
         if (!Segment) continue;
         TArray<AActor*> OverlappingActors;
         Segment->GetOverlappingActors(OverlappingActors);
-
         for (AActor* A : OverlappingActors)
         {
             if (!A || A == this) continue;
-
             if (A->ActorHasTag(FName("Metal")))
             {
                 if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
                 {
-                    ConnectedActors.AddUnique(Metal); // 나중에 전기를 줄 명단
-                    // 주변 철이 이미 전기화 되어있다면 나도 전기를 받음
+                    ConnectedActors.AddUnique(Metal);
                     if (Metal->IsElectrified()) bFoundPower = true;
                 }
             }
         }
     }
-
-    // 전선 자신의 상태 업데이트 (UpdateFinalPower가 내부에서 호출됨)
     SetPoweredByMetal(bFoundPower);
-    
-    // [중요] 내 전기가 바뀌었을 때만 주변 철들에게 알림
-    // PropagatePowerToConnected()는 UpdateFinalPower() 내부에서만 
-    // 실제 값이 변했을 때 호출되도록 설계되어 있는지 확인하세요.
 }
 
 void AWire::PropagatePowerToConnected()

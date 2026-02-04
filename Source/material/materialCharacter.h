@@ -1,4 +1,3 @@
-// materialCharacter.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -74,11 +73,11 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
     UPROPERTY(EditAnywhere, Category="Equipment")
     FVector BackpackRelativeScale = FVector(0.55f, 0.55f, 0.55f);
 
-    UPROPERTY(EditAnywhere, Category="Animation")
+    UPROPERTY()
     UAnimSequence* WalkAnim = nullptr;
 
-    UPROPERTY(EditAnywhere, Category="Animation")
-    float WalkPlayRate = 1.0f;
+    UPROPERTY()
+    UAnimSequence* IdleAnim = nullptr;
 
     bool bIsPlayingWalk = false;
 
