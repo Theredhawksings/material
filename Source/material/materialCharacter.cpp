@@ -50,7 +50,6 @@ AmaterialCharacter::AmaterialCharacter()
         GetMesh()->SetRelativeRotation(FRotator(0.f, 90.f, 0.f));
     }
 
-    // AnimBlueprint 설정 (T포즈 방지)
     static ConstructorHelpers::FClassFinder<UAnimInstance> AnimBP(TEXT("/Game/modeling/Character/Astronier_Skeleton_AnimBlueprint"));
     if (AnimBP.Succeeded())
     {
@@ -67,6 +66,24 @@ AmaterialCharacter::AmaterialCharacter()
     if (IdleAsset.Succeeded())
     {
         IdleAnim = IdleAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> PickupAsset(TEXT("AnimSequence'/Game/modeling/Animation/bring1.bring1'"));
+    if (PickupAsset.Succeeded())
+    {
+        PickupAnim = PickupAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> IdleBringAsset(TEXT("AnimSequence'/Game/modeling/Animation/idle_bring.idle_bring'"));
+    if (IdleBringAsset.Succeeded())
+    {
+        IdleBringAnim = IdleBringAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> WalkBringAsset(TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring.Walk_bring'"));
+    if (WalkBringAsset.Succeeded())
+    {
+        WalkBringAnim = WalkBringAsset.Object;
     }
 
     static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_DefaultAsset(TEXT("InputMappingContext'/Game/Input/IMC_Default.IMC_Default'"));
@@ -129,8 +146,6 @@ void AmaterialCharacter::BeginPlay()
     {
         GetMesh()->SetRenderCustomDepth(true);
         GetMesh()->SetCustomDepthStencilValue(CustomDepthStencilValue);
-        
-        // AnimBlueprint → SingleNode 모드로 전환
         GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
         if (IdleAnim)
         {
@@ -157,13 +172,52 @@ void AmaterialCharacter::UpdateAnimation()
 {
     if (!GetMesh()) return;
 
-    float Speed = GetVelocity().Size2D();
+    // 픽업 애니 재생 중이면 대기
+    if (bIsPickingUp)
+    {
+        if (!GetMesh()->IsPlaying())
+        {
+            bIsPickingUp = false;
+            if (IdleBringAnim)
+            {
+                GetMesh()->PlayAnimation(IdleBringAnim, true);
+            }
+        }
+        return;
+    }
 
-    if (Speed > 10.f && WalkAnim)
+    float Speed = GetVelocity().Size2D();
+    bool bHolding = (HeldActor != nullptr);
+
+    if (bWasHolding != bHolding)
+    {
+        if (Speed > 10.f)
+        {
+            if (bHolding && WalkBringAnim)
+                GetMesh()->PlayAnimation(WalkBringAnim, true);
+            else if (WalkAnim)
+                GetMesh()->PlayAnimation(WalkAnim, true);
+        }
+        else
+        {
+            if (bHolding && IdleBringAnim)
+                GetMesh()->PlayAnimation(IdleBringAnim, true);
+            else if (IdleAnim)
+                GetMesh()->PlayAnimation(IdleAnim, true);
+        }
+        bWasHolding = bHolding;
+        bIsPlayingWalk = (Speed > 10.f);
+        return;
+    }
+
+    if (Speed > 10.f)
     {
         if (!bIsPlayingWalk)
         {
-            GetMesh()->PlayAnimation(WalkAnim, true);
+            if (bHolding && WalkBringAnim)
+                GetMesh()->PlayAnimation(WalkBringAnim, true);
+            else if (WalkAnim)
+                GetMesh()->PlayAnimation(WalkAnim, true);
             bIsPlayingWalk = true;
         }
     }
@@ -171,10 +225,10 @@ void AmaterialCharacter::UpdateAnimation()
     {
         if (bIsPlayingWalk)
         {
-            if (IdleAnim)
-            {
+            if (bHolding && IdleBringAnim)
+                GetMesh()->PlayAnimation(IdleBringAnim, true);
+            else if (IdleAnim)
                 GetMesh()->PlayAnimation(IdleAnim, true);
-            }
             bIsPlayingWalk = false;
         }
     }
@@ -267,6 +321,7 @@ void AmaterialCharacter::HoldPressed()
 bool AmaterialCharacter::TryPickup()
 {
     if (!FollowCamera) return false;
+    if (bIsPickingUp) return false;
 
     const FVector Start = FollowCamera->GetComponentLocation();
     const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange;
@@ -303,9 +358,30 @@ bool AmaterialCharacter::TryPickup()
         PC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 
-    Target->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, HoldSocketName);
-    HeldActor = Target;
+    // 저장만 해두고
+    PendingPickupActor = Target;
+
+    // 픽업 애니 재생
+    if (PickupAnim)
+    {
+        GetMesh()->PlayAnimation(PickupAnim, false);
+        bIsPickingUp = true;
+        
+        // 27프레임 / 24fps = 1.125초 후에 붙이기
+        GetWorld()->GetTimerManager().SetTimer(PickupTimerHandle, this, &AmaterialCharacter::OnPickupAnimFinished, 1.125f, false);
+    }
+
     return true;
+}
+
+void AmaterialCharacter::OnPickupAnimFinished()
+{
+    if (PendingPickupActor)
+    {
+        PendingPickupActor->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, HoldSocketName);
+        HeldActor = PendingPickupActor;
+        PendingPickupActor = nullptr;
+    }
 }
 
 void AmaterialCharacter::DropHeld()
@@ -325,4 +401,11 @@ void AmaterialCharacter::DropHeld()
     }
 
     HeldActor = nullptr;
+    bWasHolding = false;  // 이거 추가
+
+    if (IdleAnim)
+    {
+        GetMesh()->PlayAnimation(IdleAnim, true);
+    }
+    bIsPlayingWalk = false;
 }

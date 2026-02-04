@@ -55,6 +55,9 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
     UPROPERTY()
     AActor* HeldActor = nullptr;
 
+    UPROPERTY()
+    AActor* PendingPickupActor = nullptr;
+
     UPROPERTY(EditAnywhere, Category="Rendering")
     int32 CustomDepthStencilValue = 125;    
 
@@ -79,7 +82,20 @@ class MATERIAL_API AmaterialCharacter : public ACharacter
     UPROPERTY()
     UAnimSequence* IdleAnim = nullptr;
 
+    UPROPERTY()
+    UAnimSequence* PickupAnim = nullptr;
+
+    UPROPERTY()
+    UAnimSequence* IdleBringAnim = nullptr;
+
+    UPROPERTY()
+    UAnimSequence* WalkBringAnim = nullptr;
+
     bool bIsPlayingWalk = false;
+    bool bWasHolding = false;
+    bool bIsPickingUp = false;
+
+    FTimerHandle PickupTimerHandle;
 
 public:
     AmaterialCharacter();
@@ -98,6 +114,7 @@ protected:
     void HoldPressed();
     bool TryPickup();
     void DropHeld();
+    void OnPickupAnimFinished();
 
     void UpdateAnimation();
 
