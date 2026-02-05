@@ -172,7 +172,6 @@ void AmaterialCharacter::UpdateAnimation()
 {
     if (!GetMesh()) return;
 
-    // 픽업 애니 재생 중이면 대기
     if (bIsPickingUp)
     {
         if (!GetMesh()->IsPlaying())
@@ -189,6 +188,29 @@ void AmaterialCharacter::UpdateAnimation()
     float Speed = GetVelocity().Size2D();
     bool bHolding = (HeldActor != nullptr);
 
+    /// 물건 들고 있을 때 걷기/서기 위치 조정
+if (bHolding && HeldActor && IsValid(HeldActor))
+{
+    FVector Origin, BoxExtent;
+    HeldActor->GetActorBounds(false, Origin, BoxExtent);
+    
+    if (Speed > 10.f)
+    {
+        // 걸을 때
+        float OffsetX = -BoxExtent.X * 0.005f;
+        HeldActor->SetActorRelativeLocation(FVector(OffsetX, 0.f, 0.f));
+        HeldActor->SetActorRelativeRotation(FRotator(0.f, 0.f, 0.f));
+    }
+    else
+    {
+        // 서있을 때
+        float OffsetX = -BoxExtent.X * 0.0085f;
+        float OffsetY = -BoxExtent.Y * 0.006f;
+        HeldActor->SetActorRelativeLocation(FVector(OffsetX, OffsetY, 0.f));
+        HeldActor->SetActorRelativeRotation(FRotator(-10.f, -20.f, -10.f));
+    }
+}
+    
     if (bWasHolding != bHolding)
     {
         if (Speed > 10.f)
@@ -383,10 +405,11 @@ void AmaterialCharacter::OnPickupAnimFinished()
         FVector Origin, BoxExtent;
         PendingPickupActor->GetActorBounds(false, Origin, BoxExtent);
         
-        float OffsetX = -BoxExtent.X * 0.005f;
-        float OffsetY = -BoxExtent.Y * 0.005f;
+        float OffsetX = -BoxExtent.X * 0.0085f;
+        float OffsetY = -BoxExtent.Y * 0.006f;
         PendingPickupActor->SetActorRelativeLocation(FVector(OffsetX, OffsetY, 0.f));
-        
+        PendingPickupActor->SetActorRelativeRotation(FRotator(-10.f, -20.f, -10.f));
+
         HeldActor = PendingPickupActor;
         PendingPickupActor = nullptr;
     }
