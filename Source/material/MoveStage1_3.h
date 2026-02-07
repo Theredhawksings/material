@@ -6,39 +6,43 @@
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "CheckPlatform1_2.generated.h"
+#include "MoveStage1_3.generated.h"
 
 UCLASS()
-class MATERIAL_API ACheckPlatform1_2 : public AActor
+class MATERIAL_API AMoveStage1_3 : public AActor
 {
 	GENERATED_BODY()
 	
 public:	
-	ACheckPlatform1_2();
+	AMoveStage1_3();
 
 protected:
 	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UBoxComponent* DetectionBox;
+	UBoxComponent* TriggerBox;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* MeshComponent;
 
 	UFUNCTION()
-	void OnObjectBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+	void OnCharacterOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, 
 		const FHitResult& SweepResult);
 
-	UFUNCTION()
-	void OnObjectEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
-		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+	void LoadNextLevel();
+
+	FTimerHandle LevelLoadTimerHandle;
 
 public:	
 	virtual void Tick(float DeltaTime) override;
 
-	bool HasTransformActor() const { return bHasTransformActor; }
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
+	FName LevelToLoad = FName("Stage1-3");
 
-private:
-	bool bHasTransformActor;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
+	float LoadDelay = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CheckPlatform")
+	class ACheckPlatform1_2* CheckPlatform;
 };

@@ -1,27 +1,51 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "CheckPlatform1_2.h"
+#include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Transformation_actor.h"
 
-// Sets default values
 ACheckPlatform1_2::ACheckPlatform1_2()
+	: bHasTransformActor(false)
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	DetectionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("DetectionBox"));
+	RootComponent = DetectionBox;
+	
+	DetectionBox->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
+	DetectionBox->SetCollisionProfileName(TEXT("Trigger"));
+	DetectionBox->OnComponentBeginOverlap.AddDynamic(this, &ACheckPlatform1_2::OnObjectBeginOverlap);
+	DetectionBox->OnComponentEndOverlap.AddDynamic(this, &ACheckPlatform1_2::OnObjectEndOverlap);
+
+	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
+	MeshComponent->SetupAttachment(RootComponent);
 }
 
-// Called when the game starts or when spawned
 void ACheckPlatform1_2::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
-// Called every frame
 void ACheckPlatform1_2::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
+void ACheckPlatform1_2::OnObjectBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (OtherActor && OtherActor->IsA(ATransformation_actor::StaticClass()))
+	{
+		bHasTransformActor = true;
+	}
+}
+
+void ACheckPlatform1_2::OnObjectEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (OtherActor && OtherActor->IsA(ATransformation_actor::StaticClass()))
+	{
+		bHasTransformActor = false;
+	}
+}
