@@ -98,11 +98,11 @@ AmaterialCharacter::AmaterialCharacter()
     };
 
     FAnimAssetLoader AnimAssets[] = {
-        { TEXT("AnimSequence'/Game/modeling/Animation/Walk.Walk'"), &WalkAnim },
+        { TEXT("AnimSequence'/Game/modeling/Animation/Walk1.Walk1'"), &WalkAnim },
         { TEXT("AnimSequence'/Game/modeling/Animation/Test.Test'"), &IdleAnim },
-        { TEXT("AnimSequence'/Game/modeling/Animation/bring1.bring1'"), &PickupAnim },
-        { TEXT("AnimSequence'/Game/modeling/Animation/idle_bring.idle_bring'"), &IdleBringAnim },
-        { TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring.Walk_bring'"), &WalkBringAnim }
+        { TEXT("AnimSequence'/Game/modeling/Animation/bring2.bring2'"), &PickupAnim },
+        { TEXT("AnimSequence'/Game/modeling/Animation/idle_bring1.idle_bring1'"), &IdleBringAnim },
+        { TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim }
     };
 
     for (const FAnimAssetLoader& Loader : AnimAssets)
