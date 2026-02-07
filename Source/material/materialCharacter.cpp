@@ -235,7 +235,7 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 {
     if (!HoldPivot) return;
 
-    constexpr float LeftShift = -0.25f;
+    constexpr float LeftShift = -0.35f;
     constexpr float ForwardShift = -0.4f;
     constexpr float UpShift = 0.1f;
 
@@ -475,7 +475,7 @@ void AmaterialCharacter::HandleActualAttachment()
 
     HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
-    HeldActor->SetActorRelativeRotation(FRotator(0.f, 23.f, 0.f));
+    HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
 
     UpdateHoldPivotTransform();
 }
@@ -483,10 +483,24 @@ void AmaterialCharacter::HandleActualAttachment()
 void AmaterialCharacter::OnPickupAnimFinished()
 {
     bIsPickingUp = false;
-    bWasHolding = false;
-    bIsPlayingWalk = false;
 
-    UpdateAnimation();
+    if (HeldActor)
+    {
+        //HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
+        //HeldActor->SetActorRelativeRotation(FRotator(0.f, 23.f, 0.f));
+    }
+
+    GetWorld()->GetTimerManager().SetTimer(
+        PickupEndTimerHandle,
+        [this]()
+        {
+            bWasHolding = false;
+            bIsPlayingWalk = false;
+            UpdateAnimation();
+        },
+        0.2f,
+        false
+    );
 }
 
 void AmaterialCharacter::DropHeld()
