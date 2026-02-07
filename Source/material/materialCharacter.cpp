@@ -235,7 +235,7 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 {
     if (!HoldPivot) return;
 
-    constexpr float LeftShift = -0.55f;
+    constexpr float LeftShift = -0.25f;
     constexpr float ForwardShift = -0.4f;
     constexpr float UpShift = 0.1f;
 
@@ -475,7 +475,7 @@ void AmaterialCharacter::HandleActualAttachment()
 
     HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
-    HeldActor->SetActorRelativeRotation(FRotator::ZeroRotator);
+    HeldActor->SetActorRelativeRotation(FRotator(0.f, 23.f, 0.f));
 
     UpdateHoldPivotTransform();
 }
