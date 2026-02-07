@@ -30,9 +30,16 @@ protected:
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, 
 		const FHitResult& SweepResult);
 
+	void LoadNextLevel();
+
+	FTimerHandle LevelLoadTimerHandle;
+
 public:	
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
 	FName LevelToLoad = FName("Stage1-2");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
+	float LoadDelay = 3.0f;
 };

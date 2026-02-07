@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 
 AMoveStage1_2::AMoveStage1_2()
 {
@@ -36,6 +37,17 @@ void AMoveStage1_2::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AAc
 {
 	if (OtherActor && OtherActor->IsA(ACharacter::StaticClass()))
 	{
-		UGameplayStatics::OpenLevel(this, LevelToLoad);
+		GetWorld()->GetTimerManager().SetTimer(
+			LevelLoadTimerHandle,
+			this,
+			&AMoveStage1_2::LoadNextLevel,
+			LoadDelay,
+			false
+		);
 	}
+}
+
+void AMoveStage1_2::LoadNextLevel()
+{
+	UGameplayStatics::OpenLevel(this, LevelToLoad);
 }
