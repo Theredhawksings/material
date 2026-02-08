@@ -150,6 +150,13 @@ AmaterialCharacter::AmaterialCharacter()
         PickupTags.Add(TEXT("Ice"));
         PickupTags.Add(TEXT("Wood"));
     }
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> PlayerMat(TEXT("/Script/Engine.Material'/Game/modeling/Character/M_Character.M_Character'"));
+    if (PlayerMat.Succeeded())
+    {
+    GetMesh()->SetMaterial(0, PlayerMat.Object);
+    }
+
 }
 
 void AmaterialCharacter::BeginPlay()
@@ -162,6 +169,15 @@ void AmaterialCharacter::BeginPlay()
         {
             if (IMC_Default) Subsystem->AddMappingContext(IMC_Default, 0);
             if (IMC_MouseLook) Subsystem->AddMappingContext(IMC_MouseLook, 1);
+        }
+    }
+    
+    if (GetMesh())
+    {
+        UMaterialInterface* Mat = Cast<UMaterialInterface>(StaticLoadObject(UMaterialInterface::StaticClass(), nullptr, TEXT("/Game/modeling/Character/M_Character.M_Character")));
+        if (Mat)
+        {
+            GetMesh()->SetMaterial(0, Mat);
         }
     }
 
