@@ -535,7 +535,7 @@ void AmaterialCharacter::DropHeld()
         bIsPickingUp = true;
 
         const float AnimDuration = PickupAnim->GetPlayLength();
-        const float DropTime = 0.865f; // 원하는 값으로 직접 설정 (초 단위)
+        const float DropTime = 0.83f; // 원하는 값으로 직접 설정 (초 단위)
 
         FTimerHandle DropTimerHandle;
         GetWorld()->GetTimerManager().SetTimer(
