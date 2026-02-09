@@ -523,33 +523,59 @@ void AmaterialCharacter::DropHeld()
 {
     if (!HeldActor) return;
 
-    HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-
-    TArray<UPrimitiveComponent*> PrimComps;
-    HeldActor->GetComponents<UPrimitiveComponent>(PrimComps);
-    for (UPrimitiveComponent* PC : PrimComps)
-    {
-        if (PC)
-        {
-            PC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-            PC->SetEnableGravity(true);
-            PC->SetSimulatePhysics(true);
-        }
-    }
-
-    HeldActor = nullptr;
-    bWasHolding = false;
-    bIsPlayingWalk = false;
-
     USkeletalMeshComponent* MeshComp = GetMesh();
-    if (IdleAnim && MeshComp)
+    if (PickupAnim && MeshComp)
     {
-        MeshComp->PlayAnimation(IdleAnim, true);
-    }
+        MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+        MeshComp->SetAnimation(PickupAnim);
+        MeshComp->SetPlayRate(-1.0f);
+        MeshComp->SetPosition(PickupAnim->GetPlayLength());
+        MeshComp->Play(false);
+        
+        bIsPickingUp = true;
 
-    if (HoldPivot)
-    {
-        HoldPivot->SetRelativeLocation(FVector::ZeroVector);
-        HoldPivot->SetRelativeRotation(FRotator::ZeroRotator);
+        const float AnimDuration = PickupAnim->GetPlayLength();
+        GetWorld()->GetTimerManager().SetTimer(
+            PickupEndTimerHandle,
+            [this]()
+            {
+                if (HeldActor)
+                {
+                    FVector ForwardOffset = GetActorForwardVector() * 2.0f;
+                    FVector DropLocation = HeldActor->GetActorLocation() + ForwardOffset;
+                    
+                    HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+                    HeldActor->SetActorLocation(DropLocation);
+
+                    TArray<UPrimitiveComponent*> PrimComps;
+                    HeldActor->GetComponents<UPrimitiveComponent>(PrimComps);
+                    for (UPrimitiveComponent* PC : PrimComps)
+                    {
+                        if (PC)
+                        {
+                            PC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                            PC->SetEnableGravity(true);
+                            PC->SetSimulatePhysics(true);
+                        }
+                    }
+
+                    HeldActor = nullptr;
+                }
+
+                bIsPickingUp = false;
+                bWasHolding = false;
+                bIsPlayingWalk = false;
+
+                if (HoldPivot)
+                {
+                    HoldPivot->SetRelativeLocation(FVector::ZeroVector);
+                    HoldPivot->SetRelativeRotation(FRotator::ZeroRotator);
+                }
+
+                UpdateAnimation();
+            },
+            AnimDuration,
+            false
+        );
     }
 }
