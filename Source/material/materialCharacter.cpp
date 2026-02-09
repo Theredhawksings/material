@@ -535,13 +535,16 @@ void AmaterialCharacter::DropHeld()
         bIsPickingUp = true;
 
         const float AnimDuration = PickupAnim->GetPlayLength();
+        const float DropTime = 0.865f; // 원하는 값으로 직접 설정 (초 단위)
+
+        FTimerHandle DropTimerHandle;
         GetWorld()->GetTimerManager().SetTimer(
-            PickupEndTimerHandle,
+            DropTimerHandle,
             [this]()
             {
                 if (HeldActor)
                 {
-                    FVector ForwardOffset = GetActorForwardVector() * 2.0f;
+                    FVector ForwardOffset = GetActorForwardVector() * 3.f;
                     FVector DropLocation = HeldActor->GetActorLocation() + ForwardOffset;
                     
                     HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
@@ -561,7 +564,15 @@ void AmaterialCharacter::DropHeld()
 
                     HeldActor = nullptr;
                 }
+            },
+            DropTime,
+            false
+        );
 
+        GetWorld()->GetTimerManager().SetTimer(
+            PickupEndTimerHandle,
+            [this]()
+            {
                 bIsPickingUp = false;
                 bWasHolding = false;
                 bIsPlayingWalk = false;
