@@ -101,7 +101,7 @@ AmaterialCharacter::AmaterialCharacter()
         { TEXT("AnimSequence'/Game/modeling/Animation/Walk1.Walk1'"), &WalkAnim },
         { TEXT("AnimSequence'/Game/modeling/Animation/Test.Test'"), &IdleAnim },
         { TEXT("AnimSequence'/Game/modeling/Animation/bring2.bring2'"), &PickupAnim },
-        { TEXT("AnimSequence'/Game/modeling/Animation/idle_bring1.idle_bring1'"), &IdleBringAnim },
+        { TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
         { TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim }
     };
 
