@@ -1,9 +1,12 @@
 #include "Transformation_actor.h"
 
 #include "Components/StaticMeshComponent.h"
+
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+
+#include "UObject/ConstructorHelpers.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -22,6 +25,12 @@ ATransformation_actor::ATransformation_actor()
     MeshComp->SetMobility(EComponentMobility::Movable);
     MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
     MeshComp->SetGenerateOverlapEvents(true);
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WoodMatFinder(TEXT("/Game/modeling/Texture/M_wood"));
+    if (WoodMatFinder.Succeeded())
+    {
+        BurnMaterial = WoodMatFinder.Object;
+    }
 }
 
 void ATransformation_actor::BeginPlay()
@@ -562,5 +571,5 @@ void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
     const FVector To = BaseScaleBeforeBurn * Ratio;
     const FVector NewScale = FMath::Lerp(From, To, A);
     MeshComp->SetWorldScale3D(NewScale);
-    
+
 }
