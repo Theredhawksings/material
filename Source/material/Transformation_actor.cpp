@@ -44,6 +44,12 @@ void ATransformation_actor::BeginPlay()
         EnterIceMode();
     }
 
+    if (CurrentForm == EBlockForm::Wood)
+    {
+        BaseScaleBeforeBurn = MeshComp->GetComponentScale();
+        EnterWoodMode();
+    }
+
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
 }
 
@@ -60,6 +66,10 @@ void ATransformation_actor::OnConstruction(const FTransform& Transform)
         if (CurrentForm == EBlockForm::Ice)
         {
             EnterIceMode();
+        }
+        if (CurrentForm == EBlockForm::Wood)
+        {
+            EnterWoodMode();
         }
     }
 }
@@ -183,33 +193,99 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (CurrentForm != EBlockForm::Ice) return;
-    if (!bHeating || !CurrentFire || !MeshComp) return;
-    if (MeltAlpha >= 1.0f) return;
-
-    const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-    if (CurrentFire->MaxHeatDistance > 0.0f && DistCm > CurrentFire->MaxHeatDistance) return;
-
-    const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
-    const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
-    float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
-    float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
-
-    if (CurrentFire->MaxHeatDistance > 0.0f)
+    // === ICE 녹는 로직 ===
+    if (CurrentForm == EBlockForm::Ice)
     {
-        const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
-        ReceivedPowerW *= Fade;
+        if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
+        {
+            const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+            if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
+            {
+                const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+                const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+                float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
+                float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
+
+                if (CurrentFire->MaxHeatDistance > 0.0f)
+                {
+                    const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+                    ReceivedPowerW *= Fade;
+                }
+
+                if (ReceivedPowerW > 0.0f)
+                {
+                    EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
+                    MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+                    ApplyIceMeltVisual(MeltAlpha);
+
+                    if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
+                    {
+                        Destroy();
+                    }
+                }
+            }
+        }
     }
 
-    if (ReceivedPowerW <= 0.0f) return;
-
-    EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
-    MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
-    ApplyIceMeltVisual(MeltAlpha);
-
-    if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
+    // === WOOD 연소 로직 ===
+    if (CurrentForm == EBlockForm::Wood)
     {
-        Destroy();
+        if (bHeating && CurrentFire && MeshComp)
+        {
+            const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+            if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
+            {
+                if (!bIsBurning)
+                {
+                    // 발화 전: 에너지 축적
+                    const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+                    const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+                    float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
+                    float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
+
+                    if (CurrentFire->MaxHeatDistance > 0.0f)
+                    {
+                        const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+                        ReceivedPowerW *= Fade;
+                    }
+
+                    WoodHeatAccumJ += ReceivedPowerW * DeltaTime;
+
+                    // 발화!
+                    if (WoodHeatAccumJ >= WoodIgnitionEnergyJ)
+                    {
+                        bIsBurning = true;
+                        BurnTime = 0.0f;
+
+                        if (GEngine)
+                        {
+                            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, 
+                                TEXT("🔥 Wood IGNITED!"));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 타는 중
+        if (bIsBurning)
+        {
+            BurnTime += DeltaTime;
+            BurnAlpha = FMath::Clamp(BurnTime / FMath::Max(WoodBurnDuration, 0.1f), 0.0f, 1.0f);
+            
+            ApplyWoodBurnVisual(BurnAlpha);
+
+            // 다 탐
+            if (BurnAlpha >= 1.0f && bDestroyWhenBurned)
+            {
+                if (GEngine)
+                {
+                    GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, 
+                        TEXT("💀 Wood Burned Out!"));
+                }
+                Destroy();
+            }
+        }
     }
 }
 
@@ -234,6 +310,11 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     if (CurrentForm == EBlockForm::Ice)
     {
         ExitIceMode();
+    }
+
+    if (CurrentForm == EBlockForm::Wood)
+    {
+        ExitWoodMode();
     }
 
     if (CurrentForm == EBlockForm::Metal)
@@ -274,6 +355,14 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         bHeating = bWasHeating && (CurrentFire != nullptr);
         ApplyIceMeltVisual(MeltAlpha);
     }
+
+    if (CurrentForm == EBlockForm::Wood)
+    {
+        BaseScaleBeforeBurn = SavedCurrentScale;
+        EnterWoodMode();
+        CurrentFire = SavedFire;
+        bHeating = bWasHeating && (CurrentFire != nullptr);
+    }
 }
 
 void ATransformation_actor::NextForm()
@@ -312,9 +401,14 @@ void ATransformation_actor::ClearAllFormTags()
 
 void ATransformation_actor::StartHeating(ATemperature* FireRef)
 {
-    if (CurrentForm != EBlockForm::Ice) return;
     CurrentFire = FireRef;
     bHeating = (CurrentFire != nullptr);
+    
+    // Ice와 Wood만 가열 가능
+    if (CurrentForm != EBlockForm::Ice && CurrentForm != EBlockForm::Wood)
+    {
+        bHeating = false;
+    }
 }
 
 void ATransformation_actor::StopHeating()
@@ -349,6 +443,8 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
     if (Spec.PhysMat) MeshComp->SetPhysMaterialOverride(Spec.PhysMat);
     if (Spec.bOverrideMass) MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
 }
+
+// ==================== ICE ====================
 
 void ATransformation_actor::EnterIceMode()
 {
@@ -415,4 +511,56 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
     const FVector NewScale = FMath::Lerp(From, To, A);
     MeshComp->SetWorldScale3D(NewScale);
     if (IceMID) IceMID->SetScalarParameterValue(MeltParamName, A);
+}
+
+// ==================== WOOD ====================
+
+void ATransformation_actor::EnterWoodMode()
+{
+    if (!MeshComp) return;
+
+    WoodHeatAccumJ = 0.0f;
+    BurnAlpha = 0.0f;
+    bIsBurning = false;
+    BurnTime = 0.0f;
+
+    BurnMID = nullptr;
+
+    if (BurnMaterial)
+    {
+        BurnMID = UMaterialInstanceDynamic::Create(BurnMaterial, this);
+        if (BurnMID)
+        {
+            MeshComp->SetMaterial(0, BurnMID);
+        }
+    }
+
+    ApplyWoodBurnVisual(0.0f);
+}
+
+void ATransformation_actor::ExitWoodMode()
+{
+    bIsBurning = false;
+    WoodHeatAccumJ = 0.0f;
+    BurnAlpha = 0.0f;
+    BurnMID = nullptr;
+}
+
+void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
+{
+    if (!MeshComp) return;
+
+    const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
+
+   if (BurnMID)
+    {
+    BurnMID->SetScalarParameterValue(BurnParamName, A);
+    }
+    // 크기 줄어듦
+    const float Ratio = FMath::Clamp(MinBurnScaleRatio, 0.0f, 1.0f);
+    const FVector From = BaseScaleBeforeBurn;
+    const FVector To = BaseScaleBeforeBurn * Ratio;
+    const FVector NewScale = FMath::Lerp(From, To, A);
+    MeshComp->SetWorldScale3D(NewScale);
+    
 }

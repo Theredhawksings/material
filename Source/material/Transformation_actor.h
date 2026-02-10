@@ -96,9 +96,14 @@ public:
     UFUNCTION(BlueprintCallable, Category="Ice|Heating")
     void StopHeating();
 
+    UFUNCTION(BlueprintCallable, Category="Heating")
+    bool IsHeating() const { return bHeating; }
+
+    // === Metal ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
     float WireSenseExtraRadius = 8.f;
 
+    // === Ice ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")
     UMaterialInterface* IceMeltMaterial = nullptr;
 
@@ -120,6 +125,26 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
     float SimTimeScale = 3600.0f;
 
+    // === Wood ===
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    float WoodIgnitionEnergyJ = 50000.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    float WoodBurnDuration = 5.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    bool bDestroyWhenBurned = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    UMaterialInterface* BurnMaterial = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    FName BurnParamName = TEXT("BurnAlpha");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    float MinBurnScaleRatio = 0.2f;
+
+    // === Tags ===
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     bool bAutoUpdateTags = true;
 
@@ -147,32 +172,45 @@ private:
 
     void EnterIceMode();
     void ExitIceMode();
-
     void RecalcIceMassAndEnergy();
     void ApplyIceMeltVisual(float Alpha01);
 
+    void EnterWoodMode();
+    void ExitWoodMode();
+    void ApplyWoodBurnVisual(float Alpha01);
+
 private:
+    // Ice
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* IceMID = nullptr;
 
     UPROPERTY(Transient)
     ATemperature* CurrentFire = nullptr;
 
+    bool bHeating = false;
+    float MeltAlpha = 0.0f;
+    float EnergyAccumJ = 0.0f;
+    float VolumeM3 = 1.0f;
+    float EffectiveAreaM2 = 1.0f;
+    float TotalMeltEnergyJ = 1.0f;
+    FVector BaseScaleBeforeMelt = FVector(1.0f);
+
+    // Wood
+    UPROPERTY(Transient)
+    UMaterialInstanceDynamic* BurnMID = nullptr;
+
+    float WoodHeatAccumJ = 0.0f;
+    float BurnAlpha = 0.0f;
+    bool bIsBurning = false;
+    float BurnTime = 0.0f;
+    FVector BaseScaleBeforeBurn = FVector(1.0f);
+
+    // Metal
     UPROPERTY(Transient)
     TArray<TObjectPtr<AWire>> ConnectedWires;
 
     bool bElectrified = false;
     TSet<TWeakObjectPtr<AWire>> WiresEnergizedByMetal;
-
-    bool bHeating = false;
-    float MeltAlpha = 0.0f;
-    float EnergyAccumJ = 0.0f;
-
-    float VolumeM3 = 1.0f;
-    float EffectiveAreaM2 = 1.0f;
-    float TotalMeltEnergyJ = 1.0f;
-
-    FVector BaseScaleBeforeMelt = FVector(1.0f);
 
     FTimerHandle RefreshTimerHandle;
 };
