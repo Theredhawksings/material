@@ -4,6 +4,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "DrawDebugHelpers.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -388,15 +389,37 @@ void AmaterialCharacter::ChangeForm()
     FHitResult Hit;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
 
-    if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+    const float SphereRadius = 50.0f;
+    
+    // 디버그 라인 그리기
+    DrawDebugLine(GetWorld(), Start, End, FColor::Green, false, 2.0f, 0, 2.0f);
+    DrawDebugSphere(GetWorld(), End, SphereRadius, 12, FColor::Yellow, false, 2.0f);
+    
+    if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, 
+        ECC_Visibility, FCollisionShape::MakeSphere(SphereRadius), Params))
     {
+        // 히트 지점 표시
+        DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 20.0f, 12, FColor::Red, false, 2.0f);
+        
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, 
+                FString::Printf(TEXT("✅ Hit: %s"), *Hit.GetActor()->GetName()));
+        }
+        
         if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
         {
             TransformActor->NextForm();
         }
     }
+    else
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("❌ No Hit"));
+        }
+    }
 }
-
 void AmaterialCharacter::HoldPressed()
 {
     if (HeldActor)
@@ -419,13 +442,34 @@ bool AmaterialCharacter::TryPickup()
     FHitResult Hit;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(TryPickup), false, this);
 
-    if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Camera, Params))
+    const float SphereRadius = 75.0f;
+    
+    // 디버그 라인 그리기
+    DrawDebugLine(GetWorld(), Start, End, FColor::Cyan, false, 2.0f, 0, 2.0f);
+    DrawDebugSphere(GetWorld(), End, SphereRadius, 12, FColor::Blue, false, 2.0f);
+    
+    if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, 
+        ECC_Camera, FCollisionShape::MakeSphere(SphereRadius), Params))
     {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("❌ Pickup: No Hit"));
+        }
         return false;
     }
 
+    // 히트 지점 표시
+    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 25.0f, 12, FColor::Orange, false, 2.0f);
+
     AActor* Target = Hit.GetActor();
-    if (!Target) return false;
+    if (!Target)
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("❌ Pickup: No Actor"));
+        }
+        return false;
+    }
 
     bool bHasValidTag = false;
     for (const FName& Tag : PickupTags)
@@ -437,7 +481,21 @@ bool AmaterialCharacter::TryPickup()
         }
     }
 
-    if (!bHasValidTag) return false;
+    if (!bHasValidTag)
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, 
+                FString::Printf(TEXT("⚠️ Pickup: %s has no valid tag"), *Target->GetName()));
+        }
+        return false;
+    }
+
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, 
+            FString::Printf(TEXT("✅ Pickup Success: %s"), *Target->GetName()));
+    }
 
     TArray<UPrimitiveComponent*> PrimComps;
     Target->GetComponents<UPrimitiveComponent>(PrimComps);
