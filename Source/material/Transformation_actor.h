@@ -126,23 +126,35 @@ public:
     float SimTimeScale = 3600.0f;
 
     // === Wood ===
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
-    float WoodIgnitionEnergyJ = 50000.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Ignition")
+    float WoodIgnitionTempC = 300.0f;  
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
-    float WoodBurnDuration = 5.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion")
+    float CombustionHeatJPerKg = 15000000.0f; 
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion")
+    float BurnRateKgPerSec = 0.1f; 
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties")
+    float WoodDensityKgM3 = 600.0f;  
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties")
+    float SpecificHeatJPerKgK = 1700.0f; 
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
     bool bDestroyWhenBurned = true;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
     UMaterialInterface* BurnMaterial = nullptr;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
     FName BurnParamName = TEXT("BurnAlpha");
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
-    float MinBurnScaleRatio = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
+    float MinBurnScaleRatio = 0.05f;  // 재만 남음 (5%)
+
+    UPROPERTY(EditAnywhere, Category="Wood|Physics")
+    float WoodSimTimeScale = 100.0f;
 
     // === Tags ===
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
@@ -177,6 +189,7 @@ private:
 
     void EnterWoodMode();
     void ExitWoodMode();
+    void RecalcWoodMassAndVolume();  // 추가!
     void ApplyWoodBurnVisual(float Alpha01);
 
 private:
@@ -199,10 +212,12 @@ private:
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* BurnMID = nullptr;
 
-    float WoodHeatAccumJ = 0.0f;
+    float WoodTemperatureC = 20.0f;  
+    float WoodVolumeM3 = 1.0f;       
+    float WoodMassKg = 1.0f;         
+    float CurrentWoodMassKg = 1.0f; 
     float BurnAlpha = 0.0f;
     bool bIsBurning = false;
-    float BurnTime = 0.0f;
     FVector BaseScaleBeforeBurn = FVector(1.0f);
 
     // Metal
