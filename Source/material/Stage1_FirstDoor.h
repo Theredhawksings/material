@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/StaticMeshComponent.h"
 #include "Stage1_FirstDoor.generated.h"
 
 UCLASS()
@@ -12,15 +13,31 @@ class MATERIAL_API AStage1_FirstDoor : public AActor
 	GENERATED_BODY()
 	
 public:	
-	// Sets default values for this actor's properties
 	AStage1_FirstDoor();
 
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UStaticMeshComponent* DoorMesh;
+
+	FVector StartLocation;
+	FVector TargetLocation;
+	bool bIsOpening;
+	bool bIsOpen;
+	float CurrentTime;
+
 public:	
-	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	UFUNCTION(BlueprintCallable, Category = "Door")
+	void OpenDoor();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenHeight = 300.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenSpeed = 2.0f;
+
+	bool IsOpen() const { return bIsOpen; }
 };
