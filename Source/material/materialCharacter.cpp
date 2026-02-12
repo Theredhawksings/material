@@ -350,7 +350,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 void AmaterialCharacter::Move(const FInputActionValue& Value)
 {
-    if (!Controller) return;
+    if (!Controller || bIsPickingUp) return;  
 
     const FVector2D Axis = Value.Get<FVector2D>();
     if (Axis.IsNearlyZero()) return;
