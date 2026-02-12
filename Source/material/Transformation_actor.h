@@ -111,7 +111,7 @@ public:
     FName MeltParamName = TEXT("MeltAlpha");
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")
-    float MinScaleRatio = 0.15f;
+    float MinScaleRatio = 0.01f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")
     bool bDestroyWhenMelted = false;

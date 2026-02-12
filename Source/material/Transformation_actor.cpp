@@ -561,13 +561,23 @@ void ATransformation_actor::RecalcIceMassAndEnergy()
 void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
 {
     if (!MeshComp) return;
+    
     const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
     const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
     const FVector From = BaseScaleBeforeMelt;
     const FVector To = BaseScaleBeforeMelt * Ratio;
     const FVector NewScale = FMath::Lerp(From, To, A);
     MeshComp->SetWorldScale3D(NewScale);
-    if (IceMID) IceMID->SetScalarParameterValue(MeltParamName, A);
+    
+    if (IceMID) 
+    {
+        IceMID->SetScalarParameterValue(MeltParamName, A);
+    }
+
+    if (NewScale.X <= MinScaleRatio && NewScale.Y <= MinScaleRatio && NewScale.Z <= MinScaleRatio)
+    {
+        Destroy(); 
+    }
 }
 
 // ==================== WOOD ====================
