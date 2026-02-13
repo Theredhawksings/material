@@ -1,10 +1,8 @@
-// Magnet.cpp - 적당하게 조정 + N값만 표시
 #include "Magnet.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "DrawDebugHelpers.h"
-#include "Engine/Engine.h"
 
 AMagnet::AMagnet()
 {
@@ -28,8 +26,7 @@ void AMagnet::BeginPlay()
 
     if (bAutoComputeStrength)
     {
-        const float g = 980.f;
-        Strength = MaxLiftMass * g * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
+        Strength = MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
     }
 
     MagnetRange->SetSphereRadius(MaxDistance);
@@ -51,102 +48,108 @@ void AMagnet::Tick(float DeltaTime)
     }
 
     if (OverlappingMetals.Num() == 0)
+    {
         return;
+    }
 
     const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
     const FVector MagnetForward = MagnetMesh->GetForwardVector();
+    const bool bMagnetSimulating = MagnetMesh->IsSimulatingPhysics();
+    const float StrengthTimesMultiplier = Strength * ForceMultiplier;
 
     for (UPrimitiveComponent* MetalComp : OverlappingMetals)
     {
         if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics())
+        {
             continue;
+        }
 
         const FVector MetalLoc = MetalComp->GetComponentLocation();
-        FVector ToMagnet = MagnetLoc - MetalLoc;
-        float Distance = ToMagnet.Size();
+        const FVector ToMagnet = MagnetLoc - MetalLoc;
+        const float Distance = ToMagnet.Size();
 
         if (Distance < MinDistance || Distance > MaxDistance)
+        {
             continue;
+        }
 
-        FVector Dir = ToMagnet.GetSafeNormal();
-        
-        float DirectionFactor = FVector::DotProduct(Dir, MagnetForward);
-        DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirectionFactor + 1.0f) * 0.5f);
-        
-        float ForceMag = (Strength * DirectionFactor * ForceMultiplier) / FMath::Pow(Distance, MagneticDecayExponent);
+        const FVector Dir = ToMagnet / Distance;
+        const float DirDot = FVector::DotProduct(Dir, MagnetForward);
+        const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
 
-        float MetalMass = MetalComp->GetMass();
-        float MassScale = FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
-        ForceMag *= MassScale;
+        float ForceMag = (StrengthTimesMultiplier * DirectionFactor) / FMath::Pow(Distance, MagneticDecayExponent);
 
-        FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
-        float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
-        
+        const float MetalMass = MetalComp->GetMass();
+        ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
+
+        const FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
+        const float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
+
         float VelocityDamping = 1.0f;
         if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
         {
             VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
         }
-        
-        FVector DampingForce = -CurrentVel * VelocityDampingFactor * MetalMass;
 
+        const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
         FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
-        const float MaxForce = 6e7f;
-        FinalForce = FinalForce.GetClampedToMaxSize(MaxForce);
+        FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
 
         MetalComp->AddForce(FinalForce, NAME_None, false);
 
         if (bUseTorque)
         {
-            FVector MetalForward = MetalComp->GetForwardVector();
-            FVector CrossProduct = FVector::CrossProduct(MetalForward, Dir);
-            float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
-            
+            const FVector CrossProduct = FVector::CrossProduct(MetalComp->GetForwardVector(), Dir);
+            const float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
+
             if (TorqueMagnitude > 0.01f)
             {
-                FVector TorqueDir = CrossProduct.GetSafeNormal();
-                MetalComp->AddTorqueInRadians(TorqueDir * TorqueMagnitude, NAME_None, false);
+                MetalComp->AddTorqueInRadians(CrossProduct.GetSafeNormal() * TorqueMagnitude, NAME_None, false);
             }
         }
 
-        if (MagnetMesh->IsSimulatingPhysics())
+        if (bMagnetSimulating)
         {
             MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
         }
 
+#if ENABLE_DRAW_DEBUG
         if (bDebugDraw)
         {
             DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, FColor::Cyan, false, -1.f, 0, 2.f);
             DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
-            
-            FString ForceInfo = FString::Printf(TEXT("%.0f N"), FinalForce.Size());
-            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50), ForceInfo, nullptr, FColor::Yellow, 0.0f);
+            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
+                FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
         }
+#endif
     }
 
-    if (bEnableInduction && OverlappingMetals.Num() > 0)
+    if (bEnableInduction)
     {
         ApplyInducedMagnetism();
     }
-
 }
 
 void AMagnet::RefreshOverlappingMetals()
 {
     if (!MagnetRange)
+    {
         return;
+    }
 
     TArray<UPrimitiveComponent*> OverlappingComps;
     MagnetRange->GetOverlappingComponents(OverlappingComps);
 
-    OverlappingMetals.Empty();
+    OverlappingMetals.Empty(OverlappingComps.Num());
 
     for (UPrimitiveComponent* Comp : OverlappingComps)
     {
         if (!Comp || !Comp->IsSimulatingPhysics())
+        {
             continue;
+        }
 
-        AActor* CompOwner = Comp->GetOwner();
+        const AActor* CompOwner = Comp->GetOwner();
         if (CompOwner && CompOwner != this && CompOwner->ActorHasTag(MetalTag))
         {
             OverlappingMetals.Add(Comp);
@@ -154,29 +157,33 @@ void AMagnet::RefreshOverlappingMetals()
     }
 }
 
-void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, 
+void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
     if (!OtherActor || OtherActor == this || !OtherComp)
+    {
         return;
+    }
 
     if (OtherActor->ActorHasTag(MetalTag) && OtherComp->IsSimulatingPhysics())
     {
         OverlappingMetals.Add(OtherComp);
-        
+
         if (bApplyInitialImpulse)
         {
-            FVector ToMagnet = (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation()).GetSafeNormal();
+            const FVector ToMagnet = (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation()).GetSafeNormal();
             OtherComp->AddImpulse(ToMagnet * InitialImpulseStrength * OtherComp->GetMass());
         }
     }
 }
 
-void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, 
+void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
     if (!OtherActor || !OtherComp)
+    {
         return;
+    }
 
     if (OtherActor->ActorHasTag(MetalTag))
     {
@@ -187,87 +194,84 @@ void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor
 void AMagnet::ApplyInducedMagnetism()
 {
     const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
-    
-    TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
-    
-    for (int32 i = 0; i < MetalArray.Num(); ++i)
+    const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
+    const int32 Num = MetalArray.Num();
+
+    for (int32 i = 0; i < Num; ++i)
     {
         UPrimitiveComponent* MetalA = MetalArray[i];
         if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics())
+        {
             continue;
+        }
 
         const FVector MetalALoc = MetalA->GetComponentLocation();
-        float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
+        const float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
 
         if (DistAToMagnet > MinDistanceForInduction)
-            continue;
-        
-        float InducedStrength = CalculateInducedStrength(DistAToMagnet, Strength);
-
-        for (int32 j = 0; j < MetalArray.Num(); ++j)
         {
-            if (i == j) continue; 
-            
+            continue;
+        }
+
+        const float InducedStrength = CalculateInducedStrength(DistAToMagnet, Strength);
+        const FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
+
+        for (int32 j = i + 1; j < Num; ++j)
+        {
             UPrimitiveComponent* MetalB = MetalArray[j];
             if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics())
+            {
                 continue;
+            }
 
             const FVector MetalBLoc = MetalB->GetComponentLocation();
-            FVector AtoB = MetalBLoc - MetalALoc;
-            float DistAtoB = AtoB.Size();
+            const FVector AtoB = MetalBLoc - MetalALoc;
+            const float DistAtoB = AtoB.Size();
 
             if (DistAtoB < 10.f || DistAtoB > InductionRange)
+            {
                 continue;
-            
-            FVector Dir = AtoB.GetSafeNormal();
+            }
 
-            FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
-            
-            float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
-            
-            float DirectionMult = FMath::Sign(AlignmentFactor) * FMath::Abs(AlignmentFactor);
+            const FVector Dir = AtoB / DistAtoB;
+            const float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
 
-            float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(DirectionMult)) 
+            float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(AlignmentFactor))
                            / FMath::Pow(DistAtoB, MagneticDecayExponent);
-            
-            float MetalBMass = MetalB->GetMass();
-            float MassScale = FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
-            ForceMag *= MassScale;
 
-            FVector CurrentVel = MetalB->GetPhysicsLinearVelocity();
-            float VelTowardsA = FVector::DotProduct(CurrentVel, Dir);
+            const float MetalBMass = MetalB->GetMass();
+            ForceMag *= FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
+
+            const FVector CurrentVelB = MetalB->GetPhysicsLinearVelocity();
+            const float VelTowardsA = FVector::DotProduct(CurrentVelB, Dir);
+
             float VelocityDamping = 1.0f;
             if (VelTowardsA > MaxAttractVelocity * 0.5f)
             {
                 VelocityDamping = FMath::Clamp(1.0f - (VelTowardsA / MaxAttractVelocity), 0.3f, 1.0f);
             }
-            
-            FVector DampingForce = -CurrentVel * VelocityDampingFactor * 0.5f * MetalBMass;
-            FVector FinalForce = (Dir * ForceMag * VelocityDamping * DirectionMult) + DampingForce;
-            
-            const float MaxInducedForce = 3e7f;
-            FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForce);
-            
+
+            const FVector DampingForce = -CurrentVelB * (VelocityDampingFactor * 0.5f * MetalBMass);
+            FVector FinalForce = (Dir * ForceMag * VelocityDamping * AlignmentFactor) + DampingForce;
+            FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForceClamp);
+
             MetalB->AddForce(FinalForce, NAME_None, false);
-            
             MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
-            
+
+#if ENABLE_DRAW_DEBUG
             if (bDebugDraw)
             {
-                DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, 
-                    FColor::Yellow, false, -1.f, 0, 1.f);
+                DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, FColor::Yellow, false, -1.f, 0, 1.f);
             }
+#endif
         }
     }
 }
 
 float AMagnet::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const
 {
-    if (DistanceToMagnet < 1.0f)
-        DistanceToMagnet = 1.0f;
-    
-    float InductionFactor = 1.0f / FMath::Pow(DistanceToMagnet / MinDistanceForInduction, 1.5f);
-    InductionFactor = FMath::Clamp(InductionFactor, 0.0f, 1.0f);
-    
+    const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
+    const float InductionFactor = FMath::Clamp(
+        1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
     return BaseMagnetStrength * InductionFactor;
 }
