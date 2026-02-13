@@ -18,10 +18,8 @@ ATemperature::ATemperature()
 
 	HeatSphere = CreateDefaultSubobject<USphereComponent>(TEXT("HeatSphere"));
 	HeatSphere->SetupAttachment(Root);
-
 	HeatSphere->SetCollisionProfileName(TEXT("Trigger"));
 	HeatSphere->SetGenerateOverlapEvents(true);
-
 	HeatSphere->bDrawOnlyIfSelected = false;
 	HeatSphere->ShapeColor = FColor::Red;
 	HeatSphere->SetHiddenInGame(true);
@@ -31,7 +29,6 @@ ATemperature::ATemperature()
 void ATemperature::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-
 	UpdateSphereRadius(false);
 	UpdateVisuals();
 }
@@ -47,9 +44,8 @@ void ATemperature::BeginPlay()
 	{
 		HeatSphere->OnComponentBeginOverlap.AddDynamic(this, &ATemperature::OnSphereBeginOverlap);
 		HeatSphere->OnComponentEndOverlap.AddDynamic(this, &ATemperature::OnSphereEndOverlap);
-
 		HeatSphere->UpdateOverlaps();
-		StartHeatingOnAlreadyOverlapping();
+		EnsureOverlappingActorsHeating();
 	}
 }
 
@@ -64,93 +60,90 @@ void ATemperature::Tick(float DeltaTime)
 
 	UpdateSphereRadius(false);
 	UpdateVisuals();
-	CheckAndUpdateIceObjects();  // ← 추가!
+	EnsureOverlappingActorsHeating();
 }
 
 float ATemperature::GetTotalRadiantPowerW() const
 {
 	const double T_K = static_cast<double>(Temperature) + 273.15;
-	const double P = static_cast<double>(Emissivity) *
-		static_cast<double>(StefanBoltzmannSigma) *
-		static_cast<double>(SurfaceAreaM2) *
-		FMath::Pow(T_K, 4.0);
-
+	const double P = static_cast<double>(Emissivity)
+		* static_cast<double>(StefanBoltzmannSigma)
+		* static_cast<double>(SurfaceAreaM2)
+		* FMath::Pow(T_K, 4.0);
 	return static_cast<float>(P);
 }
 
 float ATemperature::GetHeatFluxWm2AtDistanceM(float DistanceM) const
 {
-	const float R = FMath::Max(DistanceM, 0.01f);
-
+	const double R = static_cast<double>(FMath::Max(DistanceM, 0.01f));
 	const double P = static_cast<double>(GetTotalRadiantPowerW());
-	const double Den = 4.0 * PI * static_cast<double>(R) * static_cast<double>(R);
-	const double q = P / Den;
-
-	return static_cast<float>(q);
+	return static_cast<float>(P / (4.0 * PI * R * R));
 }
 
 float ATemperature::GetHeatFluxWm2AtLocation(const FVector& WorldLocation) const
 {
 	const double DistCm = FVector::Distance(GetActorLocation(), WorldLocation);
-	const double DistM = DistCm / 100.0;
 
 	if (MaxHeatDistance > 0.f && DistCm > MaxHeatDistance)
 	{
 		return 0.f;
 	}
 
-	return GetHeatFluxWm2AtDistanceM(static_cast<float>(DistM));
+	return GetHeatFluxWm2AtDistanceM(static_cast<float>(DistCm / 100.0));
 }
 
 float ATemperature::GetReceivedPowerW(const FVector& WorldLocation, float ReceiverAreaM2) const
 {
-	const float q = GetHeatFluxWm2AtLocation(WorldLocation);
-	return q * FMath::Max(ReceiverAreaM2, 0.f);
+	return GetHeatFluxWm2AtLocation(WorldLocation) * FMath::Max(ReceiverAreaM2, 0.f);
 }
 
 void ATemperature::OnSphereBeginOverlap(
-	UPrimitiveComponent* OverlappedComp,
-	AActor* OtherActor,
-	UPrimitiveComponent* OtherComp,
-	int32 OtherBodyIndex,
-	bool bFromSweep,
-	const FHitResult& SweepResult)
+	UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+	bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!OtherActor || OtherActor == this) return;
-	if (IceClassFilter && !OtherActor->IsA(IceClassFilter)) return;
-
-	static const FName FnName(TEXT("StartHeating"));
-	if (UFunction* Fn = OtherActor->FindFunction(FnName))
+	if (!OtherActor || OtherActor == this)
 	{
-		struct FArgs { ATemperature* FireRef; };
-		FArgs Args{ this };
-		OtherActor->ProcessEvent(Fn, &Args);
+		return;
 	}
+	if (IceClassFilter && !OtherActor->IsA(IceClassFilter))
+	{
+		return;
+	}
+
+	static const FName StartHeatingName(TEXT("StartHeating"));
+	struct FArgs { ATemperature* FireRef; };
+	FArgs Args{ this };
+	CallFunctionOnActor(OtherActor, StartHeatingName, &Args);
 }
 
 void ATemperature::OnSphereEndOverlap(
-	UPrimitiveComponent* OverlappedComp,
-	AActor* OtherActor,
-	UPrimitiveComponent* OtherComp,
-	int32 OtherBodyIndex)
+	UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (!OtherActor || OtherActor == this) return;
-	if (IceClassFilter && !OtherActor->IsA(IceClassFilter)) return;
-
-	static const FName FnName(TEXT("StopHeating"));
-	if (UFunction* Fn = OtherActor->FindFunction(FnName))
+	if (!OtherActor || OtherActor == this)
 	{
-		OtherActor->ProcessEvent(Fn, nullptr);
+		return;
 	}
+	if (IceClassFilter && !OtherActor->IsA(IceClassFilter))
+	{
+		return;
+	}
+
+	static const FName StopHeatingName(TEXT("StopHeating"));
+	CallFunctionOnActor(OtherActor, StopHeatingName);
 }
 
 void ATemperature::UpdateSphereRadius(bool bForceOverlaps)
 {
-	if (!HeatSphere) return;
+	if (!HeatSphere)
+	{
+		return;
+	}
 
 	const float R = FMath::Max(0.f, MaxHeatDistance);
-
 	const bool bChanged = !FMath::IsNearlyEqual(R, LastSphereRadius, 0.01f);
+
 	if (bChanged)
 	{
 		HeatSphere->SetSphereRadius(R, true);
@@ -163,38 +156,12 @@ void ATemperature::UpdateSphereRadius(bool bForceOverlaps)
 	}
 }
 
-void ATemperature::StartHeatingOnAlreadyOverlapping()
-{
-	if (!HeatSphere) return;
-
-	TArray<AActor*> Overlaps;
-	if (IceClassFilter)
-	{
-		HeatSphere->GetOverlappingActors(Overlaps, IceClassFilter);
-	}
-	else
-	{
-		HeatSphere->GetOverlappingActors(Overlaps);
-	}
-
-	for (AActor* A : Overlaps)
-	{
-		if (!A || A == this) continue;
-		if (IceClassFilter && !A->IsA(IceClassFilter)) continue;
-
-		static const FName FnName(TEXT("StartHeating"));
-		if (UFunction* Fn = A->FindFunction(FnName))
-		{
-			struct FArgs { ATemperature* FireRef; };
-			FArgs Args{ this };
-			A->ProcessEvent(Fn, &Args);
-		}
-	}
-}
-
 void ATemperature::UpdateVisuals()
 {
-	if (!MeshComp) return;
+	if (!MeshComp)
+	{
+		return;
+	}
 
 	if (bUseDynamicMaterial && HeatMaterial)
 	{
@@ -205,8 +172,8 @@ void ATemperature::UpdateVisuals()
 		}
 		if (HeatMID)
 		{
-			const float HeatAlpha = FMath::Clamp(Temperature * TempScale, 0.f, 1.f);
-			HeatMID->SetScalarParameterValue(HeatAlphaParamName, HeatAlpha);
+			HeatMID->SetScalarParameterValue(HeatAlphaParamName,
+				FMath::Clamp(Temperature * TempScale, 0.f, 1.f));
 		}
 	}
 
@@ -216,42 +183,61 @@ void ATemperature::UpdateVisuals()
 	}
 }
 
-void ATemperature::CheckAndUpdateIceObjects()
+void ATemperature::EnsureOverlappingActorsHeating()
 {
-	if (!HeatSphere) return;
-
-	TArray<AActor*> OverlappingActors;
-	if (IceClassFilter)
+	if (!HeatSphere)
 	{
-		HeatSphere->GetOverlappingActors(OverlappingActors, IceClassFilter);
-	}
-	else
-	{
-		HeatSphere->GetOverlappingActors(OverlappingActors);
+		return;
 	}
 
-	static const FName StartFn(TEXT("StartHeating"));
-	static const FName IsHeatingFn(TEXT("IsHeating"));
+	TArray<AActor*> Actors;
+	GetFilteredOverlappingActors(Actors);
 
-	for (AActor* Actor : OverlappingActors)
+	static const FName StartHeatingName(TEXT("StartHeating"));
+	static const FName IsHeatingName(TEXT("IsHeating"));
+
+	for (AActor* Actor : Actors)
 	{
-		if (!Actor || Actor == this) continue;
-		if (IceClassFilter && !Actor->IsA(IceClassFilter)) continue;
-
 		bool bAlreadyHeating = false;
-		if (UFunction* CheckFn = Actor->FindFunction(IsHeatingFn))
+		if (UFunction* CheckFn = Actor->FindFunction(IsHeatingName))
 		{
 			Actor->ProcessEvent(CheckFn, &bAlreadyHeating);
 		}
 
 		if (!bAlreadyHeating)
 		{
-			if (UFunction* Fn = Actor->FindFunction(StartFn))
-			{
-				struct FArgs { ATemperature* FireRef; };
-				FArgs Args{ this };
-				Actor->ProcessEvent(Fn, &Args);
-			}
+			struct FArgs { ATemperature* FireRef; };
+			FArgs Args{ this };
+			CallFunctionOnActor(Actor, StartHeatingName, &Args);
 		}
 	}
+}
+
+void ATemperature::CallFunctionOnActor(AActor* Target, FName FunctionName, void* Params) const
+{
+	if (UFunction* Fn = Target->FindFunction(FunctionName))
+	{
+		Target->ProcessEvent(Fn, Params);
+	}
+}
+
+void ATemperature::GetFilteredOverlappingActors(TArray<AActor*>& OutActors) const
+{
+	if (IceClassFilter)
+	{
+		HeatSphere->GetOverlappingActors(OutActors, IceClassFilter);
+	}
+	else
+	{
+		HeatSphere->GetOverlappingActors(OutActors);
+	}
+
+	OutActors.RemoveAll([this](const AActor* A)
+	{
+		if (!A || A == this)
+		{
+			return true;
+		}
+		return IceClassFilter && !A->IsA(IceClassFilter);
+	});
 }
