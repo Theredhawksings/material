@@ -37,23 +37,12 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> FollowCamera;
 
-	UPROPERTY()
-	TObjectPtr<UInputMappingContext> IMC_Default;
-
-	UPROPERTY()
-	TObjectPtr<UInputMappingContext> IMC_MouseLook;
-
-	UPROPERTY()
-	TObjectPtr<UInputAction> IA_Move;
-
-	UPROPERTY()
-	TObjectPtr<UInputAction> IA_Look;
-
-	UPROPERTY()
-	TObjectPtr<UInputAction> IA_MouseLook;
-
-	UPROPERTY()
-	TObjectPtr<UInputAction> IA_Jump;
+	UPROPERTY() TObjectPtr<UInputMappingContext> IMC_Default;
+	UPROPERTY() TObjectPtr<UInputMappingContext> IMC_MouseLook;
+	UPROPERTY() TObjectPtr<UInputAction> IA_Move;
+	UPROPERTY() TObjectPtr<UInputAction> IA_Look;
+	UPROPERTY() TObjectPtr<UInputAction> IA_MouseLook;
+	UPROPERTY() TObjectPtr<UInputAction> IA_Jump;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> BackpackComp;
@@ -61,29 +50,17 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Pickup")
 	TObjectPtr<USceneComponent> HoldPivot;
 
-	UPROPERTY()
-	TObjectPtr<UAnimSequence> WalkAnim;
-
-	UPROPERTY()
-	TObjectPtr<UAnimSequence> IdleAnim;
-
-	UPROPERTY()
-	TObjectPtr<UAnimSequence> PickupAnim;
-
-	UPROPERTY()
-	TObjectPtr<UAnimSequence> IdleBringAnim;
-
-	UPROPERTY()
-	TObjectPtr<UAnimSequence> WalkBringAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> WalkAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> IdleAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> PickupAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> IdleBringAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> WalkBringAnim;
 
 	UPROPERTY(EditAnywhere, Category = "Animation")
 	TSubclassOf<UAnimInstance> AnimBPClass;
 
-	UPROPERTY()
-	TObjectPtr<AActor> HeldActor;
-
-	UPROPERTY()
-	TObjectPtr<AActor> PendingPickupActor;
+	UPROPERTY() TObjectPtr<AActor> HeldActor;
+	UPROPERTY() TObjectPtr<AActor> PendingPickupActor;
 
 	UPROPERTY(EditAnywhere, Category = "Pickup")
 	TArray<FName> PickupTags;
@@ -93,6 +70,18 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Pickup")
 	float PickupRange = 500.f;
+
+	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
+	FVector HoldExtraLocalOffset_Idle = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
+	FVector HoldExtraLocalOffset_Walk = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
+	FRotator HoldLocalRot_Idle = FRotator(-10.f, -20.f, -10.f);
+
+	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
+	FRotator HoldLocalRot_Walk = FRotator(-10.f, -20.f, -10.f);
 
 	UPROPERTY(EditAnywhere, Category = "Equipment")
 	FName BackpackSocketName = TEXT("spine_002Socket");
@@ -115,18 +104,6 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Animation")
 	float WalkSpeedThreshold = 10.f;
 
-	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
-	FVector HoldExtraLocalOffset_Idle = FVector::ZeroVector;
-
-	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
-	FVector HoldExtraLocalOffset_Walk = FVector::ZeroVector;
-
-	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
-	FRotator HoldLocalRot_Idle = FRotator(-10.f, -20.f, -10.f);
-
-	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
-	FRotator HoldLocalRot_Walk = FRotator(-10.f, -20.f, -10.f);
-
 	FVector HeldLocalExtent = FVector(50.f);
 	FTimerHandle AttachmentTimerHandle;
 	FTimerHandle PickupEndTimerHandle;
@@ -141,6 +118,7 @@ private:
 	void JumpStopped();
 	void ChangeForm();
 	void HoldPressed();
+	void CheckWeight();
 
 	bool TryPickup();
 	void DropHeld();
@@ -159,7 +137,7 @@ private:
 		return GetVelocity().SizeSquared2D() > (WalkSpeedThreshold * WalkSpeedThreshold);
 	}
 
-	static constexpr float CameraArmLength = 340.f;
+	static constexpr float CameraArmLength = 350.f;
 	static constexpr float CameraSocketOffsetZ = 80.f;
 	static constexpr float CameraLagSpeed = 6.0f;
 	static constexpr float CameraRotLagSpeed = 12.0f;

@@ -4,6 +4,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "DrawDebugHelpers.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -202,6 +203,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 	PlayerInputComponent->BindAction("ChangeForm", IE_Pressed, this, &AmaterialCharacter::ChangeForm);
 	PlayerInputComponent->BindAction("Hold", IE_Pressed, this, &AmaterialCharacter::HoldPressed);
+	PlayerInputComponent->BindAction("Checkweight", IE_Pressed, this, &AmaterialCharacter::CheckWeight);
 
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC)
@@ -276,6 +278,45 @@ void AmaterialCharacter::ChangeForm()
 			TransformActor->NextForm();
 		}
 	}
+}
+
+void AmaterialCharacter::CheckWeight()
+{
+	if (!FollowCamera)
+	{
+		return;
+	}
+
+	const FVector Start = FollowCamera->GetComponentLocation();
+	const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CheckWeight), false, this);
+
+	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+		ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
+	{
+		return;
+	}
+
+	AActor* HitActor = Hit.GetActor();
+	if (!HitActor)
+	{
+		return;
+	}
+
+	UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HitActor->GetRootComponent());
+	if (!PrimComp || !PrimComp->IsSimulatingPhysics())
+	{
+		return;
+	}
+
+	const float MassKg = PrimComp->GetMass();
+	const FVector DisplayLoc = HitActor->GetActorLocation() + FVector(0.f, 0.f, 80.f);
+
+	DrawDebugString(GetWorld(), DisplayLoc,
+		FString::Printf(TEXT("%.1f kg"), MassKg),
+		nullptr, FColor::Cyan, 3.0f, true);
 }
 
 void AmaterialCharacter::HoldPressed()
