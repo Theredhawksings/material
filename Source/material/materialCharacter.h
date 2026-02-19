@@ -159,7 +159,7 @@ private:
 		return GetVelocity().SizeSquared2D() > (WalkSpeedThreshold * WalkSpeedThreshold);
 	}
 
-	static constexpr float CameraArmLength = 350.f;
+	static constexpr float CameraArmLength = 340.f;
 	static constexpr float CameraSocketOffsetZ = 80.f;
 	static constexpr float CameraLagSpeed = 6.0f;
 	static constexpr float CameraRotLagSpeed = 12.0f;
