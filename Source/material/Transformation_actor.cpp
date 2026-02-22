@@ -404,7 +404,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 
     if (CurrentForm == EBlockForm::Ice)
     {
-        BaseScaleBeforeMelt = SavedBaseScale;
+        BaseScaleBeforeMelt = SavedCurrentScale;
         EnterIceMode();
         MeltAlpha = SavedMeltAlpha;
         EnergyAccumJ = SavedEnergyAccumJ;
