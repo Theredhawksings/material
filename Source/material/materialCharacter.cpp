@@ -282,10 +282,7 @@ void AmaterialCharacter::ChangeForm()
 
 void AmaterialCharacter::CheckWeight()
 {
-	if (!FollowCamera)
-	{
-		return;
-	}
+	if (!FollowCamera) return;
 
 	const FVector Start = FollowCamera->GetComponentLocation();
 	const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
@@ -295,32 +292,19 @@ void AmaterialCharacter::CheckWeight()
 
 	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
 		ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
-	{
 		return;
-	}
 
 	AActor* HitActor = Hit.GetActor();
-	if (!HitActor)
-	{
-		return;
-	}
+	if (!HitActor) return;
 
-	ATransformation_actor* TransActor = Cast<ATransformation_actor>(HitActor);
-	if (!TransActor)
-	{
-		return;
-	}
+	UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HitActor->GetRootComponent());
+	if (!PrimComp) return;
 
-	const FBlockFormSpec* Spec = TransActor->FindSpec(TransActor->GetCurrentForm());
-	if (!Spec)
-	{
-		return;
-	}
-
+	const float MassKg = PrimComp->GetMass();
 	const FVector DisplayLoc = HitActor->GetActorLocation() + FVector(0.f, 0.f, 80.f);
 
 	DrawDebugString(GetWorld(), DisplayLoc,
-		FString::Printf(TEXT("%.1f kg"), Spec->MassKg),
+		FString::Printf(TEXT("%.1f kg"), MassKg),
 		nullptr, FColor::Cyan, 3.0f, true);
 }
 
@@ -496,33 +480,13 @@ void AmaterialCharacter::DropHeld()
 
 void AmaterialCharacter::ApplyWeightSpeedPenalty(AActor* Actor)
 {
-	if (!Actor)
-	{
-		return;
-	}
+    if (!Actor) return;
 
-	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	if (!MoveComp)
-	{
-		return;
-	}
+    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    if (!MoveComp) return;
 
-	float MassKg = 10.f; 
-
-	ATransformation_actor* TransActor = Cast<ATransformation_actor>(Actor);
-	if (TransActor)
-	{
-		const FBlockFormSpec* Spec = TransActor->FindSpec(TransActor->GetCurrentForm());
-		if (Spec)
-		{
-			MassKg = Spec->MassKg;
-		}
-	}
-
-	const float Multiplier = FMath::Clamp(1.f - MassKg * MassSpeedPenaltyScale, MinSpeedMultiplier, 1.f);
-
-	OriginalMaxWalkSpeed = MoveComp->MaxWalkSpeed;
-	MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * Multiplier;
+    OriginalMaxWalkSpeed = MoveComp->MaxWalkSpeed;
+    MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * 0.5f; 
 }
 
 void AmaterialCharacter::RestoreWalkSpeed()
