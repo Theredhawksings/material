@@ -83,11 +83,19 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset")
 	FRotator HoldLocalRot_Walk = FRotator(-10.f, -20.f, -10.f);
 
+	UPROPERTY(EditAnywhere, Category = "Pickup|Weight", meta = (ClampMin = "0.0", ClampMax = "0.1"))
+	float MassSpeedPenaltyScale = 0.015f;
+
+	UPROPERTY(EditAnywhere, Category = "Pickup|Weight", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+	float MinSpeedMultiplier = 0.70f;
+
+	float OriginalMaxWalkSpeed = 0.f;
+
 	UPROPERTY(EditAnywhere, Category = "Equipment")
 	FName BackpackSocketName = TEXT("spine_002Socket");
 
 	UPROPERTY(EditAnywhere, Category = "Equipment")
-	FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
+	FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);	
 
 	UPROPERTY(EditAnywhere, Category = "Equipment")
 	FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -93.f);
@@ -125,6 +133,9 @@ private:
 	void HandleActualAttachment();
 	void OnPickupAnimFinished();
 	void CaptureHeldLocalExtent(AActor* Actor);
+
+	void ApplyWeightSpeedPenalty(AActor* Actor);
+	void RestoreWalkSpeed();
 
 	void UpdateAnimation();
 	void UpdateHoldPivotTransform();
