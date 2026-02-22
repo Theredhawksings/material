@@ -305,17 +305,22 @@ void AmaterialCharacter::CheckWeight()
 		return;
 	}
 
-	UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HitActor->GetRootComponent());
-	if (!PrimComp || !PrimComp->IsSimulatingPhysics())
+	ATransformation_actor* TransActor = Cast<ATransformation_actor>(HitActor);
+	if (!TransActor)
 	{
 		return;
 	}
 
-	const float MassKg = PrimComp->GetMass();
+	const FBlockFormSpec* Spec = TransActor->FindSpec(TransActor->GetCurrentForm());
+	if (!Spec)
+	{
+		return;
+	}
+
 	const FVector DisplayLoc = HitActor->GetActorLocation() + FVector(0.f, 0.f, 80.f);
 
 	DrawDebugString(GetWorld(), DisplayLoc,
-		FString::Printf(TEXT("%.1f kg"), MassKg),
+		FString::Printf(TEXT("%.1f kg"), Spec->MassKg),
 		nullptr, FColor::Cyan, 3.0f, true);
 }
 
@@ -406,6 +411,8 @@ void AmaterialCharacter::HandleActualAttachment()
 	HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
 
 	UpdateHoldPivotTransform();
+
+	ApplyWeightSpeedPenalty(HeldActor);
 }
 
 void AmaterialCharacter::OnPickupAnimFinished()
@@ -462,6 +469,8 @@ void AmaterialCharacter::DropHeld()
 			HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 			HeldActor->SetActorLocation(DropLocation);
 			SetPrimitiveComponentsPhysics(HeldActor, true);
+
+			RestoreWalkSpeed();
 			HeldActor = nullptr;
 		},
 		DropDetachTime, false);
@@ -483,6 +492,53 @@ void AmaterialCharacter::DropHeld()
 			UpdateAnimation();
 		},
 		AnimDuration, false);
+}
+
+void AmaterialCharacter::ApplyWeightSpeedPenalty(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp)
+	{
+		return;
+	}
+
+	float MassKg = 10.f; 
+
+	ATransformation_actor* TransActor = Cast<ATransformation_actor>(Actor);
+	if (TransActor)
+	{
+		const FBlockFormSpec* Spec = TransActor->FindSpec(TransActor->GetCurrentForm());
+		if (Spec)
+		{
+			MassKg = Spec->MassKg;
+		}
+	}
+
+	const float Multiplier = FMath::Clamp(1.f - MassKg * MassSpeedPenaltyScale, MinSpeedMultiplier, 1.f);
+
+	OriginalMaxWalkSpeed = MoveComp->MaxWalkSpeed;
+	MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * Multiplier;
+}
+
+void AmaterialCharacter::RestoreWalkSpeed()
+{
+	if (OriginalMaxWalkSpeed <= 0.f)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (MoveComp)
+	{
+		MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed;
+	}
+
+	OriginalMaxWalkSpeed = 0.f;
 }
 
 void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
