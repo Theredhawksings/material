@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 class USphereComponent;
 class UPrimitiveComponent;
+class ATemperature;
 
 UCLASS()
 class MATERIAL_API AMagnet : public AActor
@@ -89,6 +90,9 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Debug")
     bool bDebugDraw = true;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Curie")
+    bool bDemagnetized = false;
+
     UFUNCTION()
     void OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -106,6 +110,7 @@ private:
 
     void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const;
+    void CheckDemagnetize();
 
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
