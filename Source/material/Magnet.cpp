@@ -3,6 +3,8 @@
 #include "Components/SphereComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Temperature.h"
+#include "Kismet/GameplayStatics.h"
 
 AMagnet::AMagnet()
 {
@@ -33,17 +35,35 @@ void AMagnet::BeginPlay()
     MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
     MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
 
-    RefreshOverlappingMetals();
+    CheckDemagnetize();
+
+    if (!bDemagnetized)
+    {
+        RefreshOverlappingMetals();
+    }
 }
 
 void AMagnet::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    if (bDemagnetized)
+    {
+        return;
+    }
+
     TimeSinceLastRefresh += DeltaTime;
     if (TimeSinceLastRefresh >= RefreshInterval)
     {
         TimeSinceLastRefresh = 0.f;
+
+        CheckDemagnetize();
+        if (bDemagnetized)
+        {
+            OverlappingMetals.Empty();
+            return;
+        }
+
         RefreshOverlappingMetals();
     }
 
@@ -130,6 +150,45 @@ void AMagnet::Tick(float DeltaTime)
     }
 }
 
+void AMagnet::CheckDemagnetize()
+{
+    if (bDemagnetized)
+    {
+        return;
+    }
+
+    TArray<AActor*> HeatSources;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
+
+    const FVector MyLoc = GetActorLocation();
+
+    for (AActor* Actor : HeatSources)
+    {
+        const ATemperature* Heat = Cast<ATemperature>(Actor);
+        if (!Heat)
+        {
+            continue;
+        }
+
+        const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
+
+        if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
+        {
+            bDemagnetized = true;
+            OverlappingMetals.Empty();
+
+#if ENABLE_DRAW_DEBUG
+            if (bDebugDraw)
+            {
+                DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
+                    TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
+            }
+#endif
+            return;
+        }
+    }
+}
+
 void AMagnet::RefreshOverlappingMetals()
 {
     if (!MagnetRange)
@@ -160,6 +219,11 @@ void AMagnet::RefreshOverlappingMetals()
 void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+    if (bDemagnetized)
+    {
+        return;
+    }
+
     if (!OtherActor || OtherActor == this || !OtherComp)
     {
         return;
