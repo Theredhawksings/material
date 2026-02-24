@@ -590,21 +590,28 @@ void AmaterialCharacter::PlayAnimIfValid(UAnimSequence* Anim, bool bLooping) con
 
 void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnable) const
 {
-	if (!Actor)
-	{
-		return;
-	}
+    if (!Actor) return;
 
-	TArray<UPrimitiveComponent*> PrimComps;
-	Actor->GetComponents<UPrimitiveComponent>(PrimComps);
+    TArray<UPrimitiveComponent*> PrimComps;
+    Actor->GetComponents<UPrimitiveComponent>(PrimComps);
 
-	for (UPrimitiveComponent* PC : PrimComps)
-	{
-		if (PC)
-		{
-			PC->SetSimulatePhysics(bEnable);
-			PC->SetEnableGravity(bEnable);
-			PC->SetCollisionEnabled(bEnable ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
-		}
-	}
+    for (UPrimitiveComponent* PC : PrimComps)
+    {
+        if (PC)
+        {
+            if (bEnable)
+            {
+                PC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                PC->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
+                PC->SetSimulatePhysics(true); 
+                PC->SetEnableGravity(true);
+            }
+            else
+            {
+                PC->SetSimulatePhysics(false);
+                PC->SetEnableGravity(false);
+                PC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+        }
+    }
 }

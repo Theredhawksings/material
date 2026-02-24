@@ -5,6 +5,7 @@
 #include "Components/SplineMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
@@ -61,6 +62,8 @@ void AWire::Tick(float DeltaTime)
     UpdateJouleHeating(DeltaTime);
 }
 
+// ── 전기 ──
+
 void AWire::SetBatteryVoltage(float NewVoltage)
 {
     BatteryVoltage = FMath::Max(NewVoltage, 0.f);
@@ -110,15 +113,30 @@ void AWire::SetPoweredByMetal(bool bNewPoweredByMetal)
     }
 
     bPoweredByMetal = bNewPoweredByMetal;
+
+    // Metal 경유 전원일 때, 연결된 다른 Wire에서 전압 상속
+    if (bPoweredByMetal && BatteryVoltage <= 0.f)
+    {
+        InheritVoltageFromNeighbors();
+    }
+
+    if (!bPoweredByMetal)
+    {
+        BatteryVoltage = 0.f;
+    }
+
     UpdateFinalPower();
 }
 
+// ── 줄 발열 (Joule Heating) ──
+
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal && BatteryVoltage > 0.f)
+    if (bPoweredFinal)
     {
         const float R = FMath::Max(Resistance, 0.01f);
-        CurrentAmps = BatteryVoltage / R;
+        const float V = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
+        CurrentAmps = V / R;
 
         const float JoulePowerW = CurrentAmps * CurrentAmps * R;
         const float EnergyJ = JoulePowerW * DeltaTime * FMath::Max(SimTimeScale, 0.f);
@@ -126,11 +144,17 @@ void AWire::UpdateJouleHeating(float DeltaTime)
         const float DeltaT = EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
         WireTemperatureC += DeltaT;
     }
+    else if (bPoweredFinal && BatteryVoltage <= 0.f)
+    {
+        InheritVoltageFromNeighbors();
+        CurrentAmps = 0.f;
+    }
     else
     {
         CurrentAmps = 0.f;
     }
 
+    // 냉각: 온도 차이에 비례 (높을수록 빠르게 냉각)
     if (WireTemperatureC > AmbientTemperatureC)
     {
         const float TempDiff = WireTemperatureC - AmbientTemperatureC;
@@ -139,8 +163,12 @@ void AWire::UpdateJouleHeating(float DeltaTime)
         WireTemperatureC = FMath::Max(WireTemperatureC, AmbientTemperatureC);
     }
 
+    // 상한 제한
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
 
+    UpdateWireVisual();
+
+    // 디버그 표시
 #if ENABLE_DRAW_DEBUG
     if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
     {
@@ -155,6 +183,8 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 #endif
 }
 
+// ── 열 방출 (슈테판-볼츠만) ──
+
 void AWire::EmitHeatToNearby(float DeltaTime)
 {
     UWorld* World = GetWorld();
@@ -163,6 +193,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
         return;
     }
 
+    // 와이어의 복사열 출력: P = e × σ × A × T⁴
     const float T_K = WireTemperatureC + 273.15f;
     const float EmitPowerW = WireEmissivity * StefanBoltzmannSigma * WireSurfaceAreaM2
         * FMath::Pow(T_K, 4.f);
@@ -172,6 +203,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
         return;
     }
 
+    // 반경 내 액터 검색
     TArray<FOverlapResult> Hits;
     FCollisionObjectQueryParams ObjParams = FCollisionObjectQueryParams::AllObjects;
     FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WireHeat), false, this);
@@ -212,6 +244,8 @@ void AWire::EmitHeatToNearby(float DeltaTime)
     }
 }
 
+// ── 스플라인/비주얼 (변경 없음) ──
+
 void AWire::UpdateConnectionPoint()
 {
     if (Spline && ConnectionSphere)
@@ -230,15 +264,41 @@ void AWire::ApplyPower()
         return;
     }
 
+    SegmentMIDs.Empty();
+
     for (USplineMeshComponent* Mesh : SegmentMeshes)
     {
-        if (IsValid(Mesh))
+        if (!IsValid(Mesh))
+        {
+            continue;
+        }
+
+        if (bPoweredFinal && OnMaterial)
+        {
+            UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
+            Mesh->SetMaterial(0, MID);
+            SegmentMIDs.Add(MID);
+        }
+        else
         {
             const int32 NumMaterials = Mesh->GetNumMaterials();
             for (int32 i = 0; i < NumMaterials; ++i)
             {
                 Mesh->SetMaterial(i, TargetMat);
             }
+        }
+    }
+}
+
+void AWire::UpdateWireVisual()
+{
+    const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
+
+    for (UMaterialInstanceDynamic* MID : SegmentMIDs)
+    {
+        if (MID)
+        {
+            MID->SetScalarParameterValue(WireHeatParamName, Alpha);
         }
     }
 }
@@ -254,6 +314,7 @@ void AWire::ClearGeneratedMeshes()
         }
     }
     SegmentMeshes.Empty();
+    SegmentMIDs.Empty();
 }
 
 void AWire::RebuildSplineMeshes()
@@ -286,9 +347,10 @@ void AWire::RebuildSplineMeshes()
         SplineMesh->SetForwardAxis(ESplineMeshAxis::Z, false);
         SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         SplineMesh->SetGenerateOverlapEvents(true);
-        SplineMesh->SetCollisionObjectType(ECC_WorldDynamic);
+        SplineMesh->SetCollisionObjectType(ECC_GameTraceChannel2); // Wire
         SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
         SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        SplineMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
         SplineMesh->RegisterComponent();
 
         SegmentMeshes.Add(SplineMesh);
@@ -343,6 +405,48 @@ void AWire::RefreshConnectedActors()
     }
 
     SetPoweredByMetal(bFoundPower);
+}
+
+void AWire::InheritVoltageFromNeighbors()
+{
+    for (AActor* MetalActor : ConnectedActors)
+    {
+        if (!MetalActor)
+        {
+            continue;
+        }
+
+        TArray<UPrimitiveComponent*> MetalComps;
+        MetalActor->GetComponents<UPrimitiveComponent>(MetalComps);
+
+        for (UPrimitiveComponent* MC : MetalComps)
+        {
+            if (!MC)
+            {
+                continue;
+            }
+
+            TArray<AActor*> Overlapping;
+            MC->GetOverlappingActors(Overlapping);
+
+            for (AActor* A : Overlapping)
+            {
+                if (!A || A == this)
+                {
+                    continue;
+                }
+
+                if (const AWire* OtherWire = Cast<AWire>(A))
+                {
+                    if (OtherWire->BatteryVoltage > 0.f)
+                    {
+                        BatteryVoltage = OtherWire->BatteryVoltage;
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void AWire::PropagatePowerToConnected()
