@@ -107,7 +107,7 @@ private:
 	float InteractRange = 2000.f;
 
 	UPROPERTY(EditAnywhere, Category = "Rendering")
-	int32 CustomDepthStencilValue = 125;
+	int32 CustomDepthStencilValue = 95;
 
 	UPROPERTY(EditAnywhere, Category = "Animation")
 	float WalkSpeedThreshold = 10.f;
