@@ -27,6 +27,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battery")
 	bool bPowered = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery|Electrical")
+	float Voltage = 12.0f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

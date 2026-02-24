@@ -38,7 +38,8 @@ void ABATTERY::BeginPlay()
 	ConnectionOutlet->OnComponentEndOverlap.AddDynamic(this, &ABATTERY::OnConnectionEndOverlap);
 
 	RefreshConnectedWires();
-	GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ABATTERY::RefreshConnectedWires, 0.2f, true);
+	GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this,
+		&ABATTERY::RefreshConnectedWires, 0.2f, true);
 }
 
 void ABATTERY::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -127,8 +128,8 @@ void ABATTERY::TogglePower()
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1, 2.0f, bPowered ? FColor::Green : FColor::Red,
-			FString::Printf(TEXT("Battery: %s | Wires: %d"),
-				bPowered ? TEXT("ON") : TEXT("OFF"), ConnectedWires.Num()));
+			FString::Printf(TEXT("Battery: %s  %.1fV | Wires: %d"),
+				bPowered ? TEXT("ON") : TEXT("OFF"), Voltage, ConnectedWires.Num()));
 	}
 #endif
 }
@@ -158,6 +159,7 @@ void ABATTERY::UpdateWiresPower()
 		if (Wire)
 		{
 			Wire->SetPowered(bPowered);
+			Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
 		}
 	}
 }
@@ -170,6 +172,7 @@ void ABATTERY::OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* 
 	{
 		ConnectedWires.AddUnique(Wire);
 		Wire->SetPowered(bPowered);
+		Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
 	}
 }
 
@@ -180,5 +183,6 @@ void ABATTERY::OnConnectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActo
 	{
 		ConnectedWires.Remove(Wire);
 		Wire->SetPowered(false);
+		Wire->SetBatteryVoltage(0.f);
 	}
 }
