@@ -60,7 +60,6 @@ void ATransformation_actor::BeginPlay()
     }
 
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
-    MeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
 }
 
 void ATransformation_actor::OnConstruction(const FTransform& Transform)
@@ -500,8 +499,6 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
     MeshComp->SetAngularDamping(Spec.AngularDamping);
     if (Spec.PhysMat) MeshComp->SetPhysMaterialOverride(Spec.PhysMat);
     if (Spec.bOverrideMass) MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
-
-    MeshComp->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
 }
 
 // ==================== ICE ====================
