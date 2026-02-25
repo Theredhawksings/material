@@ -72,14 +72,15 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Wire|Debug")
     bool bDebugWire = true;
 
-    // ── 전기 ──
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Electrical")
     float BatteryVoltage = 0.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical")
     float Resistance = 2.0f;
 
-    // ── 줄 발열 (Joule Heating) ──
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical")
+    float DefaultVoltage = 12.0f;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Thermal")
     float WireTemperatureC = 20.f;
 
@@ -101,7 +102,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Thermal")
     float SimTimeScale = 50.f;
 
-    // ── 열 방출 ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|HeatEmit")
     float HeatEmitRadius = 300.f;
 
@@ -114,6 +114,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|HeatEmit")
     float WireSurfaceAreaM2 = 0.1f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
+    FName WireHeatParamName = TEXT("HeatAlpha");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
+    float WireTempVisualScale = 0.002f;
+
 private:
     void ClearGeneratedMeshes();
     void UpdateConnectionPoint();
@@ -121,6 +127,7 @@ private:
     void PropagatePowerToConnected();
     void UpdateJouleHeating(float DeltaTime);
     void EmitHeatToNearby(float DeltaTime);
+    void UpdateWireVisual();
 
 private:
     UPROPERTY()
@@ -128,6 +135,9 @@ private:
 
     UPROPERTY()
     TArray<TObjectPtr<AActor>> ConnectedActors;
+
+    UPROPERTY()
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> SegmentMIDs;
 
     FTimerHandle RefreshTimerHandle;
 
