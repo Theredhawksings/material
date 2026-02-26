@@ -5,7 +5,6 @@
 #include "Components/SplineMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialInterface.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
@@ -60,11 +59,6 @@ void AWire::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     UpdateJouleHeating(DeltaTime);
-
-    if (WireTemperatureC > HeatEmitThresholdC)
-    {
-        EmitHeatToNearby(DeltaTime);
-    }
 }
 
 void AWire::SetBatteryVoltage(float NewVoltage)
@@ -116,25 +110,19 @@ void AWire::SetPoweredByMetal(bool bNewPoweredByMetal)
     }
 
     bPoweredByMetal = bNewPoweredByMetal;
-
-    if (!bPoweredByMetal)
-    {
-        BatteryVoltage = 0.f;
-    }
-
     UpdateFinalPower();
 }
 
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal)
+    if (bPoweredFinal && BatteryVoltage > 0.f)
     {
         const float R = FMath::Max(Resistance, 0.01f);
-        const float V = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
-        CurrentAmps = V / R;
+        CurrentAmps = BatteryVoltage / R;
 
         const float JoulePowerW = CurrentAmps * CurrentAmps * R;
         const float EnergyJ = JoulePowerW * DeltaTime * FMath::Max(SimTimeScale, 0.f);
+
         const float DeltaT = EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
         WireTemperatureC += DeltaT;
     }
@@ -153,8 +141,6 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
 
-    UpdateWireVisual();
-
 #if ENABLE_DRAW_DEBUG
     if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
     {
@@ -163,7 +149,7 @@ void AWire::UpdateJouleHeating(float DeltaTime)
                                 : FColor::Yellow;
 
         DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 80.f),
-            FString::Printf(TEXT("%.0f C  %.1fA"), WireTemperatureC, CurrentAmps),
+            FString::Printf(TEXT("%.0f°C  %.1fA"), WireTemperatureC, CurrentAmps),
             nullptr, TempColor, 0.0f, true);
     }
 #endif
@@ -172,13 +158,19 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 void AWire::EmitHeatToNearby(float DeltaTime)
 {
     UWorld* World = GetWorld();
-    if (!World) return;
+    if (!World)
+    {
+        return;
+    }
 
     const float T_K = WireTemperatureC + 273.15f;
     const float EmitPowerW = WireEmissivity * StefanBoltzmannSigma * WireSurfaceAreaM2
         * FMath::Pow(T_K, 4.f);
 
-    if (EmitPowerW <= 0.f) return;
+    if (EmitPowerW <= 0.f)
+    {
+        return;
+    }
 
     TArray<FOverlapResult> Hits;
     FCollisionObjectQueryParams ObjParams = FCollisionObjectQueryParams::AllObjects;
@@ -192,11 +184,18 @@ void AWire::EmitHeatToNearby(float DeltaTime)
     for (const FOverlapResult& Hit : Hits)
     {
         AActor* Other = Hit.GetActor();
-        if (!Other || Other == this) continue;
+        if (!Other || Other == this)
+        {
+            continue;
+        }
 
         const float DistCm = FVector::Dist(GetActorLocation(), Other->GetActorLocation());
-        if (DistCm > HeatEmitRadius) continue;
+        if (DistCm > HeatEmitRadius)
+        {
+            continue;
+        }
 
+        // 거리에 따른 열량: 역제곱 법칙 + 페이드
         const float DistM = FMath::Max(DistCm / 100.f, 0.05f);
         const float FluxWm2 = EmitPowerW / (4.f * PI * DistM * DistM);
         const float Fade = FMath::Clamp(1.f - (DistCm / HeatEmitRadius), 0.f, 1.f);
@@ -225,38 +224,21 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    SegmentMIDs.Empty();
+    UMaterialInterface* TargetMat = bPoweredFinal ? OnMaterial : OffMaterial;
+    if (!TargetMat)
+    {
+        return;
+    }
 
     for (USplineMeshComponent* Mesh : SegmentMeshes)
     {
-        if (!IsValid(Mesh)) continue;
-
-        if (bPoweredFinal && OnMaterial)
-        {
-            UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
-            Mesh->SetMaterial(0, MID);
-            SegmentMIDs.Add(MID);
-        }
-        else if (OffMaterial)
+        if (IsValid(Mesh))
         {
             const int32 NumMaterials = Mesh->GetNumMaterials();
             for (int32 i = 0; i < NumMaterials; ++i)
             {
-                Mesh->SetMaterial(i, OffMaterial);
+                Mesh->SetMaterial(i, TargetMat);
             }
-        }
-    }
-}
-
-void AWire::UpdateWireVisual()
-{
-    const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
-
-    for (UMaterialInstanceDynamic* MID : SegmentMIDs)
-    {
-        if (MID)
-        {
-            MID->SetScalarParameterValue(WireHeatParamName, Alpha);
         }
     }
 }
@@ -272,22 +254,30 @@ void AWire::ClearGeneratedMeshes()
         }
     }
     SegmentMeshes.Empty();
-    SegmentMIDs.Empty();
 }
 
 void AWire::RebuildSplineMeshes()
 {
     ClearGeneratedMeshes();
 
-    if (!Spline || !SegmentMesh) return;
+    if (!Spline || !SegmentMesh)
+    {
+        return;
+    }
 
     const int32 NumPoints = Spline->GetNumberOfSplinePoints();
-    if (NumPoints < 2) return;
+    if (NumPoints < 2)
+    {
+        return;
+    }
 
     for (int32 i = 0; i < NumPoints - 1; ++i)
     {
         USplineMeshComponent* SplineMesh = NewObject<USplineMeshComponent>(this);
-        if (!SplineMesh) continue;
+        if (!SplineMesh)
+        {
+            continue;
+        }
 
         SplineMesh->SetMobility(EComponentMobility::Movable);
         SplineMesh->CreationMethod = EComponentCreationMethod::UserConstructionScript;
@@ -296,7 +286,7 @@ void AWire::RebuildSplineMeshes()
         SplineMesh->SetForwardAxis(ESplineMeshAxis::Z, false);
         SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         SplineMesh->SetGenerateOverlapEvents(true);
-        SplineMesh->SetCollisionObjectType(ECC_GameTraceChannel2);
+        SplineMesh->SetCollisionObjectType(ECC_WorldDynamic);
         SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
         SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
         SplineMesh->RegisterComponent();
@@ -323,14 +313,20 @@ void AWire::RefreshConnectedActors()
 
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
-        if (!Segment) continue;
+        if (!Segment)
+        {
+            continue;
+        }
 
         TArray<AActor*> OverlappingActors;
         Segment->GetOverlappingActors(OverlappingActors);
 
         for (AActor* A : OverlappingActors)
         {
-            if (!A || A == this) continue;
+            if (!A || A == this)
+            {
+                continue;
+            }
 
             if (A->ActorHasTag(FName("Metal")))
             {
