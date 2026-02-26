@@ -1,4 +1,3 @@
-// Wire.cpp
 #include "Wire.h"
 #include "Transformation_actor.h"
 #include "Temperature.h"
@@ -8,11 +7,9 @@
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
-#include "Engine/Engine.h"
 #include "CollisionQueryParams.h"
 #include "Engine/EngineTypes.h"
 
@@ -69,14 +66,6 @@ void AWire::Tick(float DeltaTime)
     if (WireTemperatureC > HeatEmitThresholdC)
     {
         EmitHeatToNearby(DeltaTime);
-    }
-
-    // 스플라인 중점에 빨간 구 — 조건 없이 무조건 표시
-    if (Spline)
-    {
-        const float HalfDist = Spline->GetSplineLength() * 0.5f;
-        const FVector MidWorld = Spline->GetLocationAtDistanceAlongSpline(HalfDist, ESplineCoordinateSpace::World);
-        DrawDebugSphere(GetWorld(), MidWorld, IceHeatZoneRadius, 20, FColor::Red, false, -1.f, 0, 2.f);
     }
 }
 
@@ -146,17 +135,6 @@ void AWire::UpdateJouleHeating(float DeltaTime)
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
 
     UpdateWireVisual();
-
-    if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
-    {
-        const FColor TempColor = (WireTemperatureC > 400.f) ? FColor::Red
-                                : (WireTemperatureC > 200.f) ? FColor::Orange
-                                : FColor::Yellow;
-
-        DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 80.f),
-            FString::Printf(TEXT("%.0f C  %.1fA"), WireTemperatureC, CurrentAmps),
-            nullptr, TempColor, 0.0f, true);
-    }
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)
@@ -180,13 +158,8 @@ void AWire::EmitHeatToNearby(float DeltaTime)
     {
         TArray<FOverlapResult> Hits;
         GetWorld()->OverlapMultiByObjectType(
-            Hits,
-            Center,
-            FQuat::Identity,
-            ObjParams,
-            FCollisionShape::MakeSphere(Radius),
-            QParams
-        );
+            Hits, Center, FQuat::Identity, ObjParams,
+            FCollisionShape::MakeSphere(Radius), QParams);
 
         for (const FOverlapResult& H : Hits)
         {
@@ -194,8 +167,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
             if (!Ice) continue;
 
             const float DistCm = FVector::Dist(Center, Ice->GetActorLocation());
-            const float DistM  = FMath::Max(DistCm / 100.f, 0.05f);
-
+            const float DistM = FMath::Max(DistCm / 100.f, 0.05f);
             const float FluxWm2 = EmitPowerW / (4.f * PI * DistM * DistM);
             const float Fade = FMath::Clamp(1.f - (DistCm / Radius), 0.f, 1.f);
             const float EnergyJ = FluxWm2 * IceReceiveAreaM2 * Fade * DeltaTime * Multiplier;
@@ -223,35 +195,11 @@ void AWire::OnIceHeatZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActo
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (!OtherActor || OtherActor == this) return;
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan,
-            FString::Printf(TEXT("[IceHeatZone] 진입: %s"), *OtherActor->GetName()));
-    }
 }
 
 void AWire::OnIceHeatZoneEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-    if (!OtherActor || OtherActor == this) return;
-
-    static const FName StopHeatingName(TEXT("StopHeating"));
-    if (UFunction* Fn = OtherActor->FindFunction(StopHeatingName))
-        OtherActor->ProcessEvent(Fn, nullptr);
-}
-
-void AWire::EnsureIceHeating()
-{
-    if (!IceHeatZone) return;
-    if (!bPoweredFinal || WireTemperatureC < IceHeatThresholdC) return;
-
-    TArray<AActor*> Actors;
-    IceHeatZone->GetOverlappingActors(Actors);
-
-    static const FName StartHeatingName(TEXT("StartHeating"));
-    static const FName IsHeatingName(TEXT("IsHeating"));
-
 }
 
 void AWire::UpdateConnectionPoint()
@@ -292,6 +240,14 @@ void AWire::UpdateWireVisual()
     const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
     for (UMaterialInstanceDynamic* MID : SegmentMIDs)
         if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
+
+    const float TempRatio = FMath::Clamp(
+        (WireTemperatureC - AmbientTemperatureC) / (MaxWireTemperatureC - AmbientTemperatureC),
+        0.f, 1.f);
+    const int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
+
+    for (USplineMeshComponent* Mesh : SegmentMeshes)
+        if (Mesh) Mesh->SetCustomDepthStencilValue(StencilVal);
 }
 
 void AWire::ClearGeneratedMeshes()
@@ -337,14 +293,16 @@ void AWire::RebuildSplineMeshes()
         SplineMesh->SetCollisionObjectType(ECC_GameTraceChannel2);
         SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
         SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        SplineMesh->SetRenderCustomDepth(true);
+        SplineMesh->SetCustomDepthStencilValue(0);
         SplineMesh->RegisterComponent();
 
         SegmentMeshes.Add(SplineMesh);
 
         const FVector StartPos = Spline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
         const FVector StartTan = Spline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-        const FVector EndPos   = Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
-        const FVector EndTan   = Spline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+        const FVector EndPos = Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+        const FVector EndTan = Spline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
 
         SplineMesh->SetStartAndEnd(StartPos, StartTan, EndPos, EndTan, true);
         SplineMesh->SetStartScale(SegmentScale);
@@ -366,9 +324,8 @@ void AWire::RebuildSplineMeshes()
         HeatSpheres.Add(HeatSphere);
     }
 
-    // 스플라인 중점에 IceHeatZone (충돌용)
     {
-        const int32 MidIndex   = (NumPoints - 1) / 2;
+        const int32 MidIndex = (NumPoints - 1) / 2;
         const FVector MidLocal = Spline->GetLocationAtSplinePoint(MidIndex, ESplineCoordinateSpace::Local);
 
         IceHeatZone = NewObject<USphereComponent>(this);
@@ -384,7 +341,7 @@ void AWire::RebuildSplineMeshes()
         IceHeatZone->bDrawOnlyIfSelected = false;
         IceHeatZone->ShapeColor = FColor::Red;
         IceHeatZone->OnComponentBeginOverlap.AddDynamic(this, &AWire::OnIceHeatZoneBeginOverlap);
-        IceHeatZone->OnComponentEndOverlap.AddDynamic(this,   &AWire::OnIceHeatZoneEndOverlap);
+        IceHeatZone->OnComponentEndOverlap.AddDynamic(this, &AWire::OnIceHeatZoneEndOverlap);
         IceHeatZone->RegisterComponent();
     }
 

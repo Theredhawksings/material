@@ -1,4 +1,3 @@
-// Wire.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -70,12 +69,6 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Wire|Connection")
     float RefreshInterval = 0.10f;
 
-    UPROPERTY(EditAnywhere, Category = "Wire|Debug")
-    bool bDebugWire = true;
-
-    UPROPERTY(EditAnywhere, Category = "Wire|Debug")
-    bool bShowHeatSpheres = true;
-
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Electrical")
     float BatteryVoltage = 0.f;
 
@@ -124,14 +117,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
     float WireTempVisualScale = 0.002f;
 
-    // 스플라인 중점 얼음 감지 구 설정
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|IceHeat")
     float IceHeatZoneRadius = 350.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|IceHeat")
     float IceHeatThresholdC = 80.f;
 
-    // 얼음 녹는 속도 배율 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|IceHeat")
     float IceHeatMultiplier = 10000.f;
 
@@ -149,9 +140,7 @@ private:
     void UpdateJouleHeating(float DeltaTime);
     void EmitHeatToNearby(float DeltaTime);
     void UpdateWireVisual();
-    void EnsureIceHeating(); // ★ 추가
 
-    // ★ 추가
     UFUNCTION()
     void OnIceHeatZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -169,7 +158,7 @@ private:
     TArray<TObjectPtr<USphereComponent>> HeatSpheres;
 
     UPROPERTY()
-    TObjectPtr<USphereComponent> IceHeatZone; // ★ 추가
+    TObjectPtr<USphereComponent> IceHeatZone;
 
     UPROPERTY()
     TArray<TObjectPtr<AActor>> ConnectedActors;
