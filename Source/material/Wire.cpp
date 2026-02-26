@@ -1,14 +1,20 @@
+// Wire.cpp
 #include "Wire.h"
 #include "Transformation_actor.h"
+#include "Temperature.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
+#include "Engine/Engine.h"
+#include "CollisionQueryParams.h"
+#include "Engine/EngineTypes.h"
 
 AWire::AWire()
 {
@@ -59,6 +65,19 @@ void AWire::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     UpdateJouleHeating(DeltaTime);
+
+    if (WireTemperatureC > HeatEmitThresholdC)
+    {
+        EmitHeatToNearby(DeltaTime);
+    }
+
+    // 스플라인 중점에 빨간 구 — 조건 없이 무조건 표시
+    if (Spline)
+    {
+        const float HalfDist = Spline->GetSplineLength() * 0.5f;
+        const FVector MidWorld = Spline->GetLocationAtDistanceAlongSpline(HalfDist, ESplineCoordinateSpace::World);
+        DrawDebugSphere(GetWorld(), MidWorld, IceHeatZoneRadius, 20, FColor::Red, false, -1.f, 0, 2.f);
+    }
 }
 
 void AWire::SetBatteryVoltage(float NewVoltage)
@@ -69,10 +88,7 @@ void AWire::SetBatteryVoltage(float NewVoltage)
 void AWire::UpdateFinalPower()
 {
     const bool bNewFinal = (bPoweredBySource || bPoweredByMetal);
-    if (bPoweredFinal == bNewFinal)
-    {
-        return;
-    }
+    if (bPoweredFinal == bNewFinal) return;
 
     bPoweredFinal = bNewFinal;
     ApplyPower();
@@ -87,42 +103,30 @@ void AWire::UpdateFinalPower()
 
 void AWire::SetPowered(bool bNewPowered)
 {
-    if (bPoweredBySource == bNewPowered)
-    {
-        return;
-    }
-
+    if (bPoweredBySource == bNewPowered) return;
     bPoweredBySource = bNewPowered;
-
-    if (!bNewPowered)
-    {
-        bPoweredByMetal = false;
-    }
-
+    if (!bNewPowered) bPoweredByMetal = false;
     UpdateFinalPower();
 }
 
 void AWire::SetPoweredByMetal(bool bNewPoweredByMetal)
 {
-    if (bPoweredByMetal == bNewPoweredByMetal)
-    {
-        return;
-    }
-
+    if (bPoweredByMetal == bNewPoweredByMetal) return;
     bPoweredByMetal = bNewPoweredByMetal;
+    if (!bPoweredByMetal) BatteryVoltage = 0.f;
     UpdateFinalPower();
 }
 
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal && BatteryVoltage > 0.f)
+    if (bPoweredFinal)
     {
         const float R = FMath::Max(Resistance, 0.01f);
-        CurrentAmps = BatteryVoltage / R;
+        const float V = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
+        CurrentAmps = V / R;
 
         const float JoulePowerW = CurrentAmps * CurrentAmps * R;
         const float EnergyJ = JoulePowerW * DeltaTime * FMath::Max(SimTimeScale, 0.f);
-
         const float DeltaT = EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
         WireTemperatureC += DeltaT;
     }
@@ -141,7 +145,8 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
 
-#if ENABLE_DRAW_DEBUG
+    UpdateWireVisual();
+
     if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
     {
         const FColor TempColor = (WireTemperatureC > 400.f) ? FColor::Red
@@ -149,67 +154,104 @@ void AWire::UpdateJouleHeating(float DeltaTime)
                                 : FColor::Yellow;
 
         DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 80.f),
-            FString::Printf(TEXT("%.0f°C  %.1fA"), WireTemperatureC, CurrentAmps),
+            FString::Printf(TEXT("%.0f C  %.1fA"), WireTemperatureC, CurrentAmps),
             nullptr, TempColor, 0.0f, true);
     }
-#endif
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)
 {
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
-    }
+    if (!GetWorld()) return;
 
     const float T_K = WireTemperatureC + 273.15f;
     const float EmitPowerW = WireEmissivity * StefanBoltzmannSigma * WireSurfaceAreaM2
         * FMath::Pow(T_K, 4.f);
 
-    if (EmitPowerW <= 0.f)
+    if (EmitPowerW <= 0.f) return;
+
+    FCollisionObjectQueryParams ObjParams;
+    ObjParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+    ObjParams.AddObjectTypesToQuery(ECC_PhysicsBody);
+
+    FCollisionQueryParams QParams(SCENE_QUERY_STAT(WireHeatOverlap), false);
+    QParams.AddIgnoredActor(this);
+
+    auto HeatAt = [&](const FVector& Center, float Radius, float Multiplier)
     {
-        return;
-    }
+        TArray<FOverlapResult> Hits;
+        GetWorld()->OverlapMultiByObjectType(
+            Hits,
+            Center,
+            FQuat::Identity,
+            ObjParams,
+            FCollisionShape::MakeSphere(Radius),
+            QParams
+        );
 
-    TArray<FOverlapResult> Hits;
-    FCollisionObjectQueryParams ObjParams = FCollisionObjectQueryParams::AllObjects;
-    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WireHeat), false, this);
-
-    World->OverlapMultiByObjectType(Hits, GetActorLocation(), FQuat::Identity,
-        ObjParams, FCollisionShape::MakeSphere(HeatEmitRadius), QueryParams);
-
-    static const FName ReceiveHeatName(TEXT("ReceiveHeatEnergy"));
-
-    for (const FOverlapResult& Hit : Hits)
-    {
-        AActor* Other = Hit.GetActor();
-        if (!Other || Other == this)
+        for (const FOverlapResult& H : Hits)
         {
-            continue;
-        }
+            ATransformation_actor* Ice = Cast<ATransformation_actor>(H.GetActor());
+            if (!Ice) continue;
 
-        const float DistCm = FVector::Dist(GetActorLocation(), Other->GetActorLocation());
-        if (DistCm > HeatEmitRadius)
-        {
-            continue;
-        }
+            const float DistCm = FVector::Dist(Center, Ice->GetActorLocation());
+            const float DistM  = FMath::Max(DistCm / 100.f, 0.05f);
 
-        // 거리에 따른 열량: 역제곱 법칙 + 페이드
-        const float DistM = FMath::Max(DistCm / 100.f, 0.05f);
-        const float FluxWm2 = EmitPowerW / (4.f * PI * DistM * DistM);
-        const float Fade = FMath::Clamp(1.f - (DistCm / HeatEmitRadius), 0.f, 1.f);
-        const float EnergyJ = FluxWm2 * Fade * DeltaTime;
+            const float FluxWm2 = EmitPowerW / (4.f * PI * DistM * DistM);
+            const float Fade = FMath::Clamp(1.f - (DistCm / Radius), 0.f, 1.f);
+            const float EnergyJ = FluxWm2 * IceReceiveAreaM2 * Fade * DeltaTime * Multiplier;
 
-        if (EnergyJ > 0.f)
-        {
-            if (UFunction* Fn = Other->FindFunction(ReceiveHeatName))
+            if (EnergyJ > 0.f)
             {
-                float Param = EnergyJ;
-                Other->ProcessEvent(Fn, &Param);
+                Ice->ReceiveHeatEnergy(EnergyJ, WireTemperatureC);
             }
         }
+    };
+
+    for (USphereComponent* Sphere : HeatSpheres)
+    {
+        if (!Sphere) continue;
+        HeatAt(Sphere->GetComponentLocation(), HeatEmitRadius, SegmentHeatMultiplier);
     }
+
+    if (IceHeatZone && WireTemperatureC >= IceHeatThresholdC)
+    {
+        HeatAt(IceHeatZone->GetComponentLocation(), IceHeatZoneRadius, IceHeatMultiplier);
+    }
+}
+
+void AWire::OnIceHeatZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+    bool bFromSweep, const FHitResult& SweepResult)
+{
+    if (!OtherActor || OtherActor == this) return;
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan,
+            FString::Printf(TEXT("[IceHeatZone] 진입: %s"), *OtherActor->GetName()));
+    }
+}
+
+void AWire::OnIceHeatZoneEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+    if (!OtherActor || OtherActor == this) return;
+
+    static const FName StopHeatingName(TEXT("StopHeating"));
+    if (UFunction* Fn = OtherActor->FindFunction(StopHeatingName))
+        OtherActor->ProcessEvent(Fn, nullptr);
+}
+
+void AWire::EnsureIceHeating()
+{
+    if (!IceHeatZone) return;
+    if (!bPoweredFinal || WireTemperatureC < IceHeatThresholdC) return;
+
+    TArray<AActor*> Actors;
+    IceHeatZone->GetOverlappingActors(Actors);
+
+    static const FName StartHeatingName(TEXT("StartHeating"));
+    static const FName IsHeatingName(TEXT("IsHeating"));
+
 }
 
 void AWire::UpdateConnectionPoint()
@@ -224,60 +266,66 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    UMaterialInterface* TargetMat = bPoweredFinal ? OnMaterial : OffMaterial;
-    if (!TargetMat)
-    {
-        return;
-    }
+    SegmentMIDs.Empty();
 
     for (USplineMeshComponent* Mesh : SegmentMeshes)
     {
-        if (IsValid(Mesh))
+        if (!IsValid(Mesh)) continue;
+
+        if (bPoweredFinal && OnMaterial)
+        {
+            UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
+            Mesh->SetMaterial(0, MID);
+            SegmentMIDs.Add(MID);
+        }
+        else if (OffMaterial)
         {
             const int32 NumMaterials = Mesh->GetNumMaterials();
             for (int32 i = 0; i < NumMaterials; ++i)
-            {
-                Mesh->SetMaterial(i, TargetMat);
-            }
+                Mesh->SetMaterial(i, OffMaterial);
         }
     }
+}
+
+void AWire::UpdateWireVisual()
+{
+    const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
+    for (UMaterialInstanceDynamic* MID : SegmentMIDs)
+        if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
 }
 
 void AWire::ClearGeneratedMeshes()
 {
     for (USplineMeshComponent* Comp : SegmentMeshes)
-    {
-        if (Comp)
-        {
-            Comp->UnregisterComponent();
-            Comp->DestroyComponent();
-        }
-    }
+        if (Comp) { Comp->UnregisterComponent(); Comp->DestroyComponent(); }
     SegmentMeshes.Empty();
+    SegmentMIDs.Empty();
+
+    for (USphereComponent* Sphere : HeatSpheres)
+        if (Sphere) { Sphere->UnregisterComponent(); Sphere->DestroyComponent(); }
+    HeatSpheres.Empty();
+
+    if (IceHeatZone)
+    {
+        IceHeatZone->UnregisterComponent();
+        IceHeatZone->DestroyComponent();
+        IceHeatZone = nullptr;
+    }
 }
 
 void AWire::RebuildSplineMeshes()
 {
     ClearGeneratedMeshes();
 
-    if (!Spline || !SegmentMesh)
-    {
-        return;
-    }
+    if (!Spline || !SegmentMesh) return;
 
     const int32 NumPoints = Spline->GetNumberOfSplinePoints();
-    if (NumPoints < 2)
-    {
-        return;
-    }
+    if (NumPoints < 2) return;
 
     for (int32 i = 0; i < NumPoints - 1; ++i)
     {
         USplineMeshComponent* SplineMesh = NewObject<USplineMeshComponent>(this);
-        if (!SplineMesh)
-        {
-            continue;
-        }
+        if (!SplineMesh) continue;
 
         SplineMesh->SetMobility(EComponentMobility::Movable);
         SplineMesh->CreationMethod = EComponentCreationMethod::UserConstructionScript;
@@ -286,7 +334,7 @@ void AWire::RebuildSplineMeshes()
         SplineMesh->SetForwardAxis(ESplineMeshAxis::Z, false);
         SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         SplineMesh->SetGenerateOverlapEvents(true);
-        SplineMesh->SetCollisionObjectType(ECC_WorldDynamic);
+        SplineMesh->SetCollisionObjectType(ECC_GameTraceChannel2);
         SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
         SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
         SplineMesh->RegisterComponent();
@@ -295,12 +343,49 @@ void AWire::RebuildSplineMeshes()
 
         const FVector StartPos = Spline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
         const FVector StartTan = Spline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-        const FVector EndPos = Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
-        const FVector EndTan = Spline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+        const FVector EndPos   = Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+        const FVector EndTan   = Spline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
 
         SplineMesh->SetStartAndEnd(StartPos, StartTan, EndPos, EndTan, true);
         SplineMesh->SetStartScale(SegmentScale);
         SplineMesh->SetEndScale(SegmentScale);
+
+        USphereComponent* HeatSphere = NewObject<USphereComponent>(this);
+        HeatSphere->SetMobility(EComponentMobility::Movable);
+        HeatSphere->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+        HeatSphere->SetupAttachment(SplineMesh);
+        HeatSphere->SetRelativeLocation(FVector::ZeroVector);
+        HeatSphere->SetSphereRadius(HeatEmitRadius);
+        HeatSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        HeatSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+        HeatSphere->SetGenerateOverlapEvents(true);
+        HeatSphere->SetHiddenInGame(true);
+        HeatSphere->SetVisibility(false);
+        HeatSphere->RegisterComponent();
+
+        HeatSpheres.Add(HeatSphere);
+    }
+
+    // 스플라인 중점에 IceHeatZone (충돌용)
+    {
+        const int32 MidIndex   = (NumPoints - 1) / 2;
+        const FVector MidLocal = Spline->GetLocationAtSplinePoint(MidIndex, ESplineCoordinateSpace::Local);
+
+        IceHeatZone = NewObject<USphereComponent>(this);
+        IceHeatZone->SetMobility(EComponentMobility::Movable);
+        IceHeatZone->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+        IceHeatZone->SetupAttachment(Spline);
+        IceHeatZone->SetRelativeLocation(MidLocal);
+        IceHeatZone->SetSphereRadius(IceHeatZoneRadius);
+        IceHeatZone->SetCollisionProfileName(TEXT("Trigger"));
+        IceHeatZone->SetGenerateOverlapEvents(true);
+        IceHeatZone->SetHiddenInGame(false);
+        IceHeatZone->SetVisibility(true);
+        IceHeatZone->bDrawOnlyIfSelected = false;
+        IceHeatZone->ShapeColor = FColor::Red;
+        IceHeatZone->OnComponentBeginOverlap.AddDynamic(this, &AWire::OnIceHeatZoneBeginOverlap);
+        IceHeatZone->OnComponentEndOverlap.AddDynamic(this,   &AWire::OnIceHeatZoneEndOverlap);
+        IceHeatZone->RegisterComponent();
     }
 
     ApplyPower();
@@ -313,30 +398,21 @@ void AWire::RefreshConnectedActors()
 
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
-        if (!Segment)
-        {
-            continue;
-        }
+        if (!Segment) continue;
 
         TArray<AActor*> OverlappingActors;
         Segment->GetOverlappingActors(OverlappingActors);
 
         for (AActor* A : OverlappingActors)
         {
-            if (!A || A == this)
-            {
-                continue;
-            }
+            if (!A || A == this) continue;
 
             if (A->ActorHasTag(FName("Metal")))
             {
                 if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
                 {
                     ConnectedActors.AddUnique(Metal);
-                    if (Metal->IsElectrified())
-                    {
-                        bFoundPower = true;
-                    }
+                    if (Metal->IsElectrified()) bFoundPower = true;
                 }
             }
         }
@@ -348,10 +424,6 @@ void AWire::RefreshConnectedActors()
 void AWire::PropagatePowerToConnected()
 {
     for (AActor* Target : ConnectedActors)
-    {
         if (ATransformation_actor* Metal = Cast<ATransformation_actor>(Target))
-        {
             Metal->SetPowered(bPoweredFinal);
-        }
-    }
 }
