@@ -53,6 +53,7 @@ struct FBlockFormSpec
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float MassKg = 10.0f;
+    
 };
 
 UCLASS()
@@ -92,6 +93,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="Ice|Heating")
     void StartHeating(ATemperature* FireRef);
+
+    UFUNCTION()
+    void ReceiveHeatEnergy(float EnergyJ, float SourceTempC);
 
     UFUNCTION(BlueprintCallable, Category="Ice|Heating")
     void StopHeating();

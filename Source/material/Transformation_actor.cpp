@@ -468,6 +468,32 @@ void ATransformation_actor::StartHeating(ATemperature* FireRef)
     }
 }
 
+// 전선
+void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
+{
+    if (CurrentForm != EBlockForm::Ice) return;
+    if (!MeshComp) return;
+    if (EnergyJ <= 0.f) return;
+
+    EnergyAccumJ += EnergyJ * FMath::Max(SimTimeScale, 0.0f);
+    MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+    ApplyIceMeltVisual(MeltAlpha);
+
+    if (GEngine)
+    {
+        const FVector S = MeshComp->GetComponentScale();
+        GEngine->AddOnScreenDebugMessage(
+            -1, 0.0f, FColor::Cyan,
+            FString::Printf(TEXT("[IceMelt] %s | Scale(%.3f,%.3f,%.3f) +%.2fJ Accum:%.1fJ Alpha:%.3f Temp:%.0fC"),
+                *GetName(), S.X, S.Y, S.Z, EnergyJ, EnergyAccumJ, MeltAlpha, SourceTempC));
+    }
+
+    if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
+    {
+        Destroy();
+    }
+}
+
 void ATransformation_actor::StopHeating()
 {
     bHeating = false;
