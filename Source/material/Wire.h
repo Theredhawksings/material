@@ -69,6 +69,9 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Wire|Connection")
     float RefreshInterval = 0.10f;
 
+    UPROPERTY(EditAnywhere, Category = "Wire|Debug")
+    bool bDebugWire = true;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Electrical")
     float BatteryVoltage = 0.f;
 

@@ -7,6 +7,7 @@
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
@@ -135,6 +136,19 @@ void AWire::UpdateJouleHeating(float DeltaTime)
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
 
     UpdateWireVisual();
+
+#if ENABLE_DRAW_DEBUG
+    if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
+    {
+        const FColor TempColor = (WireTemperatureC > 400.f) ? FColor::Red
+                                : (WireTemperatureC > 200.f) ? FColor::Orange
+                                : FColor::Yellow;
+
+        DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 80.f),
+            FString::Printf(TEXT("%.0f C  %.1fA"), WireTemperatureC, CurrentAmps),
+            nullptr, TempColor, 0.0f, true);
+    }
+#endif
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)
