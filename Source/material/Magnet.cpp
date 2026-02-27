@@ -2,6 +2,7 @@
 #include "Wire.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/SplineComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Temperature.h"
@@ -80,7 +81,7 @@ void AMagnet::Tick(float DeltaTime)
         UpdateElectroBoost();
         RefreshOverlappingMetals();
     }
-    
+
 #if ENABLE_DRAW_DEBUG
     if (bDebugDraw)
     {
@@ -168,6 +169,22 @@ void AMagnet::Tick(float DeltaTime)
             MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
         }
 
+#if ENABLE_DRAW_DEBUG
+        if (bDebugDraw)
+        {
+            const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
+            DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
+            DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
+            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
+                FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
+        }
+#endif
+    }
+
+    if (bEnableInduction)
+    {
+        ApplyInducedMagnetism();
+    }
 }
 
 void AMagnet::UpdateElectroBoost()
@@ -180,15 +197,47 @@ void AMagnet::UpdateElectroBoost()
 
     ContactedWires.Empty();
 
+    const FVector MyLoc = GetActorLocation();
+
     for (AActor* Actor : NearbyActors)
     {
         AWire* Wire = Cast<AWire>(Actor);
         if (!Wire) continue;
+        if (!Wire->IsPowered()) continue;
 
-        const float Dist = FVector::Dist(GetActorLocation(), Wire->GetActorLocation());
-        if (Dist > WireContactRadius) continue;
+        bool bClose = false;
 
-        if (Wire->IsPowered())
+        USplineComponent* WireSpline = Wire->GetSplineComponent();
+        if (WireSpline)
+        {
+            // 스플라인에서 가장 가까운 점 찾기
+            const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
+            if (FVector::Dist(MyLoc, Closest) <= WireContactRadius)
+            {
+                bClose = true;
+            }
+
+            // 포인트도 개별 체크
+            if (!bClose)
+            {
+                const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
+                for (int32 i = 0; i < NumPoints; ++i)
+                {
+                    const FVector PointWorld = WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
+                    if (FVector::Dist(MyLoc, PointWorld) <= WireContactRadius)
+                    {
+                        bClose = true;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            bClose = FVector::Dist(MyLoc, Wire->GetActorLocation()) <= WireContactRadius;
+        }
+
+        if (bClose)
         {
             bAnyPowered = true;
             TotalCurrent += Wire->GetWireTemperature() / 100.f;
@@ -196,10 +245,7 @@ void AMagnet::UpdateElectroBoost()
         }
     }
 
-    if (bElectroActive != bAnyPowered)
-    {
-        bElectroActive = bAnyPowered;
-    }
+    bElectroActive = bAnyPowered;
 
     if (bElectroActive)
     {

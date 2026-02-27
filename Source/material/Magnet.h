@@ -31,7 +31,7 @@ protected:
     UPROPERTY(VisibleAnywhere, Category = "Magnet")
     TObjectPtr<USphereComponent> MagnetRange;
 
-    UPROPERTY(VisibleAnywhere, Category = "Magnet")
+    UPROPERTY(VisibleAnywhere, Category = "Magnet|Electro")
     TObjectPtr<USphereComponent> WireContactRange;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
@@ -88,6 +88,12 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
     float MinDistanceForInduction = 200.f;
 
+    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
+    float WireContactRadius = 80.f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
+    float ElectroBoostMultiplier = 3.0f;
+
     UPROPERTY(EditAnywhere, Category = "Magnet|Advanced")
     float RefreshInterval = 0.1f;
 
@@ -96,13 +102,6 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Curie")
     bool bDemagnetized = false;
-
-    // 전선 연결 자력 부스트
-    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
-    float WireContactRadius = 80.f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
-    float ElectroBoostMultiplier = 3.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Electro")
     bool bElectroActive = false;
@@ -135,12 +134,12 @@ private:
     float TimeSinceLastRefresh = 0.f;
     float BaseStrength = 0.f;
 
-    void ApplyInducedMagnetism();
     void UpdateElectroBoost();
+    void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const;
     void CheckDemagnetize();
 
-    static constexpr float MaxForceClamp = 6e8f;
-    static constexpr float MaxInducedForceClamp = 3e8f;
+    static constexpr float MaxForceClamp = 6e7f;
+    static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
 };
