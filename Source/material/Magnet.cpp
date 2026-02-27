@@ -1,4 +1,5 @@
 #include "Magnet.h"
+#include "Wire.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/PrimitiveComponent.h"
@@ -20,6 +21,12 @@ AMagnet::AMagnet()
     MagnetRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     MagnetRange->SetCollisionResponseToAllChannels(ECR_Ignore);
     MagnetRange->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+
+    WireContactRange = CreateDefaultSubobject<USphereComponent>(TEXT("WireContactRange"));
+    WireContactRange->SetupAttachment(MagnetMesh);
+    WireContactRange->SetSphereRadius(WireContactRadius);
+    WireContactRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    WireContactRange->SetCollisionResponseToAllChannels(ECR_Overlap);
 }
 
 void AMagnet::BeginPlay()
@@ -31,9 +38,15 @@ void AMagnet::BeginPlay()
         Strength = MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
     }
 
+    BaseStrength = Strength;
+
     MagnetRange->SetSphereRadius(MaxDistance);
+    WireContactRange->SetSphereRadius(WireContactRadius);
+
     MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
     MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
+    WireContactRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnWireContactBegin);
+    WireContactRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnWireContactEnd);
 
     CheckDemagnetize();
 
@@ -64,8 +77,30 @@ void AMagnet::Tick(float DeltaTime)
             return;
         }
 
+        UpdateElectroBoost();
         RefreshOverlappingMetals();
     }
+    
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw)
+    {
+        if (bElectroActive)
+        {
+            DrawDebugSphere(GetWorld(), GetActorLocation(), WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
+            const float BoostRatio = (BaseStrength > 0.f) ? (Strength / BaseStrength) : 1.f;
+            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
+                FString::Printf(TEXT("[전자석 활성]\n연결 전선: %d개\n기본 자력: %.0f\n현재 자력: %.0f\n부스트: x%.2f"),
+                    ContactedWires.Num(), BaseStrength, Strength, BoostRatio),
+                nullptr, FColor::Cyan, 0.0f, true);
+        }
+        else
+        {
+            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
+                FString::Printf(TEXT("[일반 자석]\n자력: %.0f"), Strength),
+                nullptr, FColor::White, 0.0f, true);
+        }
+    }
+#endif
 
     if (OverlappingMetals.Num() == 0)
     {
@@ -133,20 +168,72 @@ void AMagnet::Tick(float DeltaTime)
             MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
         }
 
-#if ENABLE_DRAW_DEBUG
-        if (bDebugDraw)
+}
+
+void AMagnet::UpdateElectroBoost()
+{
+    bool bAnyPowered = false;
+    float TotalCurrent = 0.f;
+
+    TArray<AActor*> NearbyActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
+
+    ContactedWires.Empty();
+
+    for (AActor* Actor : NearbyActors)
+    {
+        AWire* Wire = Cast<AWire>(Actor);
+        if (!Wire) continue;
+
+        const float Dist = FVector::Dist(GetActorLocation(), Wire->GetActorLocation());
+        if (Dist > WireContactRadius) continue;
+
+        if (Wire->IsPowered())
         {
-            DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, FColor::Cyan, false, -1.f, 0, 2.f);
-            DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
-            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
-                FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
+            bAnyPowered = true;
+            TotalCurrent += Wire->GetWireTemperature() / 100.f;
+            ContactedWires.AddUnique(Wire);
         }
-#endif
     }
 
-    if (bEnableInduction)
+    if (bElectroActive != bAnyPowered)
     {
-        ApplyInducedMagnetism();
+        bElectroActive = bAnyPowered;
+    }
+
+    if (bElectroActive)
+    {
+        const float CurrentBoost = FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier);
+        Strength = BaseStrength * CurrentBoost;
+    }
+    else
+    {
+        Strength = BaseStrength;
+    }
+}
+
+void AMagnet::OnWireContactBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+    bool bFromSweep, const FHitResult& SweepResult)
+{
+    if (!OtherActor || OtherActor == this) return;
+
+    if (AWire* Wire = Cast<AWire>(OtherActor))
+    {
+        ContactedWires.AddUnique(Wire);
+        UpdateElectroBoost();
+    }
+}
+
+void AMagnet::OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+    if (!OtherActor) return;
+
+    if (AWire* Wire = Cast<AWire>(OtherActor))
+    {
+        ContactedWires.Remove(Wire);
+        UpdateElectroBoost();
     }
 }
 
@@ -175,7 +262,10 @@ void AMagnet::CheckDemagnetize()
         if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
         {
             bDemagnetized = true;
+            bElectroActive = false;
+            Strength = 0.f;
             OverlappingMetals.Empty();
+            ContactedWires.Empty();
 
 #if ENABLE_DRAW_DEBUG
             if (bDebugDraw)

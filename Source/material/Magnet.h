@@ -8,6 +8,7 @@ class UStaticMeshComponent;
 class USphereComponent;
 class UPrimitiveComponent;
 class ATemperature;
+class AWire;
 
 UCLASS()
 class MATERIAL_API AMagnet : public AActor
@@ -29,6 +30,9 @@ protected:
 
     UPROPERTY(VisibleAnywhere, Category = "Magnet")
     TObjectPtr<USphereComponent> MagnetRange;
+
+    UPROPERTY(VisibleAnywhere, Category = "Magnet")
+    TObjectPtr<USphereComponent> WireContactRange;
 
     UPROPERTY(EditAnywhere, Category = "Magnet")
     FName MetalTag = "Metal";
@@ -93,6 +97,16 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Curie")
     bool bDemagnetized = false;
 
+    // 전선 연결 자력 부스트
+    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
+    float WireContactRadius = 80.f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Electro")
+    float ElectroBoostMultiplier = 3.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Electro")
+    bool bElectroActive = false;
+
     UFUNCTION()
     void OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -102,17 +116,31 @@ protected:
     void OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
+    UFUNCTION()
+    void OnWireContactBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+        bool bFromSweep, const FHitResult& SweepResult);
+
+    UFUNCTION()
+    void OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 private:
     UPROPERTY()
     TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
 
+    UPROPERTY()
+    TArray<TObjectPtr<AWire>> ContactedWires;
+
     float TimeSinceLastRefresh = 0.f;
+    float BaseStrength = 0.f;
 
     void ApplyInducedMagnetism();
+    void UpdateElectroBoost();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const;
     void CheckDemagnetize();
 
-    static constexpr float MaxForceClamp = 6e7f;
-    static constexpr float MaxInducedForceClamp = 3e7f;
+    static constexpr float MaxForceClamp = 6e8f;
+    static constexpr float MaxInducedForceClamp = 3e8f;
     static constexpr float GravityAccel = 980.f;
 };
