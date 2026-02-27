@@ -380,6 +380,10 @@ void AWire::RefreshConnectedActors()
 
             if (A->ActorHasTag(FName("Metal")))
             {
+                const FVector SegMidWorld = Segment->GetComponentLocation();
+                const float Dist = FVector::Dist(SegMidWorld, A->GetActorLocation());
+                if (Dist > OverlapRadius * 3.f) continue; // 실제로 멀어졌으면 무시
+
                 if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
                 {
                     ConnectedActors.AddUnique(Metal);
