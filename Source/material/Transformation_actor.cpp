@@ -37,6 +37,9 @@ void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
 
+    MeshComp->SetRenderCustomDepth(true);
+    MeshComp->SetCustomDepthStencilValue(0);
+
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
     {
         ApplySpec(*Spec);
@@ -105,7 +108,7 @@ void ATransformation_actor::RefreshConnectedWires()
         }
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
-        
+
         if (bElectrified)
         {
             SetElectrified(false);
@@ -140,8 +143,8 @@ void ATransformation_actor::RefreshConnectedWires()
         if (!Wire) continue;
 
         ConnectedWires.AddUnique(Wire);
-        
-        if (Wire->IsPowered()) 
+
+        if (Wire->IsPowered())
         {
             bAnyPowerFound = true;
         }
@@ -170,6 +173,11 @@ void ATransformation_actor::SetElectrified(bool bNewElectrified)
 {
     if (bElectrified == bNewElectrified) return;
     bElectrified = bNewElectrified;
+
+    if (MeshComp)
+    {
+        MeshComp->SetCustomDepthStencilValue(bElectrified ? 180 : 0);
+    }
 }
 
 void ATransformation_actor::EnergizeWiresIfElectrified()
@@ -191,8 +199,8 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
         if (Wire->IsSourcePowered()) continue;
 
         Wire->SetPoweredByMetal(true);
-        Wire->RefreshConnectedActors(); 
-        
+        Wire->RefreshConnectedActors();
+
         Current.Add(Wire);
     }
     WiresEnergizedByMetal = MoveTemp(Current);
@@ -202,7 +210,6 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // === ICE 녹는 로직 ===
     if (CurrentForm == EBlockForm::Ice)
     {
         if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
@@ -235,115 +242,68 @@ void ATransformation_actor::Tick(float DeltaTime)
             }
         }
     }
-    
-    // === WOOD 연소 로직 ===
+
     if (CurrentForm == EBlockForm::Wood)
     {
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Cyan, 
-            FString::Printf(TEXT("Wood State - Burning: %s, Temp: %.1f°C, Target: %.0f°C"), 
-            bIsBurning ? TEXT("YES") : TEXT("NO"), WoodTemperatureC, WoodIgnitionTempC));
-    }
-
-    if (!bIsBurning)
-    {
-        if (bHeating && CurrentFire && MeshComp)
+        if (!bIsBurning)
         {
-            const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-            
-            if (GEngine)
+            if (bHeating && CurrentFire && MeshComp)
             {
-                GEngine->AddOnScreenDebugMessage(2, 0.0f, FColor::Yellow, 
-                    FString::Printf(TEXT("Heating! Distance: %.1fcm, MaxDist: %.1fcm"), 
-                    DistCm, CurrentFire->MaxHeatDistance));
-            }
+                const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
 
-            if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
-            {
-                const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
-                const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
-                float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
-                float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
-
-                if (CurrentFire->MaxHeatDistance > 0.0f)
+                if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
                 {
-                    const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
-                    ReceivedPowerW *= Fade;
-                }
+                    const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+                    const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+                    float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
+                    float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
 
-                const float MassKg = CurrentWoodMassKg;
-                const float DeltaT = (ReceivedPowerW * DeltaTime * WoodSimTimeScale) / (MassKg * SpecificHeatJPerKgK);
-                WoodTemperatureC += DeltaT;
-
-                if (GEngine)
-                {
-                    GEngine->AddOnScreenDebugMessage(3, 0.0f, FColor::Orange, 
-                        FString::Printf(TEXT("Power: %.1fW, DeltaT: %.3f°C, TimeScale: %.0fx"), 
-                        ReceivedPowerW, DeltaT, WoodSimTimeScale));
-                }
-
-                if (WoodTemperatureC >= WoodIgnitionTempC)
-                {
-                    bIsBurning = true;
-                    CurrentWoodMassKg = WoodMassKg;
-
-                    if (GEngine)
+                    if (CurrentFire->MaxHeatDistance > 0.0f)
                     {
-                        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, 
-                            FString::Printf(TEXT("🔥🔥🔥 WOOD IGNITED at %.0f°C! 🔥🔥🔥"), WoodTemperatureC));
+                        const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+                        ReceivedPowerW *= Fade;
+                    }
+
+                    const float MassKg = CurrentWoodMassKg;
+                    const float DeltaT = (ReceivedPowerW * DeltaTime * WoodSimTimeScale) / (MassKg * SpecificHeatJPerKgK);
+                    WoodTemperatureC += DeltaT;
+
+                    const float TempRatio = FMath::Clamp(WoodTemperatureC / WoodIgnitionTempC, 0.f, 1.f);
+                    MeshComp->SetCustomDepthStencilValue(FMath::RoundToInt(TempRatio * 255.f));
+
+                    if (WoodTemperatureC >= WoodIgnitionTempC)
+                    {
+                        bIsBurning = true;
+                        CurrentWoodMassKg = WoodMassKg;
                     }
                 }
             }
         }
         else
         {
-            if (GEngine)
-            {
-                GEngine->AddOnScreenDebugMessage(4, 0.0f, FColor::Red, 
-                    FString::Printf(TEXT("NOT Heating! bHeating:%s, Fire:%s, Mesh:%s"), 
-                    bHeating ? TEXT("Y") : TEXT("N"),
-                    CurrentFire ? TEXT("Y") : TEXT("N"),
-                    MeshComp ? TEXT("Y") : TEXT("N")));
-            }
-        }
-    }
-    else
-    {
-        const float BurnedMassKg = BurnRateKgPerSec * DeltaTime;
-        CurrentWoodMassKg -= BurnedMassKg;
-        CurrentWoodMassKg = FMath::Max(CurrentWoodMassKg, 0.0f);
+            const float BurnedMassKg = BurnRateKgPerSec * DeltaTime;
+            CurrentWoodMassKg -= BurnedMassKg;
+            CurrentWoodMassKg = FMath::Max(CurrentWoodMassKg, 0.0f);
 
-        BurnAlpha = 1.0f - (CurrentWoodMassKg / FMath::Max(WoodMassKg, 0.01f));
-        
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(5, 0.0f, FColor::Red, 
-                FString::Printf(TEXT("🔥 BURNING! Alpha: %.2f, Mass: %.2f/%.2f kg"), 
-                BurnAlpha, CurrentWoodMassKg, WoodMassKg));
-        }
-        
-        ApplyWoodBurnVisual(BurnAlpha);
+            BurnAlpha = 1.0f - (CurrentWoodMassKg / FMath::Max(WoodMassKg, 0.01f));
 
-        if (CurrentWoodMassKg <= 0.0f)
-        {
-            if (bDestroyWhenBurned)
+            MeshComp->SetCustomDepthStencilValue(255);
+
+            ApplyWoodBurnVisual(BurnAlpha);
+
+            if (CurrentWoodMassKg <= 0.0f)
             {
-                if (GEngine)
+                if (bDestroyWhenBurned)
                 {
-                    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, 
-                        TEXT("💀 Wood Completely Burned!"));
+                    Destroy();
                 }
-                Destroy();
-            }
-            else
-            {
-                bIsBurning = false;
+                else
+                {
+                    bIsBurning = false;
+                }
             }
         }
     }
-}
-
 }
 
 void ATransformation_actor::SetForm(EBlockForm NewForm)
@@ -362,7 +322,6 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     ATemperature* SavedFire = CurrentFire;
     bool bWasHeating = bHeating;
     FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);
-    FVector SavedBaseScale = BaseScaleBeforeMelt;
 
     if (CurrentForm == EBlockForm::Ice)
     {
@@ -396,6 +355,8 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     {
         ApplySpec(*Spec);
     }
+
+    MeshComp->SetCustomDepthStencilValue(0);
 
     if (MeshComp && SavedMeltAlpha > 0.0f)
     {
@@ -460,15 +421,13 @@ void ATransformation_actor::StartHeating(ATemperature* FireRef)
 {
     CurrentFire = FireRef;
     bHeating = (CurrentFire != nullptr);
-    
-    // Ice와 Wood만 가열 가능
+
     if (CurrentForm != EBlockForm::Ice && CurrentForm != EBlockForm::Wood)
     {
         bHeating = false;
     }
 }
 
-// 전선
 void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
 {
     if (CurrentForm != EBlockForm::Ice) return;
@@ -478,15 +437,6 @@ void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
     EnergyAccumJ += EnergyJ * FMath::Max(SimTimeScale, 0.0f);
     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
     ApplyIceMeltVisual(MeltAlpha);
-
-    if (GEngine)
-    {
-        const FVector S = MeshComp->GetComponentScale();
-        GEngine->AddOnScreenDebugMessage(
-            -1, 0.0f, FColor::Cyan,
-            FString::Printf(TEXT("[IceMelt] %s | Scale(%.3f,%.3f,%.3f) +%.2fJ Accum:%.1fJ Alpha:%.3f Temp:%.0fC"),
-                *GetName(), S.X, S.Y, S.Z, EnergyJ, EnergyAccumJ, MeltAlpha, SourceTempC));
-    }
 
     if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
     {
@@ -526,8 +476,6 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
     if (Spec.PhysMat) MeshComp->SetPhysMaterialOverride(Spec.PhysMat);
     if (Spec.bOverrideMass) MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
 }
-
-// ==================== ICE ====================
 
 void ATransformation_actor::EnterIceMode()
 {
@@ -587,26 +535,27 @@ void ATransformation_actor::RecalcIceMassAndEnergy()
 void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
 {
     if (!MeshComp) return;
-    
+
     const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
     const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
     const FVector From = BaseScaleBeforeMelt;
     const FVector To = BaseScaleBeforeMelt * Ratio;
     const FVector NewScale = FMath::Lerp(From, To, A);
     MeshComp->SetWorldScale3D(NewScale);
-    
-    if (IceMID) 
+
+    if (IceMID)
     {
         IceMID->SetScalarParameterValue(MeltParamName, A);
     }
 
+    const int32 IceStencil = FMath::RoundToInt(A * 120.f);
+    MeshComp->SetCustomDepthStencilValue(IceStencil);
+
     if (NewScale.X <= MinScaleRatio && NewScale.Y <= MinScaleRatio && NewScale.Z <= MinScaleRatio)
     {
-        Destroy(); 
+        Destroy();
     }
 }
-
-// ==================== WOOD ====================
 
 void ATransformation_actor::EnterWoodMode()
 {
@@ -614,7 +563,7 @@ void ATransformation_actor::EnterWoodMode()
 
     RecalcWoodMassAndVolume();
 
-    WoodTemperatureC = 20.0f;  
+    WoodTemperatureC = 20.0f;
     CurrentWoodMassKg = WoodMassKg;
     BurnAlpha = 0.0f;
     bIsBurning = false;
@@ -668,7 +617,7 @@ void ATransformation_actor::RecalcWoodMassAndVolume()
     );
     const FVector SizeCm = LocalBounds.BoxExtent * 2.0f * SafeBaseScale;
     const FVector SizeM = SizeCm / 100.0f;
-    
+
     WoodVolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
     WoodMassKg = WoodDensityKgM3 * WoodVolumeM3;
 
@@ -689,11 +638,10 @@ void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
         BurnMID->SetScalarParameterValue(BurnParamName, A);
     }
 
-    // ρ = m/V → V_new = m_new/ρ → Scale ∝ ∛V
-    const float MassRatio = (1.0f - A);  
+    const float MassRatio = (1.0f - A);
     const float VolumeRatio = FMath::Max(MassRatio, MinBurnScaleRatio);
-    const float ScaleRatio = FMath::Pow(VolumeRatio, 1.0f / 3.0f);  // 입방근
-    
+    const float ScaleRatio = FMath::Pow(VolumeRatio, 1.0f / 3.0f);
+
     const FVector NewScale = BaseScaleBeforeBurn * ScaleRatio;
     MeshComp->SetWorldScale3D(NewScale);
 }
