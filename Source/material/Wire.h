@@ -27,6 +27,7 @@ public:
     bool IsPowered() const { return bPoweredFinal; }
     bool IsSourcePowered() const { return bPoweredBySource; }
     float GetWireTemperature() const { return WireTemperatureC; }
+    USplineComponent* GetSplineComponent() const { return Spline; }
 
     void RefreshConnectedActors();
     void ApplyPower();
