@@ -37,7 +37,8 @@ void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
 
-    MeshComp->SetRenderCustomDepth(true);
+    // 기본 OFF
+    MeshComp->SetRenderCustomDepth(false);
     MeshComp->SetCustomDepthStencilValue(0);
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
@@ -173,11 +174,6 @@ void ATransformation_actor::SetElectrified(bool bNewElectrified)
 {
     if (bElectrified == bNewElectrified) return;
     bElectrified = bNewElectrified;
-
-    if (MeshComp)
-    {
-        MeshComp->SetCustomDepthStencilValue(bElectrified ? 180 : 0);
-    }
 }
 
 void ATransformation_actor::EnergizeWiresIfElectrified()
@@ -210,6 +206,7 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    // ===== ICE =====
     if (CurrentForm == EBlockForm::Ice)
     {
         if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
@@ -230,6 +227,9 @@ void ATransformation_actor::Tick(float DeltaTime)
 
                 if (ReceivedPowerW > 0.0f)
                 {
+                    // 녹는 중 → 열화상 ON
+                    MeshComp->SetRenderCustomDepth(true);
+
                     EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
                     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
                     ApplyIceMeltVisual(MeltAlpha);
@@ -243,6 +243,7 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
     }
 
+    // ===== WOOD =====
     if (CurrentForm == EBlockForm::Wood)
     {
         if (!bIsBurning)
@@ -268,6 +269,8 @@ void ATransformation_actor::Tick(float DeltaTime)
                     const float DeltaT = (ReceivedPowerW * DeltaTime * WoodSimTimeScale) / (MassKg * SpecificHeatJPerKgK);
                     WoodTemperatureC += DeltaT;
 
+                    // 가열 중 → 열화상 ON
+                    MeshComp->SetRenderCustomDepth(true);
                     const float TempRatio = FMath::Clamp(WoodTemperatureC / WoodIgnitionTempC, 0.f, 1.f);
                     MeshComp->SetCustomDepthStencilValue(FMath::RoundToInt(TempRatio * 255.f));
 
@@ -287,6 +290,8 @@ void ATransformation_actor::Tick(float DeltaTime)
 
             BurnAlpha = 1.0f - (CurrentWoodMassKg / FMath::Max(WoodMassKg, 0.01f));
 
+            // 연소 중 → 열화상 ON
+            MeshComp->SetRenderCustomDepth(true);
             MeshComp->SetCustomDepthStencilValue(255);
 
             ApplyWoodBurnVisual(BurnAlpha);
@@ -300,6 +305,9 @@ void ATransformation_actor::Tick(float DeltaTime)
                 else
                 {
                     bIsBurning = false;
+                    // 다 타면 → 열화상 OFF
+                    MeshComp->SetRenderCustomDepth(false);
+                    MeshComp->SetCustomDepthStencilValue(0);
                 }
             }
         }
@@ -356,6 +364,8 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         ApplySpec(*Spec);
     }
 
+    // 폼 전환 시 OFF
+    MeshComp->SetRenderCustomDepth(false);
     MeshComp->SetCustomDepthStencilValue(0);
 
     if (MeshComp && SavedMeltAlpha > 0.0f)
@@ -434,6 +444,9 @@ void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
     if (!MeshComp) return;
     if (EnergyJ <= 0.f) return;
 
+    // 녹는 중 → 열화상 ON
+    MeshComp->SetRenderCustomDepth(true);
+
     EnergyAccumJ += EnergyJ * FMath::Max(SimTimeScale, 0.0f);
     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
     ApplyIceMeltVisual(MeltAlpha);
@@ -448,6 +461,17 @@ void ATransformation_actor::StopHeating()
 {
     bHeating = false;
     CurrentFire = nullptr;
+
+    // 가열 중단 → 열화상 OFF (단, Wood 연소 중이면 유지)
+    if (MeshComp)
+    {
+        if (CurrentForm == EBlockForm::Wood && bIsBurning)
+        {
+            return;
+        }
+        MeshComp->SetRenderCustomDepth(false);
+        MeshComp->SetCustomDepthStencilValue(0);
+    }
 }
 
 const FBlockFormSpec* ATransformation_actor::FindSpec(EBlockForm Form) const
@@ -548,9 +572,6 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
         IceMID->SetScalarParameterValue(MeltParamName, A);
     }
 
-    const int32 IceStencil = FMath::RoundToInt(A * 120.f);
-    MeshComp->SetCustomDepthStencilValue(IceStencil);
-
     if (NewScale.X <= MinScaleRatio && NewScale.Y <= MinScaleRatio && NewScale.Z <= MinScaleRatio)
     {
         Destroy();
@@ -644,4 +665,4 @@ void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
 
     const FVector NewScale = BaseScaleBeforeBurn * ScaleRatio;
     MeshComp->SetWorldScale3D(NewScale);
-}
+}   
