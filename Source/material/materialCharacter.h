@@ -112,6 +112,15 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Animation")
 	float WalkSpeedThreshold = 10.f;
 
+	UPROPERTY(EditAnywhere, Category = "Thermal")
+	TObjectPtr<UMaterialParameterCollection> HeatMPC;
+
+	UPROPERTY(EditAnywhere, Category = "Thermal", meta = (ClampMin = "0.05", ClampMax = "2.0"))
+	float HeatGlowWidth = 0.25f;
+
+	UPROPERTY(EditAnywhere, Category = "Thermal", meta = (ClampMin = "0.05", ClampMax = "2.0"))
+	float HeatGlowHeight = 0.2f;
+
 	FVector HeldLocalExtent = FVector(50.f);
 	FTimerHandle AttachmentTimerHandle;
 	FTimerHandle PickupEndTimerHandle;
