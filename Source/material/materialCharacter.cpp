@@ -216,7 +216,7 @@ void AmaterialCharacter::Tick(float DeltaTime)
             {
                 // 캐릭터 자신
                 FVector2D ScreenPos;
-				if (PC->ProjectWorldLocationToScreen(GetActorLocation() + FVector(0.f, 0.f, 45.f), ScreenPos))
+				if (PC->ProjectWorldLocationToScreen(GetActorLocation() + FVector(0.f, 0.f, 60.f), ScreenPos))
                 {
                     int32 SizeX, SizeY;
                     PC->GetViewportSize(SizeX, SizeY);
