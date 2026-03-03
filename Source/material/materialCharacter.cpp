@@ -11,8 +11,6 @@
 #include "InputAction.h"
 #include "Animation/AnimSequence.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Materials/MaterialParameterCollection.h"
-#include "Materials/MaterialParameterCollectionInstance.h"
 #include "Transformation_actor.h"
 #include "TimerManager.h"
 
@@ -22,6 +20,7 @@ AmaterialCharacter::AmaterialCharacter()
 	, bIsPlayingWalk(false)
 	, bWasHolding(false)
 	, bIsPickingUp(false)
+	, bThermalOn(false)
 {
 	PrimaryActorTick.bCanEverTick = true;
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
@@ -143,11 +142,22 @@ AmaterialCharacter::AmaterialCharacter()
 		GetMesh()->SetMaterial(0, PlayerMat.Object);
 	}
 
-	static ConstructorHelpers::FObjectFinder<UMaterialParameterCollection> HeatMPCAsset(
-		TEXT("/Script/Engine.MaterialParameterCollection'/Game/MPC_HeatSources.MPC_HeatSources'"));
-	if (HeatMPCAsset.Succeeded())
+	// 열 글로우 구
+	HeatGlowSphere = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeatGlowSphere"));
+	HeatGlowSphere->SetupAttachment(RootComponent);
+	HeatGlowSphere->SetRelativeLocation(FVector(0.f, 0.f, 60.f));
+	HeatGlowSphere->SetRelativeScale3D(FVector(4.f, 4.f, 4.f));
+	HeatGlowSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeatGlowSphere->SetCastShadow(false);
+	HeatGlowSphere->SetHiddenInGame(true);
+	HeatGlowSphere->SetRenderInMainPass(false);
+	HeatGlowSphere->SetVisibility(false);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(
+		TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	if (SphereMesh.Succeeded())
 	{
-		HeatMPC = HeatMPCAsset.Object;
+		HeatGlowSphere->SetStaticMesh(SphereMesh.Object);
 	}
 }
 
@@ -166,10 +176,7 @@ void AmaterialCharacter::BeginPlay()
 	}
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
-	if (!MeshComp)
-	{
-		return;
-	}
+	if (!MeshComp) return;
 
 	MeshComp->SetRenderCustomDepth(true);
 	MeshComp->SetCustomDepthStencilValue(CustomDepthStencilValue);
@@ -192,45 +199,25 @@ void AmaterialCharacter::BeginPlay()
 		BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
 		BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
 	}
+
+	// 열 글로우 구 CustomDepth 설정
+	if (HeatGlowSphere)
+	{
+		HeatGlowSphere->SetRenderCustomDepth(true);
+		HeatGlowSphere->SetCustomDepthStencilValue(50);
+	}
 }
 
 void AmaterialCharacter::Tick(float DeltaTime)
 {
-    Super::Tick(DeltaTime);
+	Super::Tick(DeltaTime);
 
-    if (HeldActor)
-    {
-        UpdateHoldPivotTransform();
-    }
+	if (HeldActor)
+	{
+		UpdateHoldPivotTransform();
+	}
 
-    UpdateAnimation();
-
-    // MPC 열 위치 업데이트
-    // MPC 열 위치 업데이트
-if (HeatMPC)
-{
-    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-    if (PC)
-    {
-        UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-        if (MPCInst)
-        {
-            FVector2D ScreenPos;
-            if (PC->ProjectWorldLocationToScreen(GetActorLocation() + FVector(0.f, 0.f, 60.f), ScreenPos))
-            {
-                int32 SizeX, SizeY;
-                PC->GetViewportSize(SizeX, SizeY);
-                float NX = ScreenPos.X / (float)SizeX;
-                float NY = ScreenPos.Y / (float)SizeY;
-                MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(NX, NY, HeatGlowWidth, HeatGlowHeight));
-            }
-            else
-            {
-                MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(0.f, 0.f, 0.f, 0.f));
-            }
-        }
-    }
-}
+	UpdateAnimation();
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -240,12 +227,10 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	PlayerInputComponent->BindAction("ChangeForm", IE_Pressed, this, &AmaterialCharacter::ChangeForm);
 	PlayerInputComponent->BindAction("Hold", IE_Pressed, this, &AmaterialCharacter::HoldPressed);
 	PlayerInputComponent->BindAction("Checkweight", IE_Pressed, this, &AmaterialCharacter::CheckWeight);
+	PlayerInputComponent->BindAction("ThermalVision", IE_Pressed, this, &AmaterialCharacter::ToggleThermal);
 
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
-	if (!EIC)
-	{
-		return;
-	}
+	if (!EIC) return;
 
 	if (IA_Move)      EIC->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
 	if (IA_Look)      EIC->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AmaterialCharacter::Look);
@@ -258,18 +243,21 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	}
 }
 
+void AmaterialCharacter::ToggleThermal()
+{
+	bThermalOn = !bThermalOn;
+	if (HeatGlowSphere)
+	{
+		HeatGlowSphere->SetRenderCustomDepth(bThermalOn);
+	}
+}
+
 void AmaterialCharacter::Move(const FInputActionValue& Value)
 {
-	if (!Controller || bIsPickingUp)
-	{
-		return;
-	}
+	if (!Controller || bIsPickingUp) return;
 
 	const FVector2D Axis = Value.Get<FVector2D>();
-	if (Axis.IsNearlyZero())
-	{
-		return;
-	}
+	if (Axis.IsNearlyZero()) return;
 
 	const FRotationMatrix RotMatrix(FRotator(0.f, Controller->GetControlRotation().Yaw, 0.f));
 	AddMovementInput(RotMatrix.GetUnitAxis(EAxis::X), Axis.Y);
@@ -283,22 +271,12 @@ void AmaterialCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(Axis.Y);
 }
 
-void AmaterialCharacter::JumpStarted()
-{
-	Jump();
-}
-
-void AmaterialCharacter::JumpStopped()
-{
-	StopJumping();
-}
+void AmaterialCharacter::JumpStarted()  { Jump(); }
+void AmaterialCharacter::JumpStopped()  { StopJumping(); }
 
 void AmaterialCharacter::ChangeForm()
 {
-	if (!FollowCamera)
-	{
-		return;
-	}
+	if (!FollowCamera) return;
 
 	const FVector Start = FollowCamera->GetComponentLocation();
 	const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
@@ -346,22 +324,13 @@ void AmaterialCharacter::CheckWeight()
 
 void AmaterialCharacter::HoldPressed()
 {
-	if (HeldActor)
-	{
-		DropHeld();
-	}
-	else
-	{
-		TryPickup();
-	}
+	if (HeldActor) DropHeld();
+	else TryPickup();
 }
 
 bool AmaterialCharacter::TryPickup()
 {
-	if (!FollowCamera || bIsPickingUp)
-	{
-		return false;
-	}
+	if (!FollowCamera || bIsPickingUp) return false;
 
 	const FVector Start = FollowCamera->GetComponentLocation();
 	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange;
@@ -371,28 +340,19 @@ bool AmaterialCharacter::TryPickup()
 
 	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
 		ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params))
-	{
 		return false;
-	}
 
 	AActor* Target = Hit.GetActor();
-	if (!Target)
-	{
-		return false;
-	}
+	if (!Target) return false;
 
 	const bool bHasValidTag = PickupTags.ContainsByPredicate([Target](const FName& Tag)
 	{
 		return Target->ActorHasTag(Tag);
 	});
 
-	if (!bHasValidTag)
-	{
-		return false;
-	}
+	if (!bHasValidTag) return false;
 
 	SetPrimitiveComponentsPhysics(Target, false);
-
 	PendingPickupActor = Target;
 
 	if (PickupAnim && GetMesh())
@@ -416,10 +376,7 @@ bool AmaterialCharacter::TryPickup()
 
 void AmaterialCharacter::HandleActualAttachment()
 {
-	if (!PendingPickupActor || !HoldPivot)
-	{
-		return;
-	}
+	if (!PendingPickupActor || !HoldPivot) return;
 
 	CaptureHeldLocalExtent(PendingPickupActor);
 
@@ -431,7 +388,6 @@ void AmaterialCharacter::HandleActualAttachment()
 	HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
 
 	UpdateHoldPivotTransform();
-
 	ApplyWeightSpeedPenalty(HeldActor);
 }
 
@@ -452,16 +408,10 @@ void AmaterialCharacter::OnPickupAnimFinished()
 
 void AmaterialCharacter::DropHeld()
 {
-	if (!HeldActor)
-	{
-		return;
-	}
+	if (!HeldActor) return;
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
-	if (!PickupAnim || !MeshComp)
-	{
-		return;
-	}
+	if (!PickupAnim || !MeshComp) return;
 
 	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	MeshComp->SetAnimation(PickupAnim);
@@ -471,17 +421,12 @@ void AmaterialCharacter::DropHeld()
 
 	bIsPickingUp = true;
 
-	const float AnimDuration = PickupAnim->GetPlayLength();
-
 	FTimerHandle DropTimerHandle;
 	GetWorld()->GetTimerManager().SetTimer(
 		DropTimerHandle,
 		[this]()
 		{
-			if (!HeldActor)
-			{
-				return;
-			}
+			if (!HeldActor) return;
 
 			const FVector DropLocation = HeldActor->GetActorLocation()
 				+ GetActorForwardVector() * DropForwardOffset;
@@ -511,26 +456,23 @@ void AmaterialCharacter::DropHeld()
 
 			UpdateAnimation();
 		},
-		AnimDuration, false);
+		PickupAnim->GetPlayLength(), false);
 }
 
 void AmaterialCharacter::ApplyWeightSpeedPenalty(AActor* Actor)
 {
-    if (!Actor) return;
+	if (!Actor) return;
 
-    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-    if (!MoveComp) return;
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp) return;
 
-    OriginalMaxWalkSpeed = MoveComp->MaxWalkSpeed;
-    MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * 0.5f; 
+	OriginalMaxWalkSpeed = MoveComp->MaxWalkSpeed;
+	MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * 0.5f;
 }
 
 void AmaterialCharacter::RestoreWalkSpeed()
 {
-	if (OriginalMaxWalkSpeed <= 0.f)
-	{
-		return;
-	}
+	if (OriginalMaxWalkSpeed <= 0.f) return;
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (MoveComp)
@@ -545,6 +487,7 @@ void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
 {
 	if (!Actor)
 	{
+		HeldLocalExtent = FVector(50.f);
 		return;
 	}
 
@@ -560,10 +503,7 @@ void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
 	FBox Box(ForceInit);
 	for (const UPrimitiveComponent* PC : PrimComps)
 	{
-		if (PC)
-		{
-			Box += PC->CalcBounds(FTransform::Identity).GetBox();
-		}
+		if (PC) Box += PC->CalcBounds(FTransform::Identity).GetBox();
 	}
 
 	HeldLocalExtent = Box.IsValid ? Box.GetExtent() : FVector(50.f);
@@ -571,10 +511,7 @@ void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
 
 void AmaterialCharacter::UpdateHoldPivotTransform()
 {
-	if (!HoldPivot)
-	{
-		return;
-	}
+	if (!HoldPivot) return;
 
 	constexpr float LeftShift = -0.35f;
 	constexpr float ForwardShift = -0.4f;
@@ -591,10 +528,7 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 
 void AmaterialCharacter::UpdateAnimation()
 {
-	if (bIsPickingUp || !GetMesh())
-	{
-		return;
-	}
+	if (bIsPickingUp || !GetMesh()) return;
 
 	const bool bMoving = IsMoving();
 	const bool bHolding = (HeldActor != nullptr);
@@ -609,10 +543,7 @@ void AmaterialCharacter::UpdateAnimation()
 
 UAnimSequence* AmaterialCharacter::GetAnimForState(bool bMoving, bool bHolding) const
 {
-	if (bMoving)
-	{
-		return bHolding ? WalkBringAnim : WalkAnim;
-	}
+	if (bMoving) return bHolding ? WalkBringAnim : WalkAnim;
 	return bHolding ? IdleBringAnim : IdleAnim;
 }
 
@@ -626,10 +557,7 @@ void AmaterialCharacter::PlayAnimIfValid(UAnimSequence* Anim, bool bLooping) con
 
 void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnable) const
 {
-	if (!Actor)
-	{
-		return;
-	}
+	if (!Actor) return;
 
 	TArray<UPrimitiveComponent*> PrimComps;
 	Actor->GetComponents<UPrimitiveComponent>(PrimComps);
