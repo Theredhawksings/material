@@ -206,27 +206,31 @@ void AmaterialCharacter::Tick(float DeltaTime)
     UpdateAnimation();
 
     // MPC 열 위치 업데이트
-    if (HeatMPC)
+    // MPC 열 위치 업데이트
+if (HeatMPC)
+{
+    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+    if (PC)
     {
-        APlayerController* PC = Cast<APlayerController>(GetController());
-        if (PC)
+        UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
+        if (MPCInst)
         {
-            UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-            if (MPCInst)
+            FVector2D ScreenPos;
+            if (PC->ProjectWorldLocationToScreen(GetActorLocation() + FVector(0.f, 0.f, 60.f), ScreenPos))
             {
-                // 캐릭터 자신
-                FVector2D ScreenPos;
-				if (PC->ProjectWorldLocationToScreen(GetActorLocation() + FVector(0.f, 0.f, 60.f), ScreenPos))
-                {
-                    int32 SizeX, SizeY;
-                    PC->GetViewportSize(SizeX, SizeY);
-                    float NX = ScreenPos.X / (float)SizeX;
-                    float NY = ScreenPos.Y / (float)SizeY;
-					MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(NX, NY, HeatGlowWidth, HeatGlowHeight));
-                }
+                int32 SizeX, SizeY;
+                PC->GetViewportSize(SizeX, SizeY);
+                float NX = ScreenPos.X / (float)SizeX;
+                float NY = ScreenPos.Y / (float)SizeY;
+                MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(NX, NY, HeatGlowWidth, HeatGlowHeight));
+            }
+            else
+            {
+                MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(0.f, 0.f, 0.f, 0.f));
             }
         }
     }
+}
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

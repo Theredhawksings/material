@@ -116,10 +116,10 @@ private:
 	TObjectPtr<UMaterialParameterCollection> HeatMPC;
 
 	UPROPERTY(EditAnywhere, Category = "Thermal", meta = (ClampMin = "0.05", ClampMax = "2.0"))
-	float HeatGlowWidth = 0.25f;
+	float HeatGlowWidth = 0.02f;
 
 	UPROPERTY(EditAnywhere, Category = "Thermal", meta = (ClampMin = "0.05", ClampMax = "2.0"))
-	float HeatGlowHeight = 0.2f;
+	float HeatGlowHeight = 0.04f;
 
 	FVector HeldLocalExtent = FVector(50.f);
 	FTimerHandle AttachmentTimerHandle;

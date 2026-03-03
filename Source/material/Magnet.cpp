@@ -398,6 +398,7 @@ void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherAct
         }
     }
 }
+
 void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
