@@ -113,6 +113,28 @@ void AMagnet::Tick(float DeltaTime)
     const bool bMagnetSimulating = MagnetMesh->IsSimulatingPhysics();
     const float StrengthTimesMultiplier = Strength * ForceMultiplier;
 
+    for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
+    {
+        UPrimitiveComponent* Comp = It->Get();
+        if (!IsValid(Comp))
+        {
+            It.RemoveCurrent();
+            continue;
+        }
+
+        AActor* OwnerActor = Comp->GetOwner();
+        if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag))
+        {
+            It.RemoveCurrent();
+            continue;
+        }
+    }
+
+    if (OverlappingMetals.Num() == 0)
+    {
+        return;
+    }
+
     for (UPrimitiveComponent* MetalComp : OverlappingMetals)
     {
         if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics())
@@ -133,7 +155,8 @@ void AMagnet::Tick(float DeltaTime)
         const float DirDot = FVector::DotProduct(Dir, MagnetForward);
         const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
 
-        float ForceMag = (StrengthTimesMultiplier * DirectionFactor) / FMath::Pow(Distance, MagneticDecayExponent);
+        const float SafeDist = FMath::Max(Distance, MinDistance);
+        float ForceMag = (StrengthTimesMultiplier * DirectionFactor) / FMath::Pow(SafeDist, MagneticDecayExponent);
 
         const float MetalMass = MetalComp->GetMass();
         ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
@@ -355,28 +378,26 @@ void AMagnet::RefreshOverlappingMetals()
 void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (bDemagnetized)
-    {
-        return;
-    }
-
-    if (!OtherActor || OtherActor == this || !OtherComp)
-    {
-        return;
-    }
+    if (bDemagnetized) return;
+    if (!OtherActor || OtherActor == this || !OtherComp) return;
 
     if (OtherActor->ActorHasTag(MetalTag) && OtherComp->IsSimulatingPhysics())
     {
-        OverlappingMetals.Add(OtherComp);
+        const bool bAlreadyInside = OverlappingMetals.Contains(OtherComp);
 
-        if (bApplyInitialImpulse)
+        if (!bAlreadyInside)
         {
-            const FVector ToMagnet = (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation()).GetSafeNormal();
-            OtherComp->AddImpulse(ToMagnet * InitialImpulseStrength * OtherComp->GetMass());
+            OverlappingMetals.Add(OtherComp);
+
+            if (bApplyInitialImpulse)
+            {
+                const FVector ToMagnet =
+                    (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation()).GetSafeNormal();
+                OtherComp->AddImpulse(ToMagnet * InitialImpulseStrength * OtherComp->GetMass());
+            }
         }
     }
 }
-
 void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
