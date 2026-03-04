@@ -15,6 +15,23 @@ class UStaticMeshComponent;
 class USceneComponent;
 class ATransformation_actor;
 
+// ===================== [추가] 열 잔상 슬롯 구조체 =====================
+struct FHeatSlot
+{
+	FVector Position;
+	float   Temperature; // 1.0 → 0.0 으로 감소
+	float   Radius;      // 초기 반경에서 점점 줄어듦
+	bool    bActive;
+
+	FHeatSlot()
+		: Position(FVector::ZeroVector)
+		, Temperature(0.f)
+		, Radius(0.f)
+		, bActive(false)
+	{}
+};
+// ====================================================================
+
 UCLASS()
 class MATERIAL_API AmaterialCharacter : public ACharacter
 {
@@ -84,8 +101,24 @@ private:
 	FTimerHandle PickupEndTimerHandle;
 
 	uint8 bIsPlayingWalk : 1;
-	uint8 bWasHolding : 1;
-	uint8 bIsPickingUp : 1;
+	uint8 bWasHolding    : 1;
+	uint8 bIsPickingUp   : 1;
+
+	// ===================== [추가] 열 잔상 슬롯 시스템 =====================
+	// MPC 슬롯 0번 = 캐릭터 본인(HeatPos1), 슬롯 1~7 = 잔상(HeatPos2~8)
+	// 총 8개 슬롯, 캐릭터 전용 1개 + 잔상 7개
+
+	TArray<FHeatSlot> HeatPool; // 잔상 전용 (7개)
+	FTimerHandle      HeatSpawnTimer;
+
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.15f; // 잔상 생성 간격(초)
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate       = 0.8f;  // 초당 온도 감소
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 60.f;  // 초당 반경 감소
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius  = 300.f; // 잔상 초기 반경
+
+	void SpawnHeatSlot();                    // 새 잔상 슬롯 생성
+	void UpdateHeatSlots(float DeltaTime);   // 매 틱 슬롯 온도/반경 감소 + MPC 업데이트
+	// ====================================================================
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -109,18 +142,18 @@ private:
 
 	FORCEINLINE bool IsMoving() const { return GetVelocity().SizeSquared2D() > (WalkSpeedThreshold * WalkSpeedThreshold); }
 
-	static constexpr float CameraArmLength = 350.f;
-	static constexpr float CameraSocketOffsetZ = 80.f;
-	static constexpr float CameraLagSpeed = 6.0f;
-	static constexpr float CameraRotLagSpeed = 12.0f;
-	static constexpr float JumpVelocity = 600.f;
-	static constexpr float AirControl = 0.2f;
-	static constexpr float RotationRate = 540.f;
-	static constexpr float MeshOffsetZ = -90.f;
-	static constexpr float MeshRotationYaw = 90.f;
-	static constexpr float PickupAnimAttachTime = 1.125f;
-	static constexpr float PickupSphereRadius = 75.f;
-	static constexpr float InteractSphereRadius = 50.f;
-	static constexpr float DropForwardOffset = 3.f;
-	static constexpr float DropDetachTime = 0.83f;
+	static constexpr float CameraArmLength       = 350.f;
+	static constexpr float CameraSocketOffsetZ   = 80.f;
+	static constexpr float CameraLagSpeed        = 6.0f;
+	static constexpr float CameraRotLagSpeed     = 12.0f;
+	static constexpr float JumpVelocity          = 600.f;
+	static constexpr float AirControl            = 0.2f;
+	static constexpr float RotationRate          = 540.f;
+	static constexpr float MeshOffsetZ           = -90.f;
+	static constexpr float MeshRotationYaw       = 90.f;
+	static constexpr float PickupAnimAttachTime  = 1.125f;
+	static constexpr float PickupSphereRadius    = 75.f;
+	static constexpr float InteractSphereRadius  = 50.f;
+	static constexpr float DropForwardOffset     = 3.f;
+	static constexpr float DropDetachTime        = 0.83f;
 };
