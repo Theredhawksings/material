@@ -41,7 +41,7 @@
 		CameraBoom->TargetArmLength = CameraArmLength;
 		CameraBoom->SocketOffset = FVector(0.f, 0.f, CameraSocketOffsetZ);
 		CameraBoom->bUsePawnControlRotation = true;
-		CameraBoom->bEnableCameraLag = true;
+		CameraBoom->bEnableCameraLag = false;
 		CameraBoom->CameraLagSpeed = CameraLagSpeed;
 		CameraBoom->bEnableCameraRotationLag = true;
 		CameraBoom->CameraRotationLagSpeed = CameraRotLagSpeed;
@@ -302,7 +302,7 @@
 		CaptureHeldLocalExtent(PendingPickupActor);
 		HeldActor = PendingPickupActor;
 		PendingPickupActor = nullptr;
-		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);60
+		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
 		HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
 		UpdateHoldPivotTransform();
