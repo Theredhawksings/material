@@ -132,7 +132,7 @@
 	void AmaterialCharacter::BeginPlay()
 	{
 		Super::BeginPlay();
-
+		
 		if (const APlayerController* PC = Cast<APlayerController>(GetController()))
 		{
 			if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
@@ -181,7 +181,7 @@
 			UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
 			if (MPCInst)
 			{
-				FVector Pos = GetActorLocation() + FVector(60.f, 0.f, 60.f);
+				FVector Pos = GetActorLocation() + FVector(0.f, 0.f, 0.f);
 				MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(Pos.X, Pos.Y, Pos.Z, 300.f));
 			}
 		}
@@ -302,7 +302,7 @@
 		CaptureHeldLocalExtent(PendingPickupActor);
 		HeldActor = PendingPickupActor;
 		PendingPickupActor = nullptr;
-		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);60
 		HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
 		HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
 		UpdateHoldPivotTransform();
