@@ -167,8 +167,7 @@ void AmaterialCharacter::BeginPlay()
 		BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
 		BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
 
-		BackpackComp->SetRenderCustomDepth(true);
-    	BackpackComp->SetCustomDepthStencilValue(1);
+		
 	}
 
 	HeatPool.SetNum(7);
@@ -186,26 +185,39 @@ void AmaterialCharacter::BeginPlay()
 
 void AmaterialCharacter::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 
-	if (HeldActor) UpdateHoldPivotTransform();
-	UpdateAnimation();
+    if (HeldActor) UpdateHoldPivotTransform();
+    UpdateAnimation();
 
-	if (HeatMPC)
-	{
-		UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-		if (MPCInst)
-		{
-			FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-			MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(Pos.X, Pos.Y, Pos.Z, 300.f));
-		}
-	}
+    if (HeatMPC)
+    {
+        UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
+        if (MPCInst)
+        {
+            // 이동 중이고 픽업 중이 아닐 때만 HeatPos1 활성화
+            if (IsMoving() && !bIsPickingUp)
+            {
+                FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
+                MPCInst->SetVectorParameterValue(FName("HeatPos1"),
+                    FLinearColor(Pos.X, Pos.Y, Pos.Z, 300.f));
+            }
+            else
+            {
+                MPCInst->SetVectorParameterValue(FName("HeatPos1"),
+                    FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
+            }
+        }
+    }
 
-	UpdateHeatSlots(DeltaTime);
+    UpdateHeatSlots(DeltaTime);
 }
 
 void AmaterialCharacter::SpawnHeatSlot()
 {
+
+	if (!IsMoving() || bIsPickingUp) return;
+
 	for (FHeatSlot& Slot : HeatPool)
 	{
 		if (!Slot.bActive)
@@ -233,12 +245,23 @@ void AmaterialCharacter::SpawnHeatSlot()
 	HeatPool[OldestIdx].bActive     = true;
 }
 
-// ===================== [추가] 잔상 업데이트 =====================
 void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 {
 	if (!HeatMPC) return;
 	UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
 	if (!MPCInst) return;
+
+	if (!IsMoving() || bIsPickingUp)
+    {
+        for (int32 i = 0; i < HeatPool.Num(); i++)
+        {
+            HeatPool[i].bActive = false;
+            FName ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
+            MPCInst->SetVectorParameterValue(ParamName,
+                FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
+        }
+        return;
+    }
 
 	for (int32 i = 0; i < HeatPool.Num(); i++)
 	{
@@ -248,7 +271,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 
 		if (!Slot.bActive)
 		{
-			// 비활성 슬롯은 카메라에서 아주 멀리 보내서 영향 없게
 			MPCInst->SetVectorParameterValue(ParamName,
 				FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
 			continue;
