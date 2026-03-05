@@ -166,15 +166,15 @@ void AmaterialCharacter::BeginPlay()
 		BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
 		BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
 		BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
+
+		BackpackComp->SetRenderCustomDepth(true);
+    	BackpackComp->SetCustomDepthStencilValue(1);
 	}
 
-	// ===================== [추가] 열 잔상 풀 초기화 =====================
-	// 잔상 전용 슬롯 7개 (MPC HeatPos2~HeatPos8)
 	HeatPool.SetNum(7);
 	for (FHeatSlot& Slot : HeatPool)
 		Slot.bActive = false;
 
-	// 잔상 스폰 타이머 시작
 	GetWorld()->GetTimerManager().SetTimer(
 		HeatSpawnTimer,
 		this,
@@ -196,33 +196,27 @@ void AmaterialCharacter::Tick(float DeltaTime)
 		UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
 		if (MPCInst)
 		{
-			// HeatPos1 = 캐릭터 본인 (항상 최고 온도)
-			FVector Pos = GetActorLocation() + FVector(0.f, 0.f, 0.f);
+			FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
 			MPCInst->SetVectorParameterValue(FName("HeatPos1"), FLinearColor(Pos.X, Pos.Y, Pos.Z, 300.f));
 		}
 	}
 
-	// ===================== [추가] 잔상 슬롯 업데이트 =====================
 	UpdateHeatSlots(DeltaTime);
-	// ====================================================================
 }
 
-// ===================== [추가] 잔상 스폰 =====================
 void AmaterialCharacter::SpawnHeatSlot()
 {
-	// 비활성 슬롯 중 가장 앞에 있는 것을 재사용
 	for (FHeatSlot& Slot : HeatPool)
 	{
 		if (!Slot.bActive)
 		{
-			Slot.Position    = GetActorLocation() + FVector(0.f, 0.f, 0.f);
+			Slot.Position    = GetActorLocation() + FVector(0.f, 0.f, -90.f);
 			Slot.Temperature = 1.0f;
 			Slot.Radius      = HeatInitialRadius;
 			Slot.bActive     = true;
 			return;
 		}
 	}
-	// 모든 슬롯이 활성화된 경우 가장 오래된 슬롯(온도가 가장 낮은 것) 덮어쓰기
 	int32 OldestIdx = 0;
 	float MinTemp   = HeatPool[0].Temperature;
 	for (int32 i = 1; i < HeatPool.Num(); i++)
@@ -233,7 +227,7 @@ void AmaterialCharacter::SpawnHeatSlot()
 			OldestIdx  = i;
 		}
 	}
-	HeatPool[OldestIdx].Position    = GetActorLocation() + FVector(0.f, 0.f, 0.f);
+	HeatPool[OldestIdx].Position    = GetActorLocation() + FVector(0.f, 0.f, -90.f);
 	HeatPool[OldestIdx].Temperature = 1.0f;
 	HeatPool[OldestIdx].Radius      = HeatInitialRadius;
 	HeatPool[OldestIdx].bActive     = true;
@@ -250,7 +244,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 	{
 		FHeatSlot& Slot = HeatPool[i];
 
-		// MPC 파라미터 이름: HeatPos2 ~ HeatPos8 (i+2)
 		FName ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
 
 		if (!Slot.bActive)
@@ -261,11 +254,9 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 			continue;
 		}
 
-		// 온도 및 반경 감소
 		Slot.Temperature -= HeatCoolRate    * DeltaTime;
 		Slot.Radius      -= HeatRadiusDecay * DeltaTime;
 
-		// 임계값 이하면 비활성화
 		if (Slot.Temperature < 0.05f || Slot.Radius < 10.f)
 		{
 			Slot.bActive = false;
@@ -274,7 +265,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 			continue;
 		}
 
-		// MPC 업데이트: W = Radius * Temperature (PP 머티리얼에서 이걸로 색상 결정)
 		MPCInst->SetVectorParameterValue(ParamName,
 			FLinearColor(
 				Slot.Position.X,

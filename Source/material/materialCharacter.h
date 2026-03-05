@@ -104,20 +104,17 @@ private:
 	uint8 bWasHolding    : 1;
 	uint8 bIsPickingUp   : 1;
 
-	// ===================== [추가] 열 잔상 슬롯 시스템 =====================
-	// MPC 슬롯 0번 = 캐릭터 본인(HeatPos1), 슬롯 1~7 = 잔상(HeatPos2~8)
-	// 총 8개 슬롯, 캐릭터 전용 1개 + 잔상 7개
 
-	TArray<FHeatSlot> HeatPool; // 잔상 전용 (7개)
+	TArray<FHeatSlot> HeatPool; 
 	FTimerHandle      HeatSpawnTimer;
 
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.15f; // 잔상 생성 간격(초)
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.5f; // 잔상 생성 간격(초)
 	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate       = 0.8f;  // 초당 온도 감소
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 60.f;  // 초당 반경 감소
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 20.f;  // 초당 반경 감소
 	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius  = 300.f; // 잔상 초기 반경
 
-	void SpawnHeatSlot();                    // 새 잔상 슬롯 생성
-	void UpdateHeatSlots(float DeltaTime);   // 매 틱 슬롯 온도/반경 감소 + MPC 업데이트
+	void SpawnHeatSlot();                   
+	void UpdateHeatSlots(float DeltaTime);  
 	// ====================================================================
 
 	void Move(const FInputActionValue& Value);
