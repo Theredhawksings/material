@@ -248,18 +248,7 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 	if (!HeatMPC) return;
 	UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
 	if (!MPCInst) return;
-
-	if (!IsMoving() || bIsPickingUp)
-    {
-        for (int32 i = 0; i < HeatPool.Num(); i++)
-        {
-            HeatPool[i].bActive = false;
-            FName ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
-            MPCInst->SetVectorParameterValue(ParamName,
-                FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
-        }
-        return;
-    }
+	
 
 	for (int32 i = 0; i < HeatPool.Num(); i++)
 	{
