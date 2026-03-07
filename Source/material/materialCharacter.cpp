@@ -190,25 +190,23 @@ void AmaterialCharacter::Tick(float DeltaTime)
     if (HeldActor) UpdateHoldPivotTransform();
     UpdateAnimation();
 
-    if (HeatMPC)
-    {
-        UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-        if (MPCInst)
-        {
-            // 이동 중이고 픽업 중이 아닐 때만 HeatPos1 활성화
-            if (IsMoving() && !bIsPickingUp)
-            {
-                FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-                MPCInst->SetVectorParameterValue(FName("HeatPos1"),
-                    FLinearColor(Pos.X, Pos.Y, Pos.Z, 300.f));
-            }
-            else
-            {
-                MPCInst->SetVectorParameterValue(FName("HeatPos1"),
-                    FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
-            }
-        }
-    }
+	if (HeatMPC)
+	{
+    	UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
+    	if (MPCInst)
+    	{
+			if (IsMoving() && !bIsPickingUp)
+    		HeatPos1CurrentRadius = FMath::Clamp(
+        		HeatPos1CurrentRadius + HeatPos1GrowRate * DeltaTime, 0.f, 300.f);
+			else
+    			HeatPos1CurrentRadius = FMath::Clamp(
+        			HeatPos1CurrentRadius - HeatPos1ShrinkRate * DeltaTime, 0.f, 300.f);
+
+        	FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
+        	MPCInst->SetVectorParameterValue(FName("HeatPos1"),
+            	FLinearColor(Pos.X, Pos.Y, Pos.Z, HeatPos1CurrentRadius));
+    	}
+	}
 
     UpdateHeatSlots(DeltaTime);
 }

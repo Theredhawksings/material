@@ -108,10 +108,14 @@ private:
 	TArray<FHeatSlot> HeatPool; 
 	FTimerHandle      HeatSpawnTimer;
 
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.3f; // 잔상 생성 간격(초)
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate       = 1.0f;  // 초당 온도 감소
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 60.f;  // 초당 반경 감소
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius  = 300.f; // 잔상 초기 반경
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius  = 300.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1ShrinkRate = 80.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1GrowRate   = 400.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate       = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 20.f;
+	
+	float HeatPos1CurrentRadius = 300.f;
 
 	void SpawnHeatSlot();                   
 	void UpdateHeatSlots(float DeltaTime);  
