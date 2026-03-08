@@ -1,7 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Stage1_ThirdPlatform.h"
-#include "Stage1_FirstDoor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Transformation_actor.h"
@@ -11,6 +10,9 @@ AStage1_ThirdPlatform::AStage1_ThirdPlatform()
 	: bActivated(false)
 	, TrackedActor(nullptr)
 	, bWasMetal(false)
+	, bIsOpening(false)
+	, bIsOpen(false)
+	, CurrentTime(0.0f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -28,6 +30,18 @@ AStage1_ThirdPlatform::AStage1_ThirdPlatform()
 void AStage1_ThirdPlatform::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (LeftDoorActor)
+	{
+		LeftStartLocation = LeftDoorActor->GetActorLocation();
+		LeftTargetLocation = LeftStartLocation + FVector(0.0f, -OpenDistance, 0.0f);
+	}
+
+	if (RightDoorActor)
+	{
+		RightStartLocation = RightDoorActor->GetActorLocation();
+		RightTargetLocation = RightStartLocation + FVector(0.0f, OpenDistance, 0.0f);
+	}
 
 	FTimerHandle InitTimerHandle;
 	GetWorld()->GetTimerManager().SetTimer(
@@ -62,16 +76,56 @@ void AStage1_ThirdPlatform::Tick(float DeltaTime)
 		if (bIsRubber)
 		{
 			bActivated = true;
+			bIsOpening = true;
 
 			if (GEngine)
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Rubber 감지! 문이 열립니다"));
 			}
 
-			if (DoorToOpen)
+			if (LeftDoorActor)
 			{
-				DoorToOpen->OpenDoor();
+				TArray<UStaticMeshComponent*> MeshComps;
+				LeftDoorActor->GetComponents<UStaticMeshComponent>(MeshComps);
+				for (UStaticMeshComponent* Mesh : MeshComps)
+				{
+					Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
 			}
+
+			if (RightDoorActor)
+			{
+				TArray<UStaticMeshComponent*> MeshComps;
+				RightDoorActor->GetComponents<UStaticMeshComponent>(MeshComps);
+				for (UStaticMeshComponent* Mesh : MeshComps)
+				{
+					Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+			}
+		}
+	}
+
+	if (bIsOpening && !bIsOpen)
+	{
+		CurrentTime += DeltaTime * OpenSpeed;
+		
+		if (CurrentTime >= 1.0f)
+		{
+			CurrentTime = 1.0f;
+			bIsOpen = true;
+			bIsOpening = false;
+		}
+
+		if (LeftDoorActor)
+		{
+			FVector NewLeftLocation = FMath::Lerp(LeftStartLocation, LeftTargetLocation, CurrentTime);
+			LeftDoorActor->SetActorLocation(NewLeftLocation);
+		}
+
+		if (RightDoorActor)
+		{
+			FVector NewRightLocation = FMath::Lerp(RightStartLocation, RightTargetLocation, CurrentTime);
+			RightDoorActor->SetActorLocation(NewRightLocation);
 		}
 	}
 }

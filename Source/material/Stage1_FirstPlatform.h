@@ -31,10 +31,26 @@ protected:
 		const FHitResult& SweepResult);
 
 	bool bActivated;
+	bool bIsOpening;
+	bool bIsOpen;
+	float CurrentTime;
+	FVector LeftStartLocation;
+	FVector LeftTargetLocation;
+	FVector RightStartLocation;
+	FVector RightTargetLocation;
 
 public:	
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
-	class AStage1_FirstDoor* DoorToOpen;
+	AActor* LeftDoorActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	AActor* RightDoorActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenDistance = -150.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenSpeed = 2.0f;
 };
