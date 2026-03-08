@@ -19,6 +19,7 @@ public class material : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
+			"SlateCore",  
 			"PhysicsCore"
 		});
 
