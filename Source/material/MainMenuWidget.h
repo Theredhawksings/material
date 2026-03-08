@@ -17,7 +17,7 @@ protected:
     
     UPROPERTY(meta = (BindWidget))
     class UButton* ExitButton;
-
+    
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widgets")
     TSubclassOf<UUserWidget> TutorialWidgetClass;
     
