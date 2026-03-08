@@ -5,7 +5,7 @@
 #include "MainMenuWidget.generated.h"
 
 UCLASS()
-class MATERIAL_API UMainMenuWidget : public UUserWidget  // YOURGAME_API → MATERIAL_API
+class MATERIAL_API UMainMenuWidget : public UUserWidget
 {
     GENERATED_BODY()
     
@@ -17,10 +17,9 @@ protected:
     
     UPROPERTY(meta = (BindWidget))
     class UButton* ExitButton;
-    
-    // FName으로 변경 (FString에서)
-    UPROPERTY(EditAnywhere, Category = "Level")
-    FName StageLevelName = FName("Stage1-1");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widgets")
+    TSubclassOf<UUserWidget> TutorialWidgetClass;
     
 private:
     UFUNCTION()

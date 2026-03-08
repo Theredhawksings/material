@@ -2,6 +2,7 @@
 #include "Components/Button.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Blueprint/UserWidget.h"
 
 void UMainMenuWidget::NativeConstruct()
 {
@@ -22,11 +23,14 @@ void UMainMenuWidget::OnStartClicked()
 {
     RemoveFromParent();
     
-    FTimerHandle TimerHandle;
-    GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+    if (TutorialWidgetClass)
     {
-        UGameplayStatics::OpenLevel(this, StageLevelName);
-    }, 0.1f, false);
+        UUserWidget* TutorialWidget = CreateWidget<UUserWidget>(GetWorld(), TutorialWidgetClass);
+        if (TutorialWidget)
+        {
+            TutorialWidget->AddToViewport();
+        }
+    }
 }
 
 void UMainMenuWidget::OnExitClicked()
