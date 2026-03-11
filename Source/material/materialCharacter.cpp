@@ -271,8 +271,16 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		MPCInst->SetVectorParameterValue(ParamName,
 			FLinearColor(Slot.Position.X, Slot.Position.Y, Slot.Position.Z,
 				Slot.Radius * Slot.Temperature));
+		DrawDebugSphere(
+    GetWorld(),
+    Slot.Position,
+    Slot.Radius,
+    16,
+    FColor::Red,
+    false,
+    0.05f
+);
 
-		// 잔상 반경으로 근처 물체 감지
 		TArray<FOverlapResult> Overlaps;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(HeatOverlap), false, this);
 		GetWorld()->OverlapMultiByChannel(
@@ -294,7 +302,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		}
 	}
 
-	// 범위 밖 물체 열 감소 + 스텐실 적용
 	for (auto It = ActorHeatMap.CreateIterator(); It; ++It)
 	{
 		AActor* Actor = It.Key();
