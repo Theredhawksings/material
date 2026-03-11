@@ -15,12 +15,11 @@ class UStaticMeshComponent;
 class USceneComponent;
 class ATransformation_actor;
 
-// ===================== [추가] 열 잔상 슬롯 구조체 =====================
 struct FHeatSlot
 {
 	FVector Position;
-	float   Temperature; // 1.0 → 0.0 으로 감소
-	float   Radius;      // 초기 반경에서 점점 줄어듦
+	float   Temperature;
+	float   Radius;
 	bool    bActive;
 
 	FHeatSlot()
@@ -30,7 +29,6 @@ struct FHeatSlot
 		, bActive(false)
 	{}
 };
-// ====================================================================
 
 UCLASS()
 class MATERIAL_API AmaterialCharacter : public ACharacter
@@ -104,22 +102,26 @@ private:
 	uint8 bWasHolding    : 1;
 	uint8 bIsPickingUp   : 1;
 
-
-	TArray<FHeatSlot> HeatPool; 
+	TArray<FHeatSlot> HeatPool;
 	FTimerHandle      HeatSpawnTimer;
 
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval  = 0.3f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius  = 300.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1ShrinkRate = 80.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1GrowRate   = 400.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate       = 0.3f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay    = 20.f;
-	
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval    = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius    = 300.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1ShrinkRate  = 80.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1GrowRate    = 400.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate        = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay     = 20.f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float ActorHeatIncreaseRate = 2.0f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") float ActorHeatDecayRate    = 0.5f;
+	UPROPERTY(EditAnywhere, Category = "Thermal") int32 ColdStencilValue      = 1;
+	UPROPERTY(EditAnywhere, Category = "Thermal") int32 HotStencilValue        = 5;
+
 	float HeatPos1CurrentRadius = 300.f;
 
-	void SpawnHeatSlot();                   
-	void UpdateHeatSlots(float DeltaTime);  
-	// ====================================================================
+	TMap<AActor*, float> ActorHeatMap;
+
+	void SpawnHeatSlot();
+	void UpdateHeatSlots(float DeltaTime);
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -143,18 +145,18 @@ private:
 
 	FORCEINLINE bool IsMoving() const { return GetVelocity().SizeSquared2D() > (WalkSpeedThreshold * WalkSpeedThreshold); }
 
-	static constexpr float CameraArmLength       = 350.f;
-	static constexpr float CameraSocketOffsetZ   = 80.f;
-	static constexpr float CameraLagSpeed        = 6.0f;
-	static constexpr float CameraRotLagSpeed     = 12.0f;
-	static constexpr float JumpVelocity          = 600.f;
-	static constexpr float AirControl            = 0.2f;
-	static constexpr float RotationRate          = 540.f;
-	static constexpr float MeshOffsetZ           = -90.f;
-	static constexpr float MeshRotationYaw       = 90.f;
-	static constexpr float PickupAnimAttachTime  = 1.125f;
-	static constexpr float PickupSphereRadius    = 75.f;
-	static constexpr float InteractSphereRadius  = 50.f;
-	static constexpr float DropForwardOffset     = 3.f;
-	static constexpr float DropDetachTime        = 0.83f;
+	static constexpr float CameraArmLength      = 350.f;
+	static constexpr float CameraSocketOffsetZ  = 80.f;
+	static constexpr float CameraLagSpeed       = 6.0f;
+	static constexpr float CameraRotLagSpeed    = 12.0f;
+	static constexpr float JumpVelocity         = 600.f;
+	static constexpr float AirControl           = 0.2f;
+	static constexpr float RotationRate         = 540.f;
+	static constexpr float MeshOffsetZ          = -90.f;
+	static constexpr float MeshRotationYaw      = 90.f;
+	static constexpr float PickupAnimAttachTime = 1.125f;
+	static constexpr float PickupSphereRadius   = 75.f;
+	static constexpr float InteractSphereRadius = 50.f;
+	static constexpr float DropForwardOffset    = 3.f;
+	static constexpr float DropDetachTime       = 0.83f;
 };

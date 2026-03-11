@@ -15,6 +15,7 @@
 #include "Materials/MaterialParameterCollectionInstance.h"
 #include "Transformation_actor.h"
 #include "TimerManager.h"
+#include "Engine/OverlapResult.h"
 
 AmaterialCharacter::AmaterialCharacter()
 	: HeldActor(nullptr)
@@ -78,9 +79,7 @@ AmaterialCharacter::AmaterialCharacter()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BackpackMeshAsset(
 		TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'"));
 	if (BackpackMeshAsset.Succeeded())
-	{
 		BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
-	}
 
 	struct FAnimLoader { const TCHAR* Path; TObjectPtr<UAnimSequence>* Target; };
 	const FAnimLoader AnimAssets[] = {
@@ -166,8 +165,6 @@ void AmaterialCharacter::BeginPlay()
 		BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
 		BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
 		BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
-
-		
 	}
 
 	HeatPool.SetNum(7);
@@ -175,45 +172,41 @@ void AmaterialCharacter::BeginPlay()
 		Slot.bActive = false;
 
 	GetWorld()->GetTimerManager().SetTimer(
-		HeatSpawnTimer,
-		this,
+		HeatSpawnTimer, this,
 		&AmaterialCharacter::SpawnHeatSlot,
-		HeatSpawnInterval,
-		true); // 반복
-	// ====================================================================
+		HeatSpawnInterval, true);
 }
 
 void AmaterialCharacter::Tick(float DeltaTime)
 {
-    Super::Tick(DeltaTime);
+	Super::Tick(DeltaTime);
 
-    if (HeldActor) UpdateHoldPivotTransform();
-    UpdateAnimation();
+	if (HeldActor) UpdateHoldPivotTransform();
+	UpdateAnimation();
 
 	if (HeatMPC)
 	{
-    	UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-    	if (MPCInst)
-    	{
+		UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
+		if (MPCInst)
+		{
 			if (IsMoving() && !bIsPickingUp)
-    		HeatPos1CurrentRadius = FMath::Clamp(
-        		HeatPos1CurrentRadius + HeatPos1GrowRate * DeltaTime, 0.f, 300.f);
+				HeatPos1CurrentRadius = FMath::Clamp(
+					HeatPos1CurrentRadius + HeatPos1GrowRate * DeltaTime, 0.f, 300.f);
 			else
-    			HeatPos1CurrentRadius = FMath::Clamp(
-        			HeatPos1CurrentRadius - HeatPos1ShrinkRate * DeltaTime, 0.f, 300.f);
+				HeatPos1CurrentRadius = FMath::Clamp(
+					HeatPos1CurrentRadius - HeatPos1ShrinkRate * DeltaTime, 0.f, 300.f);
 
-        	FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-        	MPCInst->SetVectorParameterValue(FName("HeatPos1"),
-            	FLinearColor(Pos.X, Pos.Y, Pos.Z, HeatPos1CurrentRadius));
-    	}
+			FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
+			MPCInst->SetVectorParameterValue(FName("HeatPos1"),
+				FLinearColor(Pos.X, Pos.Y, Pos.Z, HeatPos1CurrentRadius));
+		}
 	}
 
-    UpdateHeatSlots(DeltaTime);
+	UpdateHeatSlots(DeltaTime);
 }
 
 void AmaterialCharacter::SpawnHeatSlot()
 {
-
 	if (!IsMoving() || bIsPickingUp) return;
 
 	for (FHeatSlot& Slot : HeatPool)
@@ -227,14 +220,15 @@ void AmaterialCharacter::SpawnHeatSlot()
 			return;
 		}
 	}
+
 	int32 OldestIdx = 0;
 	float MinTemp   = HeatPool[0].Temperature;
 	for (int32 i = 1; i < HeatPool.Num(); i++)
 	{
 		if (HeatPool[i].Temperature < MinTemp)
 		{
-			MinTemp    = HeatPool[i].Temperature;
-			OldestIdx  = i;
+			MinTemp   = HeatPool[i].Temperature;
+			OldestIdx = i;
 		}
 	}
 	HeatPool[OldestIdx].Position    = GetActorLocation() + FVector(0.f, 0.f, -90.f);
@@ -248,13 +242,13 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 	if (!HeatMPC) return;
 	UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
 	if (!MPCInst) return;
-	
+
+	TSet<AActor*> HeatedActors;
 
 	for (int32 i = 0; i < HeatPool.Num(); i++)
 	{
-		FHeatSlot& Slot = HeatPool[i];
-
-		FName ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
+		FHeatSlot& Slot     = HeatPool[i];
+		FName      ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
 
 		if (!Slot.bActive)
 		{
@@ -275,23 +269,59 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		}
 
 		MPCInst->SetVectorParameterValue(ParamName,
-			FLinearColor(
-				Slot.Position.X,
-				Slot.Position.Y,
-				Slot.Position.Z,
-				Slot.Radius * Slot.Temperature
-			));
+			FLinearColor(Slot.Position.X, Slot.Position.Y, Slot.Position.Z,
+				Slot.Radius * Slot.Temperature));
+
+		// 잔상 반경으로 근처 물체 감지
+		TArray<FOverlapResult> Overlaps;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(HeatOverlap), false, this);
+		GetWorld()->OverlapMultiByChannel(
+			Overlaps, Slot.Position, FQuat::Identity,
+			ECC_Visibility, FCollisionShape::MakeSphere(Slot.Radius), Params);
+
+		for (FOverlapResult& Overlap : Overlaps)
+		{
+			AActor* HitActor = Overlap.GetActor();
+			if (!HitActor || HitActor == this) continue;
+
+			const bool bHasTag = PickupTags.ContainsByPredicate([HitActor](const FName& Tag)
+				{ return HitActor->ActorHasTag(Tag); });
+			if (!bHasTag) continue;
+
+			HeatedActors.Add(HitActor);
+			float& Heat = ActorHeatMap.FindOrAdd(HitActor, 0.f);
+			Heat = FMath::Clamp(Heat + ActorHeatIncreaseRate * DeltaTime, 0.f, 1.f);
+		}
+	}
+
+	// 범위 밖 물체 열 감소 + 스텐실 적용
+	for (auto It = ActorHeatMap.CreateIterator(); It; ++It)
+	{
+		AActor* Actor = It.Key();
+		float&  Heat  = It.Value();
+
+		if (!HeatedActors.Contains(Actor))
+			Heat = FMath::Clamp(Heat - ActorHeatDecayRate * DeltaTime, 0.f, 1.f);
+
+		TArray<UPrimitiveComponent*> PrimComps;
+		Actor->GetComponents<UPrimitiveComponent>(PrimComps);
+		int32 StencilVal = FMath::RoundToInt(
+			FMath::Lerp((float)ColdStencilValue, (float)HotStencilValue, Heat));
+
+		for (UPrimitiveComponent* PC : PrimComps)
+			if (PC) PC->SetCustomDepthStencilValue(StencilVal);
+
+		if (Heat <= 0.f) It.RemoveCurrent();
 	}
 }
-// ====================================================================
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	PlayerInputComponent->BindAction("ChangeForm",   IE_Pressed, this, &AmaterialCharacter::ChangeForm);
-	PlayerInputComponent->BindAction("Hold",         IE_Pressed, this, &AmaterialCharacter::HoldPressed);
-	PlayerInputComponent->BindAction("Checkweight",  IE_Pressed, this, &AmaterialCharacter::CheckWeight);
+	PlayerInputComponent->BindAction("ChangeForm",  IE_Pressed, this, &AmaterialCharacter::ChangeForm);
+	PlayerInputComponent->BindAction("Hold",        IE_Pressed, this, &AmaterialCharacter::HoldPressed);
+	PlayerInputComponent->BindAction("Checkweight", IE_Pressed, this, &AmaterialCharacter::CheckWeight);
 
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC) return;
@@ -324,8 +354,8 @@ void AmaterialCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(Axis.Y);
 }
 
-void AmaterialCharacter::JumpStarted()  { Jump(); }
-void AmaterialCharacter::JumpStopped()  { StopJumping(); }
+void AmaterialCharacter::JumpStarted() { Jump(); }
+void AmaterialCharacter::JumpStopped() { StopJumping(); }
 
 void AmaterialCharacter::ChangeForm()
 {
@@ -398,7 +428,7 @@ void AmaterialCharacter::HandleActualAttachment()
 {
 	if (!PendingPickupActor || !HoldPivot) return;
 	CaptureHeldLocalExtent(PendingPickupActor);
-	HeldActor        = PendingPickupActor;
+	HeldActor          = PendingPickupActor;
 	PendingPickupActor = nullptr;
 	HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
@@ -458,8 +488,8 @@ void AmaterialCharacter::ApplyWeightSpeedPenalty(AActor* Actor)
 	if (!Actor) return;
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (!MoveComp) return;
-	OriginalMaxWalkSpeed        = MoveComp->MaxWalkSpeed;
-	MoveComp->MaxWalkSpeed      = OriginalMaxWalkSpeed * 0.5f;
+	OriginalMaxWalkSpeed   = MoveComp->MaxWalkSpeed;
+	MoveComp->MaxWalkSpeed = OriginalMaxWalkSpeed * 0.5f;
 }
 
 void AmaterialCharacter::RestoreWalkSpeed()
