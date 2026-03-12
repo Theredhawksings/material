@@ -271,7 +271,7 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		MPCInst->SetVectorParameterValue(ParamName,
 			FLinearColor(Slot.Position.X, Slot.Position.Y, Slot.Position.Z,
 				Slot.Radius * Slot.Temperature));
-		float CollisionRadius = Slot.Radius * FMath::Pow(Slot.Temperature, 2.0f);
+		float CollisionRadius = Slot.Radius * FMath::Pow(Slot.Temperature, 3.0f);
 		DrawDebugSphere(GetWorld(), Slot.Position, CollisionRadius, 16, FColor::Red, false, 0.0f);
 
 		TArray<FOverlapResult> Overlaps;
