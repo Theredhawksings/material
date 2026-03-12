@@ -377,7 +377,7 @@ void AWire::RefreshConnectedActors()
         for (AActor* A : OverlappingActors)
         {
             if (!A || A == this) continue;
-
+            
             if (A->ActorHasTag(FName("Metal")))
             {
                 const FVector SegMidWorld = Segment->GetComponentLocation();
