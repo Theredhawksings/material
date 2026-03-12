@@ -83,12 +83,13 @@ AmaterialCharacter::AmaterialCharacter()
 
 	struct FAnimLoader { const TCHAR* Path; TObjectPtr<UAnimSequence>* Target; };
 	const FAnimLoader AnimAssets[] = {
-		{ TEXT("AnimSequence'/Game/modeling/Animation/Walk1.Walk1'"),             &WalkAnim },
-		{ TEXT("AnimSequence'/Game/modeling/Animation/Test.Test'"),               &IdleAnim },
-		{ TEXT("AnimSequence'/Game/modeling/Animation/bring2.bring2'"),           &PickupAnim },
-		{ TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
-		{ TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim },
+    	{ TEXT("AnimSequence'/Game/modeling/Animation/Walk1.Walk1'"),             &WalkAnim },
+    	{ TEXT("AnimSequence'/Game/modeling/Animation/Test.Test'"),               &IdleAnim },
+    	{ TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"),             &PickupAnim }, 
+    	{ TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
+    	{ TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim },
 	};
+
 	for (const FAnimLoader& Loader : AnimAssets)
 	{
 		ConstructorHelpers::FObjectFinder<UAnimSequence> AnimAsset(Loader.Path);
