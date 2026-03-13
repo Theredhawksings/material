@@ -272,6 +272,7 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		MPCInst->SetVectorParameterValue(ParamName,
 			FLinearColor(Slot.Position.X, Slot.Position.Y, Slot.Position.Z,
 				Slot.Radius * Slot.Temperature));
+
 		float CollisionRadius = Slot.Radius * FMath::Pow(Slot.Temperature, 3.0f);
 		DrawDebugSphere(GetWorld(), Slot.Position, CollisionRadius, 16, FColor::Red, false, 0.0f);
 
@@ -286,12 +287,24 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 			AActor* HitActor = Overlap.GetActor();
 			if (!HitActor || HitActor == this) continue;
 
-			const bool bHasTag = PickupTags.ContainsByPredicate([HitActor](const FName& Tag)
-				{ return HitActor->ActorHasTag(Tag); });
-			if (!bHasTag) continue;
+			// Metal, Rubber만 감지
+			if (!HitActor->ActorHasTag(TEXT("Metal")) && !HitActor->ActorHasTag(TEXT("Rubber"))) continue;
 
 			HeatedActors.Add(HitActor);
-			float& Heat = ActorHeatMap.FindOrAdd(HitActor, 0.f);
+
+			float& Heat = ActorHeatMap.FindOrAdd(HitActor, -1.f);
+			if (Heat < 0.f) 
+			{
+				Heat = 0.f;
+				TArray<UPrimitiveComponent*> PrimComps;
+				HitActor->GetComponents<UPrimitiveComponent>(PrimComps);
+				if (PrimComps.Num() > 0)
+				{
+					ActorBaseStencilMap.Add(HitActor, PrimComps[0]->CustomDepthStencilValue);
+					for (UPrimitiveComponent* PC : PrimComps)
+						if (PC) PC->SetRenderCustomDepth(true);
+				}
+			}
 			Heat = FMath::Clamp(Heat + ActorHeatIncreaseRate * DeltaTime, 0.f, 1.f);
 		}
 	}
@@ -306,15 +319,35 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 
 		TArray<UPrimitiveComponent*> PrimComps;
 		Actor->GetComponents<UPrimitiveComponent>(PrimComps);
-		int32 StencilVal = FMath::RoundToInt(
-			FMath::Lerp((float)ColdStencilValue, (float)HotStencilValue, Heat));
+
+		int32 BaseStencil = ActorBaseStencilMap.FindRef(Actor);
+		int32 HeatAdd     = FMath::RoundToInt(Heat * (float)HotStencilValue);
+		int32 FinalStencil = FMath::Clamp(BaseStencil + HeatAdd, 0, 255);
 
 		for (UPrimitiveComponent* PC : PrimComps)
-			if (PC) PC->SetCustomDepthStencilValue(StencilVal);
+			if (PC) PC->SetCustomDepthStencilValue(FinalStencil);
 
-		if (Heat <= 0.f) It.RemoveCurrent();
+		DrawDebugString(
+			GetWorld(),
+			Actor->GetActorLocation() + FVector(0.f, 0.f, 100.f),
+			FString::Printf(TEXT("Stencil: %d"), FinalStencil),
+			nullptr, FColor::Yellow, 0.0f, true
+		);
+
+		if (Heat <= 0.f)
+		{
+			for (UPrimitiveComponent* PC : PrimComps)
+				if (PC)
+				{
+					PC->SetCustomDepthStencilValue(BaseStencil);
+					PC->SetRenderCustomDepth(false);
+				}
+			ActorBaseStencilMap.Remove(Actor);
+			It.RemoveCurrent();
+		}
 	}
 }
+
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {

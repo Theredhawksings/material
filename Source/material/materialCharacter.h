@@ -119,6 +119,7 @@ private:
 	float HeatPos1CurrentRadius = 300.f;
 
 	TMap<AActor*, float> ActorHeatMap;
+	TMap<AActor*, int32> ActorBaseStencilMap;
 
 	void SpawnHeatSlot();
 	void UpdateHeatSlots(float DeltaTime);
