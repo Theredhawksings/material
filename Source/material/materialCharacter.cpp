@@ -15,6 +15,7 @@
 #include "Materials/MaterialParameterCollectionInstance.h"
 #include "Transformation_actor.h"
 #include "TimerManager.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Engine/OverlapResult.h"
 
 AmaterialCharacter::AmaterialCharacter()
@@ -110,6 +111,7 @@ AmaterialCharacter::AmaterialCharacter()
 		{ TEXT("InputAction'/Game/Input/Actions/IA_Look.IA_Look'"),           &IA_Look },
 		{ TEXT("InputAction'/Game/Input/Actions/IA_MouseLook.IA_MouseLook'"), &IA_MouseLook },
 		{ TEXT("InputAction'/Game/Input/Actions/IA_Jump.IA_Jump'"),           &IA_Jump },
+		{ TEXT("InputAction'/Game/Input/Actions/IA_LeftClick.IA_LeftClick'"), &IA_LeftClick },
 	};
 	for (const FActionLoader& Loader : InputActions)
 	{
@@ -176,6 +178,9 @@ void AmaterialCharacter::BeginPlay()
 		HeatSpawnTimer, this,
 		&AmaterialCharacter::SpawnHeatSlot,
 		HeatSpawnInterval, true);
+
+	FSlateApplication::Get().OnApplicationActivationStateChanged().AddUObject(
+		this, &AmaterialCharacter::OnWindowFocusChanged);
 }
 
 void AmaterialCharacter::Tick(float DeltaTime)
@@ -287,7 +292,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 			AActor* HitActor = Overlap.GetActor();
 			if (!HitActor || HitActor == this) continue;
 
-			// Metal, Rubber만 감지
 			if (!HitActor->ActorHasTag(TEXT("Metal")) && !HitActor->ActorHasTag(TEXT("Rubber"))) continue;
 
 			HeatedActors.Add(HitActor);
@@ -348,7 +352,6 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 	}
 }
 
-
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -369,6 +372,8 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EIC->BindAction(IA_Jump, ETriggerEvent::Started,   this, &AmaterialCharacter::JumpStarted);
 		EIC->BindAction(IA_Jump, ETriggerEvent::Completed, this, &AmaterialCharacter::JumpStopped);
 	}
+	
+	if (IA_LeftClick) EIC->BindAction(IA_LeftClick, ETriggerEvent::Started, this, &AmaterialCharacter::OnLeftClick);
 }
 
 void AmaterialCharacter::Move(const FInputActionValue& Value)
@@ -428,6 +433,37 @@ void AmaterialCharacter::HoldPressed()
 {
 	if (HeldActor) DropHeld();
 	else TryPickup();
+}
+
+void AmaterialCharacter::OnLeftClick()
+{
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OnLeftClick Called!"));
+	}
+	
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC) 
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("No PlayerController!"));
+		return;
+	}
+	
+	if (!bMouseCaptured)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Capturing Mouse!"));
+		
+		PC->bShowMouseCursor = false;
+		
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+		
+		bMouseCaptured = true;
+	}
+	else
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Already Captured!"));
+	}
 }
 
 bool AmaterialCharacter::TryPickup()
@@ -592,6 +628,34 @@ void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnab
 			PC->SetSimulatePhysics(bEnable);
 			PC->SetEnableGravity(bEnable);
 			PC->SetCollisionEnabled(bEnable ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+		}
+	}
+}
+
+void AmaterialCharacter::OnWindowFocusChanged(bool bHasFocus)
+{
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, 
+		FString::Printf(TEXT("Window Focus: %s"), bHasFocus ? TEXT("Gained") : TEXT("Lost")));
+	
+	if (!bHasFocus)
+	{
+		bHadFocusBefore = true;
+	}
+	else if (bHasFocus && bHadFocusBefore && bMouseCaptured)
+	{
+		APlayerController* PC = Cast<APlayerController>(GetController());
+		if (PC)
+		{
+			PC->bShowMouseCursor = true;
+			
+			FInputModeGameAndUI InputMode;
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			InputMode.SetHideCursorDuringCapture(false);
+			PC->SetInputMode(InputMode);
+			
+			bMouseCaptured = false;
+			
+			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Magenta, TEXT("Mouse Released!"));
 		}
 	}
 }

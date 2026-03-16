@@ -57,6 +57,7 @@ private:
 	UPROPERTY() TObjectPtr<UInputAction> IA_Look;
 	UPROPERTY() TObjectPtr<UInputAction> IA_MouseLook;
 	UPROPERTY() TObjectPtr<UInputAction> IA_Jump;
+	UPROPERTY() TObjectPtr<UInputAction> IA_LeftClick;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> BackpackComp;
@@ -121,6 +122,9 @@ private:
 	TMap<AActor*, float> ActorHeatMap;
 	TMap<AActor*, int32> ActorBaseStencilMap;
 
+	bool bMouseCaptured = false;
+	bool bHadFocusBefore = false;
+	
 	void SpawnHeatSlot();
 	void UpdateHeatSlots(float DeltaTime);
 
@@ -131,6 +135,9 @@ private:
 	void ChangeForm();
 	void HoldPressed();
 	void CheckWeight();
+	void OnLeftClick();
+	void OnWindowFocusChanged(bool bHasFocus);
+
 	bool TryPickup();
 	void DropHeld();
 	void HandleActualAttachment();
