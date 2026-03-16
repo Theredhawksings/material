@@ -1,7 +1,10 @@
 #include "materialPlayerController.h"
 #include "materialCharacter.h"
-#include "Engine/Engine.h"
-#include "Engine/GameViewportClient.h"
+
+AmaterialPlayerController::AmaterialPlayerController()
+{
+	bShouldPerformFullTickWhenPaused = true;  // 일시정지 중에도 Tick 허용!
+}
 
 void AmaterialPlayerController::BeginPlay()
 {
@@ -15,10 +18,33 @@ void AmaterialPlayerController::BeginPlay()
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	InputMode.SetHideCursorDuringCapture(false);
 	SetInputMode(InputMode);
+}
+
+void AmaterialPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
 	
-	if (GetLocalPlayer() && GetLocalPlayer()->ViewportClient)
+	FInputActionBinding& ClickBinding = InputComponent->BindAction("LeftMouseClick", IE_Pressed, this, &AmaterialPlayerController::OnMouseClick);
+	ClickBinding.bExecuteWhenPaused = true;  
+
+	FInputActionBinding& EscBinding = InputComponent->BindAction("EscapeKey", IE_Pressed, this, &AmaterialPlayerController::OnEscapeKey);
+	EscBinding.bExecuteWhenPaused = true; 
+}
+
+void AmaterialPlayerController::OnMouseClick()
+{
+	AmaterialCharacter* MyPawn = Cast<AmaterialCharacter>(GetPawn()); 
+	if (MyPawn)
 	{
-		GetLocalPlayer()->ViewportClient->SetMouseLockMode(EMouseLockMode::DoNotLock);
-		GetLocalPlayer()->ViewportClient->SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
+		MyPawn->OnLeftClick();
+	}
+}
+
+void AmaterialPlayerController::OnEscapeKey()
+{
+	AmaterialCharacter* MyPawn = Cast<AmaterialCharacter>(GetPawn());  
+	if (MyPawn)
+	{
+		MyPawn->OnEscapePressed();
 	}
 }

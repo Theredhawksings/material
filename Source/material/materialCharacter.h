@@ -39,7 +39,9 @@ public:
 	AmaterialCharacter();
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
-
+	void OnLeftClick();
+	void OnEscapePressed(); 
+	
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -58,6 +60,7 @@ private:
 	UPROPERTY() TObjectPtr<UInputAction> IA_MouseLook;
 	UPROPERTY() TObjectPtr<UInputAction> IA_Jump;
 	UPROPERTY() TObjectPtr<UInputAction> IA_LeftClick;
+	UPROPERTY() TObjectPtr<UInputAction> IA_Escape; 
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> BackpackComp;
@@ -124,7 +127,8 @@ private:
 
 	bool bMouseCaptured = false;
 	bool bHadFocusBefore = false;
-	
+	bool bGamePaused = false;
+
 	void SpawnHeatSlot();
 	void UpdateHeatSlots(float DeltaTime);
 
@@ -135,7 +139,7 @@ private:
 	void ChangeForm();
 	void HoldPressed();
 	void CheckWeight();
-	void OnLeftClick();
+
 	void OnWindowFocusChanged(bool bHasFocus);
 
 	bool TryPickup();

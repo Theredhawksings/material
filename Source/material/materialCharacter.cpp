@@ -112,6 +112,7 @@ AmaterialCharacter::AmaterialCharacter()
 		{ TEXT("InputAction'/Game/Input/Actions/IA_MouseLook.IA_MouseLook'"), &IA_MouseLook },
 		{ TEXT("InputAction'/Game/Input/Actions/IA_Jump.IA_Jump'"),           &IA_Jump },
 		{ TEXT("InputAction'/Game/Input/Actions/IA_LeftClick.IA_LeftClick'"), &IA_LeftClick },
+		{ TEXT("InputAction'/Game/Input/Actions/IA_Escape.IA_Escape'"),       &IA_Escape },
 	};
 	for (const FActionLoader& Loader : InputActions)
 	{
@@ -374,6 +375,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	}
 	
 	if (IA_LeftClick) EIC->BindAction(IA_LeftClick, ETriggerEvent::Started, this, &AmaterialCharacter::OnLeftClick);
+	if (IA_Escape) EIC->BindAction(IA_Escape, ETriggerEvent::Started, this, &AmaterialCharacter::OnEscapePressed);  // 추가!
 }
 
 void AmaterialCharacter::Move(const FInputActionValue& Value)
@@ -437,6 +439,10 @@ void AmaterialCharacter::HoldPressed()
 
 void AmaterialCharacter::OnLeftClick()
 {
+	static bool bIsProcessing = false;
+	if (bIsProcessing) return;  
+	bIsProcessing = true;
+	
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OnLeftClick Called!"));
@@ -445,8 +451,16 @@ void AmaterialCharacter::OnLeftClick()
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC) 
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("No PlayerController!"));
+		bIsProcessing = false;
 		return;
+	}
+	
+	if (bGamePaused)
+	{
+		PC->SetPause(false);
+		bGamePaused = false;
+		
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, TEXT("Game Resumed by Click"));
 	}
 	
 	if (!bMouseCaptured)
@@ -460,10 +474,8 @@ void AmaterialCharacter::OnLeftClick()
 		
 		bMouseCaptured = true;
 	}
-	else
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Already Captured!"));
-	}
+	
+	bIsProcessing = false;
 }
 
 bool AmaterialCharacter::TryPickup()
@@ -641,7 +653,7 @@ void AmaterialCharacter::OnWindowFocusChanged(bool bHasFocus)
 	{
 		bHadFocusBefore = true;
 	}
-	else if (bHasFocus && bHadFocusBefore && bMouseCaptured)
+	else if (bHasFocus && bHadFocusBefore && bMouseCaptured && !bGamePaused)
 	{
 		APlayerController* PC = Cast<APlayerController>(GetController());
 		if (PC)
@@ -658,4 +670,49 @@ void AmaterialCharacter::OnWindowFocusChanged(bool bHasFocus)
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Magenta, TEXT("Mouse Released!"));
 		}
 	}
+}
+
+void AmaterialCharacter::OnEscapePressed()
+{
+	static bool bIsProcessing = false;
+	if (bIsProcessing) return; 
+	bIsProcessing = true;
+	
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC) 
+	{
+		bIsProcessing = false;
+		return;
+	}
+	
+	bGamePaused = !bGamePaused;
+	
+	if (bGamePaused)
+	{
+		PC->SetPause(true);
+		PC->bShowMouseCursor = true;
+		
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+		PC->SetInputMode(InputMode);
+		
+		bMouseCaptured = false;
+		
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Yellow, TEXT("Game Paused"));
+	}
+	else
+	{
+		PC->SetPause(false);
+		PC->bShowMouseCursor = false;
+		
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+		
+		bMouseCaptured = true;
+		
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, TEXT("Game Resumed"));
+	}
+	
+	bIsProcessing = false;
 }
