@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"  
 #include "Stage2_WeightPlatform.generated.h"
 
 UCLASS()
@@ -45,6 +46,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weight")
 	float MaxWeight = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Display")
+	class AActor* WeightTextActor; 
 
 	bool IsWeightInRange() const;
 };

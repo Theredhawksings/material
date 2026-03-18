@@ -41,7 +41,7 @@ public:
 	FName LevelToLoad = FName("Stage1-3");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
-	float LoadDelay = 1.0f;
+	float LoadDelay = 3.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weight")
 	class AStage2_WeightPlatform* WeightPlatform;

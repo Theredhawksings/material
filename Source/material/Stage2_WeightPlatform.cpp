@@ -35,11 +35,15 @@ void AStage2_WeightPlatform::Tick(float DeltaTime)
 	float CurrentWeight = CalculateTotalWeight();
 	bool bInRange = IsWeightInRange();
 
-	if (GEngine && ActorsOnPlatform.Num() > 0)
+	if (WeightTextActor)
 	{
-		FString WeightMsg = FString::Printf(TEXT("현재 무게: %.1f (범위: %.1f ~ %.1f) - %s"), 
-			CurrentWeight, MinWeight, MaxWeight, bInRange ? TEXT("통과!") : TEXT("X"));
-		GEngine->AddOnScreenDebugMessage(1, 0.0f, bInRange ? FColor::Green : FColor::Red, WeightMsg);
+		UTextRenderComponent* TextComp = WeightTextActor->FindComponentByClass<UTextRenderComponent>();
+		if (TextComp)
+		{
+			FString WeightMsg = FString::Printf(TEXT("Weight: %.1f"), CurrentWeight);	
+			TextComp->SetText(FText::FromString(WeightMsg));
+			TextComp->SetTextRenderColor(bInRange ? FColor::Green : FColor::White);
+		}
 	}
 }
 
