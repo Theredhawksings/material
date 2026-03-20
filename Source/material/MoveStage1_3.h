@@ -38,7 +38,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
-	FName LevelToLoad = FName("Stage1-3");
+	FName LevelToLoad = FName("Stage3");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
 	float LoadDelay = 3.0f;

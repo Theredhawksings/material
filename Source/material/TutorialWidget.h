@@ -14,5 +14,5 @@ protected:
     virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level")
-    FName StageLevelName = FName("Stage1-1");
+    FName StageLevelName = FName("Stage1");
 };
