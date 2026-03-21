@@ -10,7 +10,7 @@
 *
  */
 UCLASS()
-class MYPROJECT2_API UTestUI : public UUserWidget
+class MATERIAL_API UTestUI : public UUserWidget
 {
     GENERATED_BODY()
 

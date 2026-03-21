@@ -11,42 +11,42 @@ void UTestUI::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     FVector2D MousePosition;
     APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 
-    // ÇÃ·¹ÀÌ¾îÀÇ ¸¶¿ì½º À§Ä¡¸¦ ¼º°øÀûÀ¸·Î °¡Á®¿Ô´Ù¸é
+    // í”Œë ˆì´ì–´ì˜ ë§ˆìš°ìŠ¤ ìœ„ì¹˜ë¥¼ ì„±ê³µì ìœ¼ë¡œ ê°€ì ¸ì™”ë‹¤ë©´
     if (PC && PC->GetMousePosition(MousePosition.X, MousePosition.Y))
     {
-        // È­¸é Á¤Áß¾Ó ÁÂÇ¥¸¦ ±¸ÇÕ´Ï´Ù.
+        // í™”ë©´ ì¤‘ì•™ ì¢Œí‘œë¥¼ êµ¬í•©ë‹ˆë‹¤.
         FVector2D ViewportSize = UWidgetLayoutLibrary::GetViewportSize(GetWorld());
         FVector2D CenterPosition = ViewportSize / 2.0f;
 
-        // Áß¾Ó¿¡¼­ ¸¶¿ì½º±îÁöÀÇ ¹æÇâ°ú °Å¸®¸¦ °è»êÇÕ´Ï´Ù.
+        // ì¤‘ì•™ì—ì„œ ë§ˆìš°ìŠ¤ê¹Œì§€ ë°©í–¥ê³¼ ê±°ë¦¬ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
         FVector2D Direction = MousePosition - CenterPosition;
         float Distance = Direction.Size();
 
-        float Deadzone = 50.0f; // ÀÌ ÇÈ¼¿ ¹İ°æ ¾È¿¡¼­´Â ÀÔ·ÂÀ» ¹«½ÃÇÕ´Ï´Ù.
-        int32 Segments = 8;     // 8¹æÇâ ¸Ş´º
+        float Deadzone = 50.0f; // 50 í”½ì…€ ë°˜ê²½ ì•ˆì—ì„œëŠ” ì…ë ¥ì„ ë¬´ì‹œí•©ë‹ˆë‹¤.
+        int32 Segments = 8;     // 8ë°©í–¥ ë©”ë‰´
 
         if (Distance > Deadzone)
         {
-            // °¢µµ °è»ê (Atan2 È°¿ë)
+            // ê°ë„ ê³„ì‚° (Atan2 í™œìš©)
             float Angle = FMath::Atan2(Direction.Y, Direction.X) * (180.0f / PI);
 
-            // À½¼ö¸¦ ¾ç¼ö 360µµ Ã¼°è·Î º¯È¯
+            // ìŒìˆ˜ì¸ ê²½ìš° 360ë„ ì²´ê³„ë¡œ ë³€í™˜
             if (Angle < 0.0f)
             {
                 Angle += 360.0f;
             }
 
-            // Á¤¹æÇâ ¹èÄ¡¸¦ À§ÇØ °¢µµ Æ²¾îÁÖ±â
+            // ì„¹í„°ì˜ ìœ„ì¹˜ë¥¼ ë§ì¶”ê¸° ìœ„í•´ ê°ë„ í‹€ì–´ì£¼ê¸°
             float OffsetAngle = Angle + (360.0f / Segments / 2.0f);
             if (OffsetAngle >= 360.0f)
             {
                 OffsetAngle -= 360.0f;
             }
 
-            // ÃÖÁ¾ ÀÎµ¦½º °è»ê
+            // ì„ íƒ ì¸ë±ìŠ¤ ê³„ì‚°
             int32 SelectedIndex = FMath::FloorToInt(OffsetAngle / (360.0f / Segments));
 
-            // °¡¸®Å°´Â ¹æÇâÀÌ ÀÌÀü°ú ´Ş¶óÁ³À» ¶§¸¸ ºí·çÇÁ¸°Æ®¿¡ ÀÌº¥Æ® Àü´Ş
+            // ì„ íƒì´ ë°”ë€Œì—ˆì„ ë•Œë§Œ ë¸”ë£¨í”„ë¦°íŠ¸ ì´ë²¤íŠ¸ í˜¸ì¶œ
             if (SelectedIndex != PreviousIndex)
             {
                 OnSelectedIndexChanged(SelectedIndex);
@@ -55,7 +55,7 @@ void UTestUI::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
         }
         else
         {
-            // ¸¶¿ì½º°¡ µ¥µåÁ¸ ¾È¿¡ µé¾î¿À¸é ¼±ÅÃ ÇØÁ¦(-1) ½ÅÈ£ Àü´Ş
+            // ë§ˆìš°ìŠ¤ê°€ ë°ë“œì¡´ ì•ˆì— ìˆìœ¼ë©´ ì„ íƒ ì—†ìŒ(-1) ì‹ í˜¸ ì „ì†¡
             if (PreviousIndex != -1)
             {
                 OnSelectedIndexChanged(-1);
