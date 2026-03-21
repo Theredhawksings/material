@@ -188,7 +188,15 @@ void AmaterialCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (HeldActor) UpdateHoldPivotTransform();
+	// 애니메이션 중에는 HoldPivot 조정, 끝나면 앞에 떠있게
+	if (HeldActor)
+	{
+		if (bIsPickingUp)
+			UpdateHoldPivotTransform();  // 애니메이션 중
+		else
+			UpdateHeldActorPosition();   // 애니메이션 끝남
+	}
+	
 	UpdateAnimation();
 
 	if (HeatMPC)
@@ -375,7 +383,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	}
 	
 	if (IA_LeftClick) EIC->BindAction(IA_LeftClick, ETriggerEvent::Started, this, &AmaterialCharacter::OnLeftClick);
-	if (IA_Escape) EIC->BindAction(IA_Escape, ETriggerEvent::Started, this, &AmaterialCharacter::OnEscapePressed);  // 추가!
+	if (IA_Escape) EIC->BindAction(IA_Escape, ETriggerEvent::Started, this, &AmaterialCharacter::OnEscapePressed);
 }
 
 void AmaterialCharacter::Move(const FInputActionValue& Value)
@@ -443,11 +451,6 @@ void AmaterialCharacter::OnLeftClick()
 	if (bIsProcessing) return;  
 	bIsProcessing = true;
 	
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("OnLeftClick Called!"));
-	}
-	
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC) 
 	{
@@ -459,19 +462,13 @@ void AmaterialCharacter::OnLeftClick()
 	{
 		PC->SetPause(false);
 		bGamePaused = false;
-		
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, TEXT("Game Resumed by Click"));
 	}
 	
 	if (!bMouseCaptured)
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Capturing Mouse!"));
-		
 		PC->bShowMouseCursor = false;
-		
 		FInputModeGameOnly InputMode;
 		PC->SetInputMode(InputMode);
-		
 		bMouseCaptured = true;
 	}
 	
@@ -510,8 +507,10 @@ void AmaterialCharacter::HandleActualAttachment()
 {
 	if (!PendingPickupActor || !HoldPivot) return;
 	CaptureHeldLocalExtent(PendingPickupActor);
-	HeldActor          = PendingPickupActor;
+	HeldActor = PendingPickupActor;
 	PendingPickupActor = nullptr;
+	
+	// 애니메이션 중에는 HoldPivot에 부착
 	HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
 	HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
@@ -522,12 +521,33 @@ void AmaterialCharacter::HandleActualAttachment()
 void AmaterialCharacter::OnPickupAnimFinished()
 {
 	bIsPickingUp = false;
+	
+	// 애니메이션 끝나면 HoldPivot에서 분리
+	if (HeldActor)
+	{
+		HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		SetPrimitiveComponentsPhysics(HeldActor, false); // 물리는 여전히 꺼둠
+	}
+	
 	GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
 	{
-		bWasHolding    = false;
+		bWasHolding = false;
 		bIsPlayingWalk = false;
 		UpdateAnimation();
 	}, 0.2f, false);
+}
+
+void AmaterialCharacter::UpdateHeldActorPosition()
+{
+	if (!HeldActor) return;
+	
+	// 캐릭터 앞 1m, 높이 80cm
+	FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
+	FVector HeightOffset = FVector(0.f, 0.f, HoldHeight);
+	FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
+	
+	HeldActor->SetActorLocation(TargetLocation);
+	HeldActor->SetActorRotation(GetActorRotation());
 }
 
 void AmaterialCharacter::DropHeld()
@@ -535,22 +555,36 @@ void AmaterialCharacter::DropHeld()
 	if (!HeldActor) return;
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	if (!PickupAnim || !MeshComp) return;
+	
+	// 물체를 다시 HoldPivot에 부착 (애니메이션 재생 위해)
+	if (HoldPivot)
+	{
+		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
+		HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
+	}
+	
 	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	MeshComp->SetAnimation(PickupAnim);
 	MeshComp->SetPlayRate(-1.0f);
 	MeshComp->SetPosition(PickupAnim->GetPlayLength());
 	MeshComp->Play(false);
 	bIsPickingUp = true;
+	
 	FTimerHandle DropTimerHandle;
 	GetWorld()->GetTimerManager().SetTimer(DropTimerHandle, [this]()
 	{
 		if (!HeldActor) return;
+		
 		HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-		HeldActor->SetActorLocation(HeldActor->GetActorLocation() + GetActorForwardVector() * DropForwardOffset);
+		HeldActor->SetActorLocation(HeldActor->GetActorLocation() + 
+			GetActorForwardVector() * DropForwardOffset);
+		
 		SetPrimitiveComponentsPhysics(HeldActor, true);
 		RestoreWalkSpeed();
 		HeldActor = nullptr;
 	}, DropDetachTime, false);
+	
 	GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
 	{
 		bIsPickingUp   = false;
@@ -646,9 +680,6 @@ void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnab
 
 void AmaterialCharacter::OnWindowFocusChanged(bool bHasFocus)
 {
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Cyan, 
-		FString::Printf(TEXT("Window Focus: %s"), bHasFocus ? TEXT("Gained") : TEXT("Lost")));
-	
 	if (!bHasFocus)
 	{
 		bHadFocusBefore = true;
@@ -659,15 +690,11 @@ void AmaterialCharacter::OnWindowFocusChanged(bool bHasFocus)
 		if (PC)
 		{
 			PC->bShowMouseCursor = true;
-			
 			FInputModeGameAndUI InputMode;
 			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 			InputMode.SetHideCursorDuringCapture(false);
 			PC->SetInputMode(InputMode);
-			
 			bMouseCaptured = false;
-			
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Magenta, TEXT("Mouse Released!"));
 		}
 	}
 }
@@ -691,27 +718,19 @@ void AmaterialCharacter::OnEscapePressed()
 	{
 		PC->SetPause(true);
 		PC->bShowMouseCursor = true;
-		
 		FInputModeGameAndUI InputMode;
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		InputMode.SetHideCursorDuringCapture(false);
 		PC->SetInputMode(InputMode);
-		
 		bMouseCaptured = false;
-		
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Yellow, TEXT("Game Paused"));
 	}
 	else
 	{
 		PC->SetPause(false);
 		PC->bShowMouseCursor = false;
-		
 		FInputModeGameOnly InputMode;
 		PC->SetInputMode(InputMode);
-		
 		bMouseCaptured = true;
-		
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, TEXT("Game Resumed"));
 	}
 	
 	bIsProcessing = false;

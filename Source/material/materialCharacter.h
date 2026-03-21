@@ -82,12 +82,15 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Pickup") TArray<FName> PickupTags;
 	UPROPERTY(EditAnywhere, Category = "Pickup") FName HoldSocketName = TEXT("hand_RSocket");
 	UPROPERTY(EditAnywhere, Category = "Pickup") float PickupRange = 500.f;
+	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldDistance = 85.f; 
+	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldHeight = 65.f;   
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset") FVector HoldExtraLocalOffset_Idle = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset") FVector HoldExtraLocalOffset_Walk = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset") FRotator HoldLocalRot_Idle = FRotator(-10.f, -20.f, -10.f);
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset") FRotator HoldLocalRot_Walk = FRotator(-10.f, -20.f, -10.f);
 
 	float OriginalMaxWalkSpeed = 0.f;
+	FVector HeldLocalExtent = FVector(50.f);
 
 	UPROPERTY(EditAnywhere, Category = "Equipment") FName BackpackSocketName = TEXT("spine_002Socket");
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
@@ -98,7 +101,6 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 	UPROPERTY(EditAnywhere, Category = "Thermal") TObjectPtr<UMaterialParameterCollection> HeatMPC;
 
-	FVector HeldLocalExtent = FVector(50.f);
 	FTimerHandle AttachmentTimerHandle;
 	FTimerHandle PickupEndTimerHandle;
 
@@ -146,11 +148,12 @@ private:
 	void DropHeld();
 	void HandleActualAttachment();
 	void OnPickupAnimFinished();
+	void UpdateHeldActorPosition();
+	void UpdateHoldPivotTransform();
 	void CaptureHeldLocalExtent(AActor* Actor);
 	void ApplyWeightSpeedPenalty(AActor* Actor);
 	void RestoreWalkSpeed();
 	void UpdateAnimation();
-	void UpdateHoldPivotTransform();
 	void PlayAnimIfValid(UAnimSequence* Anim, bool bLooping) const;
 	UAnimSequence* GetAnimForState(bool bMoving, bool bHolding) const;
 	void SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnable) const;
