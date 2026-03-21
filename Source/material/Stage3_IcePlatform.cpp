@@ -34,13 +34,13 @@ void AStage3_IcePlatform::BeginPlay()
 	if (LeftDoorActor)
 	{
 		LeftStartLocation = LeftDoorActor->GetActorLocation();
-		LeftTargetLocation = LeftStartLocation + FVector(0.0f, -OpenDistance, 0.0f);
+		LeftTargetLocation = LeftStartLocation + FVector(OpenDistance, 0.0f, 0.0f);
 	}
 
 	if (RightDoorActor)
 	{
 		RightStartLocation = RightDoorActor->GetActorLocation();
-		RightTargetLocation = RightStartLocation + FVector(0.0f, OpenDistance, 0.0f);
+		RightTargetLocation = RightStartLocation + FVector(-OpenDistance, 0.0f, 0.0f);
 	}
 
 	FTimerHandle InitTimer;
@@ -173,8 +173,7 @@ bool AStage3_IcePlatform::IsConditionMet() const
 	bool bIsIce = TrackedActor->ActorHasTag(FName("Ice"));
 	FVector Scale = TrackedActor->GetActorScale3D();
 	
-	float ScaleTolerance = 0.05f;
-	bool bScaleCorrect = FMath::Abs(Scale.X - RequiredScale) <= ScaleTolerance;
+	bool bScaleCorrect = Scale.X <= RequiredScale;
 
 	return bIsIce && bScaleCorrect;
 }
