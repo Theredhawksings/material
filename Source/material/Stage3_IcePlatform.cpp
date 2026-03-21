@@ -4,13 +4,14 @@
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Transformation_actor.h"
-#include "GameFramework/Character.h"
-#include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 
 AStage3_IcePlatform::AStage3_IcePlatform()
 	: TrackedActor(nullptr)
 	, bActivated(false)
+	, bIsOpening(false)
+	, bIsOpen(false)
+	, CurrentTime(0.0f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -29,6 +30,18 @@ AStage3_IcePlatform::AStage3_IcePlatform()
 void AStage3_IcePlatform::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (LeftDoorActor)
+	{
+		LeftStartLocation = LeftDoorActor->GetActorLocation();
+		LeftTargetLocation = LeftStartLocation + FVector(0.0f, -OpenDistance, 0.0f);
+	}
+
+	if (RightDoorActor)
+	{
+		RightStartLocation = RightDoorActor->GetActorLocation();
+		RightTargetLocation = RightStartLocation + FVector(0.0f, OpenDistance, 0.0f);
+	}
 
 	FTimerHandle InitTimer;
 	GetWorld()->GetTimerManager().SetTimer(
@@ -60,17 +73,70 @@ void AStage3_IcePlatform::Tick(float DeltaTime)
 	{
 		bool bConditionMet = IsConditionMet();
 
-		if (GEngine)
+		if (bConditionMet)
+		{
+			bActivated = true;
+			bIsOpening = true;
+
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("조건 충족! 문이 열립니다"));
+			}
+
+			if (LeftDoorActor)
+			{
+				TArray<UStaticMeshComponent*> MeshComps;
+				LeftDoorActor->GetComponents<UStaticMeshComponent>(MeshComps);
+				for (UStaticMeshComponent* Mesh : MeshComps)
+				{
+					Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+			}
+
+			if (RightDoorActor)
+			{
+				TArray<UStaticMeshComponent*> MeshComps;
+				RightDoorActor->GetComponents<UStaticMeshComponent>(MeshComps);
+				for (UStaticMeshComponent* Mesh : MeshComps)
+				{
+					Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+			}
+		}
+		else if (GEngine)
 		{
 			bool bIsIce = TrackedActor->ActorHasTag(FName("Ice"));
 			FVector Scale = TrackedActor->GetActorScale3D();
 			
-			FString StatusMsg = FString::Printf(TEXT("Ice: %s | Scale: %.2f | Required: %.2f | %s"), 
+			FString StatusMsg = FString::Printf(TEXT("Ice: %s | Scale: %.2f | Required: %.2f"), 
 				bIsIce ? TEXT("Yes") : TEXT("No"),
 				Scale.X,
-				RequiredScale,
-				bConditionMet ? TEXT("PASS") : TEXT("FAIL"));
-			GEngine->AddOnScreenDebugMessage(1, 0.0f, bConditionMet ? FColor::Green : FColor::Yellow, StatusMsg);
+				RequiredScale);
+			GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Yellow, StatusMsg);
+		}
+	}
+
+	if (bIsOpening && !bIsOpen)
+	{
+		CurrentTime += DeltaTime * OpenSpeed;
+		
+		if (CurrentTime >= 1.0f)
+		{
+			CurrentTime = 1.0f;
+			bIsOpen = true;
+			bIsOpening = false;
+		}
+
+		if (LeftDoorActor)
+		{
+			FVector NewLeftLocation = FMath::Lerp(LeftStartLocation, LeftTargetLocation, CurrentTime);
+			LeftDoorActor->SetActorLocation(NewLeftLocation);
+		}
+
+		if (RightDoorActor)
+		{
+			FVector NewRightLocation = FMath::Lerp(RightStartLocation, RightTargetLocation, CurrentTime);
+			RightDoorActor->SetActorLocation(NewRightLocation);
 		}
 	}
 }
@@ -78,42 +144,12 @@ void AStage3_IcePlatform::Tick(float DeltaTime)
 void AStage3_IcePlatform::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!OtherActor || bActivated)
+	if (!OtherActor)
 		return;
 
 	if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(OtherActor))
 	{
 		TrackedActor = TransformActor;
-	}
-	else if (OtherActor->IsA(ACharacter::StaticClass()))
-	{
-		if (TrackedActor && IsConditionMet())
-		{
-			bActivated = true;
-
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("조건 충족! Stage4로 이동"));
-			}
-
-			FTimerHandle MoveTimer;
-			GetWorld()->GetTimerManager().SetTimer(
-				MoveTimer,
-				[this]()
-				{
-					UGameplayStatics::OpenLevel(this, NextStageName);
-				},
-				1.0f,
-				false
-			);
-		}
-		else
-		{
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("조건 불충족: Ice 상태 & Scale 0.7 필요"));
-			}
-		}
 	}
 }
 

@@ -36,6 +36,13 @@ protected:
 
 	class ATransformation_actor* TrackedActor;
 	bool bActivated;
+	bool bIsOpening;
+	bool bIsOpen;
+	float CurrentTime;
+	FVector LeftStartLocation;
+	FVector LeftTargetLocation;
+	FVector RightStartLocation;
+	FVector RightTargetLocation;
 
 public:	
 	virtual void Tick(float DeltaTime) override;
@@ -43,8 +50,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	float RequiredScale = 0.7f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
-	FName NextStageName = FName("Stage4");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	AActor* LeftDoorActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	AActor* RightDoorActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenDistance = -150.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+	float OpenSpeed = 2.0f;
 
 	bool IsConditionMet() const;
 };
