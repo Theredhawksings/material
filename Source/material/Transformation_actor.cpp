@@ -5,6 +5,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "materialCharacter.h"
 
 #include "UObject/ConstructorHelpers.h"
 
@@ -393,6 +394,10 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     }
 }
 
+// 파일 상단 include에 추가
+#include "materialCharacter.h"
+
+// NextForm() 함수 수정
 void ATransformation_actor::NextForm()
 {
     if (CycleOrder.Num() <= 0) return;
@@ -400,10 +405,41 @@ void ATransformation_actor::NextForm()
     if (Idx == INDEX_NONE)
     {
         SetForm(CycleOrder[0]);
+        
+        if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+        {
+            if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
+            {
+                // 변환된 재질에 따라 게이지 감소
+                if (ActorHasTag(TEXT("Rubber")))
+                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
+                else if (ActorHasTag(TEXT("Metal")))
+                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
+                else if (ActorHasTag(TEXT("Ice")))
+                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
+                else if (ActorHasTag(TEXT("Wood")))
+                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
+            }
+        }
         return;
     }
     Idx = (Idx + 1) % CycleOrder.Num();
     SetForm(CycleOrder[Idx]);
+    
+    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+    {
+        if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
+        {
+            if (ActorHasTag(TEXT("Rubber")))
+                PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
+            else if (ActorHasTag(TEXT("Metal")))
+                PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
+            else if (ActorHasTag(TEXT("Ice")))
+                PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
+            else if (ActorHasTag(TEXT("Wood")))
+                PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
+        }
+    }
 }
 
 void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)

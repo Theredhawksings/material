@@ -40,7 +40,38 @@ public:
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	void OnLeftClick();
-	void OnEscapePressed(); 
+	void OnEscapePressed();
+	void DecreaseGaugeForMaterial(const FName& MaterialTag);
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetRubberGauge() const { return RubberGauge; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetMetalGauge() const { return MetalGauge; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetIceGauge() const { return IceGauge; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetWoodGauge() const { return WoodGauge; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetJokerGauge() const { return JokerGauge; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetRubberGaugePercent() const { return RubberGauge / 100.f; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetMetalGaugePercent() const { return MetalGauge / 100.f; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetIceGaugePercent() const { return IceGauge / 100.f; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetWoodGaugePercent() const { return WoodGauge / 100.f; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetJokerGaugePercent() const { return JokerGauge / 100.f; }
 	
 protected:
 	virtual void BeginPlay() override;
@@ -100,6 +131,24 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 95;
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 	UPROPERTY(EditAnywhere, Category = "Thermal") TObjectPtr<UMaterialParameterCollection> HeatMPC;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float RubberGauge = 100.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float MetalGauge = 100.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float IceGauge = 100.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float WoodGauge = 100.f;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float JokerGauge = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Material Gauge")
+	float GaugeDecreaseAmount = 10.f;
 
 	FTimerHandle AttachmentTimerHandle;
 	FTimerHandle PickupEndTimerHandle;

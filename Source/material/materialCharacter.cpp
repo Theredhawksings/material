@@ -735,3 +735,18 @@ void AmaterialCharacter::OnEscapePressed()
 	
 	bIsProcessing = false;
 }
+
+void AmaterialCharacter::DecreaseGaugeForMaterial(const FName& MaterialTag)
+{
+	if (MaterialTag == TEXT("Joker"))
+		return;
+		
+	if (MaterialTag == TEXT("Rubber"))
+		RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0.f, 100.f);
+	else if (MaterialTag == TEXT("Metal"))
+		MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0.f, 100.f);
+	else if (MaterialTag == TEXT("Ice"))
+		IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0.f, 100.f);
+	else if (MaterialTag == TEXT("Wood"))
+		WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0.f, 100.f);
+}
