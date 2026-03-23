@@ -81,6 +81,16 @@ AmaterialCharacter::AmaterialCharacter()
 		TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'"));
 	if (BackpackMeshAsset.Succeeded())
 		BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
+	ArmComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmComp"));
+	ArmComp->SetupAttachment(GetMesh());
+	ArmComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> ArmMeshAsset(
+	TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Left_Arm/Arm.Arm'"));
+	if (ArmMeshAsset.Succeeded())
+	{	
+	ArmComp->SetStaticMesh(ArmMeshAsset.Object);
+	}
 
 	struct FAnimLoader { const TCHAR* Path; TObjectPtr<UAnimSequence>* Target; };
 	const FAnimLoader AnimAssets[] = {
@@ -169,6 +179,17 @@ void AmaterialCharacter::BeginPlay()
 		BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
 		BackpackComp->SetRelativeRotation(BackpackRelativeRotation);
 		BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
+	}
+
+	if (ArmComp)
+	{
+		ArmComp->AttachToComponent(MeshComp,
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			TEXT("hand_RSocket_0"));
+
+	ArmComp->SetRelativeLocation(FVector(0.025083f, 0.026441f, -0.016155f));
+	ArmComp->SetRelativeRotation(FRotator(0.701087f, 90.0f, 263.319741f));
+    ArmComp->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
 	}
 
 	HeatPool.SetNum(7);

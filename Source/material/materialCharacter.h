@@ -39,6 +39,7 @@ public:
 	AmaterialCharacter();
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	
 	void OnLeftClick();
 	void OnEscapePressed();
 	void DecreaseGaugeForMaterial(const FName& MaterialTag);
@@ -95,6 +96,10 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> BackpackComp;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> ArmComp;
+
 	UPROPERTY(VisibleAnywhere, Category = "Pickup")
 	TObjectPtr<USceneComponent> HoldPivot;
 
