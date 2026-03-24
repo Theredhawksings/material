@@ -91,6 +91,18 @@ AmaterialCharacter::AmaterialCharacter()
 	{	
 	ArmComp->SetStaticMesh(ArmMeshAsset.Object);
 	}
+	
+	ArmComp2 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmComp2"));
+	ArmComp2->SetupAttachment(GetMesh());
+	ArmComp2->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> ArmMeshAsset2(
+	TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Left_Arm/Arm.Arm'"));
+	if (ArmMeshAsset2.Succeeded())
+	{
+	ArmComp2->SetStaticMesh(ArmMeshAsset2.Object);
+	}
+
 
 	struct FAnimLoader { const TCHAR* Path; TObjectPtr<UAnimSequence>* Target; };
 	const FAnimLoader AnimAssets[] = {
@@ -187,9 +199,22 @@ void AmaterialCharacter::BeginPlay()
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
 			TEXT("hand_RSocket_0"));
 
-	ArmComp->SetRelativeLocation(FVector(0.025083f, 0.026441f, -0.016155f));
-	ArmComp->SetRelativeRotation(FRotator(0.701087f, 90.0f, 263.319741f));
+	ArmComp->SetRelativeLocation(FVector(0.034203f, 0.026415f, -0.013996f));
+	ArmComp->SetRelativeRotation(FRotator(0.701087f, 90.0f, 283.319741f));
     ArmComp->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
+	}
+
+	if (ArmComp2)
+	{
+	ArmComp2->AttachToComponent(
+		GetMesh(),
+		FAttachmentTransformRules::KeepRelativeTransform,
+		ArmSocketName2
+	);
+
+	ArmComp2->SetRelativeLocation(FVector(-0.031129f, 0.025846f, 0.032451f));
+	ArmComp2->SetRelativeRotation(FRotator(0.701087f, 90.0f, 103.319739f));
+    ArmComp2->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
 	}
 
 	HeatPool.SetNum(7);

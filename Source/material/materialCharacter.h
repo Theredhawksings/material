@@ -100,6 +100,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> ArmComp;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> ArmComp2;
+
 	UPROPERTY(VisibleAnywhere, Category = "Pickup")
 	TObjectPtr<USceneComponent> HoldPivot;
 
@@ -117,6 +120,7 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Pickup") TArray<FName> PickupTags;
 	UPROPERTY(EditAnywhere, Category = "Pickup") FName HoldSocketName = TEXT("hand_RSocket");
+	UPROPERTY(EditAnywhere, Category = "Equipment") FName ArmSocketName2 = TEXT("hand_LSocket");
 	UPROPERTY(EditAnywhere, Category = "Pickup") float PickupRange = 500.f;
 	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldDistance = 85.f; 
 	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldHeight = 65.f;   
