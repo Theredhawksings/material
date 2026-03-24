@@ -39,11 +39,9 @@ void ATransformation_actor::BeginPlay()
     MeshComp->SetRenderCustomDepth(false);
     MeshComp->SetCustomDepthStencilValue(0);
 
-    // ★ CycleOrder에 Magnet이 없으면 추가
     if (!CycleOrder.Contains(EBlockForm::Magnet))
     {
         CycleOrder.Add(EBlockForm::Magnet);
-        UE_LOG(LogTemp, Warning, TEXT("CycleOrder에 Magnet 추가됨"));
     }
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
@@ -55,7 +53,7 @@ void ATransformation_actor::BeginPlay()
     {
         UpdateTagsForForm(CurrentForm);
     }
-    
+
     if (CurrentForm == EBlockForm::Ice)
     {
         BaseScaleBeforeMelt = MeshComp->GetComponentScale();
@@ -71,11 +69,6 @@ void ATransformation_actor::BeginPlay()
     if (CurrentForm == EBlockForm::Magnet)
     {
         EnterMagnetMode();
-        // ★ 물리 강제 켜기 (피지컬 머터리얼 무게 유지됨)
-        if (MeshComp && !MeshComp->IsSimulatingPhysics())
-        {
-            MeshComp->SetSimulatePhysics(true);
-        }
     }
 
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
@@ -225,7 +218,6 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // ===== ICE =====
     if (CurrentForm == EBlockForm::Ice)
     {
         if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
@@ -260,7 +252,6 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
     }
 
-    // ===== WOOD =====
     if (CurrentForm == EBlockForm::Wood)
     {
         if (!bIsBurning)
@@ -327,7 +318,6 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
     }
 
-    // ===== MAGNET =====
     if (CurrentForm == EBlockForm::Magnet)
     {
         UpdateMagnetism(DeltaTime);
@@ -344,9 +334,6 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         }
         return;
     }
-
-    // ★ 자석에서 다른 Form으로 바뀔 때 주변 자석들에게 알림
-    const bool bWasMagnet = (CurrentForm == EBlockForm::Magnet);
 
     float SavedMeltAlpha = MeltAlpha;
     float SavedEnergyAccumJ = EnergyAccumJ;
@@ -423,64 +410,44 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     {
         EnterMagnetMode();
     }
-    
-    // ★ 자석에서 다른 Form으로 바뀌었으면 주변 자석들 즉시 갱신
-    if (bWasMagnet && NewForm != EBlockForm::Magnet)
-    {
-        NotifyNearbyMagnets();
-    }
 }
 
+void ATransformation_actor::DecreaseGaugeForCurrentTag()
+{
+    APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+    if (!PC) return;
+
+    AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn());
+    if (!PlayerChar) return;
+
+    if (ActorHasTag(TEXT("Rubber")))
+        PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
+    else if (ActorHasTag(TEXT("Metal")))
+        PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
+    else if (ActorHasTag(TEXT("Ice")))
+        PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
+    else if (ActorHasTag(TEXT("Wood")))
+        PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
+    else if (ActorHasTag(TEXT("Magnet")))
+        PlayerChar->DecreaseGaugeForMaterial(TEXT("Magnet"));
+}
 
 void ATransformation_actor::NextForm()
 {
     if (CycleOrder.Num() <= 0) return;
-     UE_LOG(LogTemp, Warning, TEXT("Current Form: %d, CycleOrder Size: %d"), (int32)CurrentForm, CycleOrder.Num());
-    
+
     int32 Idx = CycleOrder.Find(CurrentForm);
-    UE_LOG(LogTemp, Warning, TEXT("Found Index: %d"), Idx);
 
     if (Idx == INDEX_NONE)
     {
         SetForm(CycleOrder[0]);
-        
-        if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-        {
-            if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
-            {
-                if (ActorHasTag(TEXT("Rubber")))
-                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
-                else if (ActorHasTag(TEXT("Metal")))
-                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
-                else if (ActorHasTag(TEXT("Ice")))
-                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
-                else if (ActorHasTag(TEXT("Wood")))
-                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
-                else if (ActorHasTag(TEXT("Magnet")))
-                    PlayerChar->DecreaseGaugeForMaterial(TEXT("Magnet"));
-            }
-        }
+        DecreaseGaugeForCurrentTag();
         return;
     }
+
     Idx = (Idx + 1) % CycleOrder.Num();
     SetForm(CycleOrder[Idx]);
-    
-    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-    {
-        if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
-        {
-            if (ActorHasTag(TEXT("Rubber")))
-                PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
-            else if (ActorHasTag(TEXT("Metal")))
-                PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
-            else if (ActorHasTag(TEXT("Ice")))
-                PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
-            else if (ActorHasTag(TEXT("Wood")))
-                PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
-            else if (ActorHasTag(TEXT("Magnet")))
-                PlayerChar->DecreaseGaugeForMaterial(TEXT("Magnet"));
-        }
-    }
+    DecreaseGaugeForCurrentTag();
 }
 
 void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)
@@ -488,9 +455,9 @@ void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)
     ClearAllFormTags();
     switch (Form)
     {
-    case EBlockForm::Ice: Tags.AddUnique(IceTag); break;
-    case EBlockForm::Metal: Tags.AddUnique(MetalTag); break;
-    case EBlockForm::Wood: Tags.AddUnique(WoodTag); break;
+    case EBlockForm::Ice:    Tags.AddUnique(IceTag);    break;
+    case EBlockForm::Metal:  Tags.AddUnique(MetalTag);  break;
+    case EBlockForm::Wood:   Tags.AddUnique(WoodTag);   break;
     case EBlockForm::Rubber: Tags.AddUnique(RubberTag); break;
     case EBlockForm::Magnet: Tags.AddUnique(MagnetTag); break;
     default: break;
@@ -578,7 +545,6 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
     if (Spec.bOverrideMass) MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
 }
 
-// ===== ICE MODE =====
 void ATransformation_actor::EnterIceMode()
 {
     if (!MeshComp) return;
@@ -656,7 +622,6 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
     }
 }
 
-// ===== WOOD MODE =====
 void ATransformation_actor::EnterWoodMode()
 {
     if (!MeshComp) return;
@@ -746,13 +711,23 @@ void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
     MeshComp->SetWorldScale3D(NewScale);
 }
 
-// ===== MAGNET MODE =====
-// ===== MAGNET MODE =====
+FVector ATransformation_actor::GetNorthPoleWorldDir() const
+{
+    if (!MeshComp) return FVector::ForwardVector;
+    return MeshComp->GetComponentTransform().TransformVectorNoScale(NorthPoleLocalDir).GetSafeNormal();
+}
+
+FVector ATransformation_actor::GetSouthPoleWorldDir() const
+{
+    return -GetNorthPoleWorldDir();
+}
+
 void ATransformation_actor::EnterMagnetMode()
 {
     if (!MeshComp) return;
 
     bMagnetCollided = false;
+    bMagnetSnapped = false;
 
     if (bAutoComputeStrength)
     {
@@ -763,13 +738,12 @@ void ATransformation_actor::EnterMagnetMode()
     bDemagnetized = false;
     bElectroActive = false;
     TimeSinceLastMagnetRefresh = 0.f;
-    
+
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
 
-    // ★ 물리 켜기
-    MeshComp->SetSimulatePhysics(true);
-    MeshComp->SetEnableGravity(true);
+    MeshComp->SetSimulatePhysics(false);
+    MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
     RefreshOverlappingMetals();
 }
@@ -777,30 +751,19 @@ void ATransformation_actor::EnterMagnetMode()
 void ATransformation_actor::ExitMagnetMode()
 {
     bMagnetCollided = false;
+    bMagnetSnapped = false;
     bDemagnetized = false;
     bElectroActive = false;
     MagnetStrength = 0.f;
     BaseMagnetStrength = 0.f;
     TimeSinceLastMagnetRefresh = 0.f;
-    
+
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
-    
-    if (MeshComp)
-    {
-        MeshComp->SetEnableGravity(true);
-        MeshComp->SetLinearDamping(0.01f);
-        MeshComp->SetAngularDamping(0.01f);
-    }
 }
 
-void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
+void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-    return;
-}
-
-void ATransformation_actor::UpdateMagnetPhysicsState()
 {
     return;
 }
@@ -814,15 +777,15 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     {
         TimeSinceLastMagnetRefresh = 0.f;
         RefreshOverlappingMetals();
-        
-        // ★ 디버그
-        UE_LOG(LogTemp, Warning, TEXT("[%s] 자력=%.0f, 철 개수=%d, 물리=%d"), 
-            *GetName(), MagnetStrength, OverlappingMetals.Num(), MeshComp->IsSimulatingPhysics());
+
+        UE_LOG(LogTemp, Log, TEXT("[%s] MagStr=%.0f, Targets=%d"),
+            *GetName(), MagnetStrength, OverlappingMetals.Num());
     }
 
     if (OverlappingMetals.Num() == 0) return;
 
-    const FVector MagnetLoc = MeshComp->GetComponentLocation();
+    const FVector MagnetLoc = GetActorLocation();
+    const FVector MyNorth = GetNorthPoleWorldDir();
     const float StrengthTimesMultiplier = MagnetStrength * ForceMultiplier;
 
     for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
@@ -830,39 +793,88 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
         UPrimitiveComponent* Comp = It->Get();
         if (!IsValid(Comp)) { It.RemoveCurrent(); continue; }
         AActor* OwnerActor = Comp->GetOwner();
-        if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag))
+        if (!OwnerActor) { It.RemoveCurrent(); continue; }
+        if (!OwnerActor->ActorHasTag(MetalTag) && !OwnerActor->ActorHasTag(MagnetTag))
         { It.RemoveCurrent(); continue; }
     }
 
     if (OverlappingMetals.Num() == 0) return;
 
-    for (UPrimitiveComponent* MetalComp : OverlappingMetals)
+    for (UPrimitiveComponent* TargetComp : OverlappingMetals)
     {
-        if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics()) continue;
+        if (!IsValid(TargetComp)) continue;
 
-        const FVector MetalLoc = MetalComp->GetComponentLocation();
-        const FVector ToMagnet = MagnetLoc - MetalLoc;
-        const float Distance = ToMagnet.Size();
+        AActor* OtherActor = TargetComp->GetOwner();
+        if (!OtherActor) continue;
 
-        if (Distance > MaxDistance || Distance < MinDistance) continue;
+        const FVector OtherLoc = OtherActor->GetActorLocation();
+        const FVector ToOther = OtherLoc - MagnetLoc;
+        const float Distance = ToOther.Size();
 
-        const FVector Dir = ToMagnet / Distance;
+        if (Distance > MaxDistance || Distance < 1.f) continue;
+
+        const FVector DirToOther = ToOther / Distance;
         const float SafeDist = FMath::Max(Distance, MinDistance);
-        float ForceMag = StrengthTimesMultiplier / FMath::Pow(SafeDist, MagneticDecayExponent);
 
-        const float MetalMass = MetalComp->GetMass();
-        ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
+        ATransformation_actor* OtherMagnetActor = nullptr;
+        if (OtherActor->ActorHasTag(MagnetTag))
+        {
+            OtherMagnetActor = Cast<ATransformation_actor>(OtherActor);
+        }
 
-        const FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
-        const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
-        FVector FinalForce = (Dir * ForceMag) + DampingForce;
-        FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
+        if (OtherMagnetActor)
+        {
+            if (bMagnetSnapped) continue;
 
-        MetalComp->AddForce(FinalForce, NAME_None, false);
+            const FVector OtherNorth = OtherMagnetActor->GetNorthPoleWorldDir();
 
-        // ★ 디버그
-UE_LOG(LogTemp, Warning, TEXT("  → 철 %s: 거리=%.0f, 힘=%.0f N, 질량=%.1f kg"), 
-            *MetalComp->GetOwner()->GetName(), Distance, FinalForce.Size(), MetalComp->GetMass());
+            const float MyPoleToward = FVector::DotProduct(MyNorth, DirToOther);
+            const float OtherPoleToward = FVector::DotProduct(OtherNorth, -DirToOther);
+            const float PolarityFactor = -(MyPoleToward * OtherPoleToward);
+
+            float SpeedScale = (ReferenceDistance / FMath::Max(SafeDist, 1.f));
+            SpeedScale = FMath::Clamp(SpeedScale, 0.1f, 5.f);
+
+            float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(PolarityFactor);
+
+            FVector MoveDir = DirToOther * FMath::Sign(PolarityFactor);
+
+            FVector MoveDelta = MoveDir * Speed * DeltaTime;
+
+            AddActorWorldOffset(MoveDelta, true);
+
+            if (PolarityFactor > 0.f && Distance <= MagnetSnapDistance)
+            {
+                bMagnetSnapped = true;
+                UE_LOG(LogTemp, Log, TEXT("[%s] Snapped to [%s]"), *GetName(), *OtherActor->GetName());
+            }
+
+            if (bDebugDraw)
+            {
+                FColor DebugColor = (PolarityFactor > 0) ? FColor::Green : FColor::Red;
+                DrawDebugLine(GetWorld(), MagnetLoc, OtherLoc, DebugColor, false, 0.1f, 0, 2.f);
+                DrawDebugString(GetWorld(), MagnetLoc + FVector(0, 0, 50),
+                    FString::Printf(TEXT("P=%.2f D=%.0f"), PolarityFactor, Distance),
+                    nullptr, FColor::White, 0.1f);
+            }
+        }
+        else
+        {
+            if (!TargetComp->IsSimulatingPhysics()) continue;
+
+            const FVector DirToMagnet = -DirToOther;
+            float ForceMag = StrengthTimesMultiplier / FMath::Pow(SafeDist, MagneticDecayExponent);
+
+            const float MetalMass = TargetComp->GetMass();
+            ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
+
+            const FVector CurrentVel = TargetComp->GetPhysicsLinearVelocity();
+            const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
+            FVector FinalForce = (DirToMagnet * ForceMag) + DampingForce;
+            FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
+
+            TargetComp->AddForce(FinalForce, NAME_None, false);
+        }
     }
 }
 
@@ -875,13 +887,13 @@ void ATransformation_actor::RefreshOverlappingMetals()
     UWorld* World = GetWorld();
     if (!World) return;
 
-    const FVector Center = MeshComp->Bounds.Origin;
+    const FVector Center = GetActorLocation();
     FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MagnetSense), false);
     Q.AddIgnoredActor(this);
 
     TArray<FOverlapResult> Hits;
-    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj, 
+    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj,
         FCollisionShape::MakeSphere(MaxDistance), Q);
 
     for (const FOverlapResult& H : Hits)
@@ -892,35 +904,16 @@ void ATransformation_actor::RefreshOverlappingMetals()
         AActor* CompOwner = Comp->GetOwner();
         if (!CompOwner || CompOwner == this) continue;
 
-        // ★ 철만
-        if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
+        bool bIsMetal = CompOwner->ActorHasTag(MetalTag);
+        bool bIsMagnet = CompOwner->ActorHasTag(MagnetTag);
+
+        if (bIsMetal && Comp->IsSimulatingPhysics())
+        {
+            OverlappingMetals.Add(Comp);
+        }
+        else if (bIsMagnet)
         {
             OverlappingMetals.Add(Comp);
         }
     }
-}
-
-void ATransformation_actor::UpdateElectroBoost()
-{
-    return;
-}
-
-void ATransformation_actor::CheckDemagnetize()
-{
-    return;
-}
-
-void ATransformation_actor::ApplyInducedMagnetism()
-{
-    return;
-}
-
-float ATransformation_actor::CalculateInducedStrength(float DistanceToMagnet, float BaseStrength) const 
-{
-    return 0.f;
-}
-
-void ATransformation_actor::NotifyNearbyMagnets()
-{
-    return;
 }

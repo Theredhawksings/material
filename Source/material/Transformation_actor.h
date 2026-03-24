@@ -20,7 +20,7 @@ enum class EBlockForm : uint8
     Rubber,
     Metal,
     Wood,
-    Magnet  // 추가
+    Magnet
 };
 
 USTRUCT(BlueprintType)
@@ -106,11 +106,9 @@ public:
     EBlockForm GetCurrentForm() const { return CurrentForm; }
     const FBlockFormSpec* FindSpec(EBlockForm Form) const;
 
-    // === Metal ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
     float WireSenseExtraRadius = 8.f;
 
-    // === Ice ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")
     UMaterialInterface* IceMeltMaterial = nullptr;
 
@@ -132,7 +130,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
     float SimTimeScale = 3600.0f;
 
-    // === Wood ===
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Ignition")
     float WoodIgnitionTempC = 300.0f;
 
@@ -163,7 +160,6 @@ public:
     UPROPERTY(EditAnywhere, Category="Wood|Physics")
     float WoodSimTimeScale = 100.0f;
 
-    // === Magnet ===
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float MagnetStrength = 0.f;
 
@@ -183,7 +179,7 @@ public:
     bool bAutoComputeStrength = true;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ForceMultiplier = 30.0f; 
+    float ForceMultiplier = 30.0f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float MagneticDecayExponent = 1.5f;
@@ -226,9 +222,21 @@ public:
 
     UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
     bool bEnablePolarity = true;
-    
+
     UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
     float RepulsionMultiplier = 1.5f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
+    FVector NorthPoleLocalDir = FVector(1.f, 0.f, 0.f);
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
+    float MagnetToMagnetForceMultiplier = 15.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Movement")
+    float MagnetApproachSpeed = 300.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Movement")
+    float MagnetSnapDistance = 5.f;
 
     UPROPERTY(EditAnywhere, Category="Debug")
     bool bDebugDraw = false;
@@ -239,7 +247,6 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Electro")
     bool bElectroActive = false;
 
-    // === Tags ===
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     bool bAutoUpdateTags = true;
 
@@ -257,6 +264,9 @@ public:
 
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     FName MagnetTag = "Magnet";
+
+    FVector GetNorthPoleWorldDir() const;
+    FVector GetSouthPoleWorldDir() const;
 
 private:
     void RefreshConnectedWires();
@@ -277,20 +287,13 @@ private:
     void RecalcWoodMassAndVolume();
     void ApplyWoodBurnVisual(float Alpha01);
 
-    // Magnet 함수들
     void EnterMagnetMode();
     void ExitMagnetMode();
     void UpdateMagnetism(float DeltaTime);
     void RefreshOverlappingMetals();
-    void UpdateElectroBoost();
-    void CheckDemagnetize();
-    void ApplyInducedMagnetism();
-    float CalculateInducedStrength(float DistanceToMagnet, float BaseStrength) const;  // BaseMagnetStrength -> BaseStrength
-    void UpdateMagnetPhysicsState();
-    void NotifyNearbyMagnets();
+    void DecreaseGaugeForCurrentTag();
 
 private:
-    // Ice
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* IceMID = nullptr;
 
@@ -305,7 +308,6 @@ private:
     float TotalMeltEnergyJ = 1.0f;
     FVector BaseScaleBeforeMelt = FVector(1.0f);
 
-    // Wood
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* BurnMID = nullptr;
 
@@ -317,7 +319,6 @@ private:
     bool bIsBurning = false;
     FVector BaseScaleBeforeBurn = FVector(1.0f);
 
-    // Metal
     UPROPERTY(Transient)
     TArray<TObjectPtr<AWire>> ConnectedWires;
 
@@ -326,7 +327,6 @@ private:
 
     FTimerHandle RefreshTimerHandle;
 
-    // Magnet
     UPROPERTY(Transient)
     TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
 
@@ -337,10 +337,11 @@ private:
     float BaseMagnetStrength = 0.f;
 
     UFUNCTION()
-    void OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
+    void OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-    
+
     bool bMagnetCollided = false;
+    bool bMagnetSnapped = false;
 
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
