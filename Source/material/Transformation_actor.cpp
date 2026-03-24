@@ -742,7 +742,8 @@ void ATransformation_actor::EnterMagnetMode()
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
 
-    MeshComp->SetSimulatePhysics(false);
+    MeshComp->SetSimulatePhysics(true); // 물리를 켭니다!
+    MeshComp->SetEnableGravity(true);   // 중력도 켭니다!
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
     RefreshOverlappingMetals();
@@ -771,6 +772,7 @@ void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* Ot
 void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 {
     if (bDemagnetized || !MeshComp) return;
+    if (MeshComp->GetCollisionEnabled() == ECollisionEnabled::NoCollision) return;
 
     TimeSinceLastMagnetRefresh += DeltaTime;
     if (TimeSinceLastMagnetRefresh >= MagnetRefreshInterval)

@@ -143,7 +143,7 @@ AmaterialCharacter::AmaterialCharacter()
 	}
 
 	if (PickupTags.Num() == 0)
-		PickupTags = { TEXT("Metal"), TEXT("Rubber"), TEXT("Ice"), TEXT("Wood") };
+    	PickupTags = { TEXT("Metal"), TEXT("Rubber"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
 
 	static ConstructorHelpers::FObjectFinder<UMaterial> PlayerMat(
 		TEXT("/Script/Engine.Material'/Game/modeling/Character/M_Character.M_Character'"));
@@ -199,9 +199,9 @@ void AmaterialCharacter::BeginPlay()
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
 			TEXT("hand_RSocket_0"));
 			
-	ArmComp->SetRelativeLocation(FVector(0.028302f, 0.070043f, 0.004095f));
-	ArmComp->SetRelativeRotation(FRotator::MakeFromEuler(FVector(-5.957222f, 5.0f, 90.0f)));
-	ArmComp->SetRelativeScale3D(FVector(0.1f, 0.12f, 0.14f));
+	ArmComp->SetRelativeLocation(FVector(0.039308f, 0.063895f, -0.000174f));
+	ArmComp->SetRelativeRotation(FRotator::MakeFromEuler(FVector(-170.00052f, 0.000013f, -89.999984f)));
+	ArmComp->SetRelativeScale3D(FVector(0.1f, 0.14f, 0.14f));
 	}
 
 	if (ArmComp2)
@@ -602,7 +602,6 @@ void AmaterialCharacter::DropHeld()
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	if (!PickupAnim || !MeshComp) return;
 	
-	// 물체를 다시 HoldPivot에 부착 (애니메이션 재생 위해)
 	if (HoldPivot)
 	{
 		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
@@ -627,6 +626,23 @@ void AmaterialCharacter::DropHeld()
 			GetActorForwardVector() * DropForwardOffset);
 		
 		SetPrimitiveComponentsPhysics(HeldActor, true);
+		
+		ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
+		if (TransActor && TransActor->GetCurrentForm() == EBlockForm::Magnet)
+		{
+			AActor* DroppedMagnet = HeldActor;
+			GetWorld()->GetTimerManager().SetTimer(
+				MagnetSettleTimerHandle, [DroppedMagnet]()
+				{
+					if (!IsValid(DroppedMagnet)) return;
+					if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(DroppedMagnet->GetRootComponent()))
+					{
+						Root->SetSimulatePhysics(false);
+						Root->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+					}
+				}, 0.25f, false);
+		}
+		
 		RestoreWalkSpeed();
 		HeldActor = nullptr;
 	}, DropDetachTime, false);
@@ -717,9 +733,18 @@ void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnab
 	{
 		if (PC)
 		{
-			PC->SetSimulatePhysics(bEnable);
-			PC->SetEnableGravity(bEnable);
-			PC->SetCollisionEnabled(bEnable ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+			if (bEnable)
+			{
+				PC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				PC->SetSimulatePhysics(true);
+				PC->SetEnableGravity(true);
+			}
+			else
+			{
+				PC->SetSimulatePhysics(false);
+				PC->SetEnableGravity(false);
+				PC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
 		}
 	}
 }

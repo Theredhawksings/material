@@ -232,4 +232,6 @@ private:
 	static constexpr float InteractSphereRadius = 50.f;
 	static constexpr float DropForwardOffset    = 3.f;
 	static constexpr float DropDetachTime       = 0.83f;
+
+	FTimerHandle MagnetSettleTimerHandle;
 };
