@@ -19,7 +19,8 @@ enum class EBlockForm : uint8
     Ice,
     Rubber,
     Metal,
-    Wood
+    Wood,
+    Magnet  // 추가
 };
 
 USTRUCT(BlueprintType)
@@ -53,7 +54,6 @@ struct FBlockFormSpec
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float MassKg = 10.0f;
-    
 };
 
 UCLASS()
@@ -83,7 +83,7 @@ public:
     TArray<FBlockFormSpec> FormSpecs;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Form")
-    TArray<EBlockForm> CycleOrder = { EBlockForm::Metal, EBlockForm::Ice, EBlockForm::Rubber, EBlockForm::Wood };
+    TArray<EBlockForm> CycleOrder = { EBlockForm::Metal, EBlockForm::Ice, EBlockForm::Rubber, EBlockForm::Wood, EBlockForm::Magnet };
 
     UFUNCTION(BlueprintCallable, Category="Form")
     void SetForm(EBlockForm NewForm);
@@ -163,6 +163,76 @@ public:
     UPROPERTY(EditAnywhere, Category="Wood|Physics")
     float WoodSimTimeScale = 100.0f;
 
+    // === Magnet ===
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MagnetStrength = 0.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float ReferenceDistance = 100.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MaxLiftMass = 70.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MinDistance = 10.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MaxDistance = 800.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    bool bAutoComputeStrength = true;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float ForceMultiplier = 30.0f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MagneticDecayExponent = 1.5f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float VelocityDampingFactor = 0.2f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float MaxAttractVelocity = 1500.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    bool bUseTorque = true;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    bool bApplyInitialImpulse = false;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
+    float InitialImpulseStrength = 200.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
+    bool bEnableInduction = true;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
+    float InductionStrengthRatio = 0.3f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
+    float InductionRange = 250.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
+    float MinDistanceForInduction = 200.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Electro")
+    float WireContactRadius = 80.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Electro")
+    float ElectroBoostMultiplier = 3.0f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Advanced")
+    float MagnetRefreshInterval = 0.1f;
+
+    UPROPERTY(EditAnywhere, Category="Debug")
+    bool bDebugDraw = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Curie")
+    bool bDemagnetized = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Electro")
+    bool bElectroActive = false;
+
     // === Tags ===
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     bool bAutoUpdateTags = true;
@@ -178,6 +248,9 @@ public:
 
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     FName RubberTag = "Rubber";
+
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
+    FName MagnetTag = "Magnet";
 
 private:
     void RefreshConnectedWires();
@@ -197,6 +270,16 @@ private:
     void ExitWoodMode();
     void RecalcWoodMassAndVolume();
     void ApplyWoodBurnVisual(float Alpha01);
+
+    // Magnet 함수들
+    void EnterMagnetMode();
+    void ExitMagnetMode();
+    void UpdateMagnetism(float DeltaTime);
+    void RefreshOverlappingMetals();
+    void UpdateElectroBoost();
+    void CheckDemagnetize();
+    void ApplyInducedMagnetism();
+    float CalculateInducedStrength(float DistanceToMagnet, float BaseStrength) const;  // BaseMagnetStrength -> BaseStrength
 
 private:
     // Ice
@@ -234,4 +317,18 @@ private:
     TSet<TWeakObjectPtr<AWire>> WiresEnergizedByMetal;
 
     FTimerHandle RefreshTimerHandle;
+
+    // Magnet
+    UPROPERTY(Transient)
+    TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<AWire>> MagnetContactedWires;
+
+    float TimeSinceLastMagnetRefresh = 0.f;
+    float BaseMagnetStrength = 0.f;
+
+    static constexpr float MaxForceClamp = 6e7f;
+    static constexpr float MaxInducedForceClamp = 3e7f;
+    static constexpr float GravityAccel = 980.f;
 };
