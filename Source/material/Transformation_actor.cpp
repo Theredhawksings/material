@@ -39,6 +39,13 @@ void ATransformation_actor::BeginPlay()
     MeshComp->SetRenderCustomDepth(false);
     MeshComp->SetCustomDepthStencilValue(0);
 
+    // ★ CycleOrder에 Magnet이 없으면 추가
+    if (!CycleOrder.Contains(EBlockForm::Magnet))
+    {
+        CycleOrder.Add(EBlockForm::Magnet);
+        UE_LOG(LogTemp, Warning, TEXT("CycleOrder에 Magnet 추가됨"));
+    }
+
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
     {
         ApplySpec(*Spec);
@@ -48,7 +55,7 @@ void ATransformation_actor::BeginPlay()
     {
         UpdateTagsForForm(CurrentForm);
     }
-
+    
     if (CurrentForm == EBlockForm::Ice)
     {
         BaseScaleBeforeMelt = MeshComp->GetComponentScale();
@@ -64,6 +71,11 @@ void ATransformation_actor::BeginPlay()
     if (CurrentForm == EBlockForm::Magnet)
     {
         EnterMagnetMode();
+        // ★ 물리 강제 켜기 (피지컬 머터리얼 무게 유지됨)
+        if (MeshComp && !MeshComp->IsSimulatingPhysics())
+        {
+            MeshComp->SetSimulatePhysics(true);
+        }
     }
 
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
@@ -333,6 +345,9 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         return;
     }
 
+    // ★ 자석에서 다른 Form으로 바뀔 때 주변 자석들에게 알림
+    const bool bWasMagnet = (CurrentForm == EBlockForm::Magnet);
+
     float SavedMeltAlpha = MeltAlpha;
     float SavedEnergyAccumJ = EnergyAccumJ;
     ATemperature* SavedFire = CurrentFire;
@@ -408,7 +423,14 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     {
         EnterMagnetMode();
     }
+    
+    // ★ 자석에서 다른 Form으로 바뀌었으면 주변 자석들 즉시 갱신
+    if (bWasMagnet && NewForm != EBlockForm::Magnet)
+    {
+        NotifyNearbyMagnets();
+    }
 }
+
 
 void ATransformation_actor::NextForm()
 {
@@ -417,7 +439,7 @@ void ATransformation_actor::NextForm()
     
     int32 Idx = CycleOrder.Find(CurrentForm);
     UE_LOG(LogTemp, Warning, TEXT("Found Index: %d"), Idx);
-    
+
     if (Idx == INDEX_NONE)
     {
         SetForm(CycleOrder[0]);
@@ -725,9 +747,12 @@ void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
 }
 
 // ===== MAGNET MODE =====
+// ===== MAGNET MODE =====
 void ATransformation_actor::EnterMagnetMode()
 {
     if (!MeshComp) return;
+
+    bMagnetCollided = false;
 
     if (bAutoComputeStrength)
     {
@@ -742,15 +767,16 @@ void ATransformation_actor::EnterMagnetMode()
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
 
-    CheckDemagnetize();
-    if (!bDemagnetized)
-    {
-        RefreshOverlappingMetals();
-    }
+    // ★ 물리 켜기
+    MeshComp->SetSimulatePhysics(true);
+    MeshComp->SetEnableGravity(true);
+
+    RefreshOverlappingMetals();
 }
 
 void ATransformation_actor::ExitMagnetMode()
 {
+    bMagnetCollided = false;
     bDemagnetized = false;
     bElectroActive = false;
     MagnetStrength = 0.f;
@@ -759,6 +785,24 @@ void ATransformation_actor::ExitMagnetMode()
     
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
+    
+    if (MeshComp)
+    {
+        MeshComp->SetEnableGravity(true);
+        MeshComp->SetLinearDamping(0.01f);
+        MeshComp->SetAngularDamping(0.01f);
+    }
+}
+
+void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+    return;
+}
+
+void ATransformation_actor::UpdateMagnetPhysicsState()
+{
+    return;
 }
 
 void ATransformation_actor::UpdateMagnetism(float DeltaTime)
@@ -769,61 +813,25 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     if (TimeSinceLastMagnetRefresh >= MagnetRefreshInterval)
     {
         TimeSinceLastMagnetRefresh = 0.f;
-
-        CheckDemagnetize();
-        if (bDemagnetized)
-        {
-            OverlappingMetals.Empty();
-            return;
-        }
-
-        UpdateElectroBoost();
         RefreshOverlappingMetals();
+        
+        // ★ 디버그
+        UE_LOG(LogTemp, Warning, TEXT("[%s] 자력=%.0f, 철 개수=%d, 물리=%d"), 
+            *GetName(), MagnetStrength, OverlappingMetals.Num(), MeshComp->IsSimulatingPhysics());
     }
-
-#if ENABLE_DRAW_DEBUG
-    if (bDebugDraw)
-    {
-        if (bElectroActive)
-        {
-            DrawDebugSphere(GetWorld(), GetActorLocation(), WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
-            const float BoostRatio = (BaseMagnetStrength > 0.f) ? (MagnetStrength / BaseMagnetStrength) : 1.f;
-            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                FString::Printf(TEXT("[전자석 활성]\n연결 전선: %d개\n기본 자력: %.0f\n현재 자력: %.0f\n부스트: x%.2f"),
-                    MagnetContactedWires.Num(), BaseMagnetStrength, MagnetStrength, BoostRatio),
-                nullptr, FColor::Cyan, 0.0f, true);
-        }
-        else
-        {
-            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                FString::Printf(TEXT("[일반 자석]\n자력: %.0f"), MagnetStrength),
-                nullptr, FColor::White, 0.0f, true);
-        }
-    }
-#endif
 
     if (OverlappingMetals.Num() == 0) return;
 
     const FVector MagnetLoc = MeshComp->GetComponentLocation();
-    const FVector MagnetForward = MeshComp->GetForwardVector();
-    const bool bMagnetSimulating = MeshComp->IsSimulatingPhysics();
     const float StrengthTimesMultiplier = MagnetStrength * ForceMultiplier;
 
     for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
     {
         UPrimitiveComponent* Comp = It->Get();
-        if (!IsValid(Comp))
-        {
-            It.RemoveCurrent();
-            continue;
-        }
-
+        if (!IsValid(Comp)) { It.RemoveCurrent(); continue; }
         AActor* OwnerActor = Comp->GetOwner();
         if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag))
-        {
-            It.RemoveCurrent();
-            continue;
-        }
+        { It.RemoveCurrent(); continue; }
     }
 
     if (OverlappingMetals.Num() == 0) return;
@@ -836,64 +844,25 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
         const FVector ToMagnet = MagnetLoc - MetalLoc;
         const float Distance = ToMagnet.Size();
 
-        if (Distance < MinDistance || Distance > MaxDistance) continue;
+        if (Distance > MaxDistance || Distance < MinDistance) continue;
 
         const FVector Dir = ToMagnet / Distance;
-        const float DirDot = FVector::DotProduct(Dir, MagnetForward);
-        const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
-
         const float SafeDist = FMath::Max(Distance, MinDistance);
-        float ForceMag = (StrengthTimesMultiplier * DirectionFactor) / FMath::Pow(SafeDist, MagneticDecayExponent);
+        float ForceMag = StrengthTimesMultiplier / FMath::Pow(SafeDist, MagneticDecayExponent);
 
         const float MetalMass = MetalComp->GetMass();
         ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
 
         const FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
-        const float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
-
-        float VelocityDamping = 1.0f;
-        if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
-        {
-            VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
-        }
-
         const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
-        FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
+        FVector FinalForce = (Dir * ForceMag) + DampingForce;
         FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
 
         MetalComp->AddForce(FinalForce, NAME_None, false);
 
-        if (bUseTorque)
-        {
-            const FVector CrossProduct = FVector::CrossProduct(MetalComp->GetForwardVector(), Dir);
-            const float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
-
-            if (TorqueMagnitude > 0.01f)
-            {
-                MetalComp->AddTorqueInRadians(CrossProduct.GetSafeNormal() * TorqueMagnitude, NAME_None, false);
-            }
-        }
-
-        if (bMagnetSimulating)
-        {
-            MeshComp->AddForce(-FinalForce * 0.2f, NAME_None, false);
-        }
-
-#if ENABLE_DRAW_DEBUG
-        if (bDebugDraw)
-        {
-            const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
-            DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
-            DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
-            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
-                FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
-        }
-#endif
-    }
-
-    if (bEnableInduction)
-    {
-        ApplyInducedMagnetism();
+        // ★ 디버그
+UE_LOG(LogTemp, Warning, TEXT("  → 철 %s: 거리=%.0f, 힘=%.0f N, 질량=%.1f kg"), 
+            *MetalComp->GetOwner()->GetName(), Distance, FinalForce.Size(), MetalComp->GetMass());
     }
 }
 
@@ -918,197 +887,40 @@ void ATransformation_actor::RefreshOverlappingMetals()
     for (const FOverlapResult& H : Hits)
     {
         UPrimitiveComponent* Comp = H.GetComponent();
-        if (!Comp || !Comp->IsSimulatingPhysics()) continue;
+        if (!Comp) continue;
 
-        AActor* CompOwner = Comp->GetOwner();  
-        if (CompOwner && CompOwner != this && CompOwner->ActorHasTag(MetalTag))
+        AActor* CompOwner = Comp->GetOwner();
+        if (!CompOwner || CompOwner == this) continue;
+
+        // ★ 철만
+        if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
         {
-            const bool bAlreadyInside = OverlappingMetals.Contains(Comp);
             OverlappingMetals.Add(Comp);
-
-            if (!bAlreadyInside && bApplyInitialImpulse)
-            {
-                const FVector ToMagnet = (MeshComp->GetComponentLocation() - Comp->GetComponentLocation()).GetSafeNormal();
-                Comp->AddImpulse(ToMagnet * InitialImpulseStrength * Comp->GetMass());
-            }
         }
     }
 }
 
 void ATransformation_actor::UpdateElectroBoost()
 {
-    bool bAnyPowered = false;
-    float TotalCurrent = 0.f;
-
-    TArray<AActor*> NearbyActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
-
-    MagnetContactedWires.Empty();
-
-    const FVector MyLoc = GetActorLocation();
-
-    for (AActor* Actor : NearbyActors)
-    {
-        AWire* Wire = Cast<AWire>(Actor);
-        if (!Wire) continue;
-        if (!Wire->IsPowered()) continue;
-
-        bool bClose = false;
-
-        USplineComponent* WireSpline = Wire->GetSplineComponent();
-        if (WireSpline)
-        {
-            const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
-            if (FVector::Dist(MyLoc, Closest) <= WireContactRadius)
-            {
-                bClose = true;
-            }
-
-            if (!bClose)
-            {
-                const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
-                for (int32 i = 0; i < NumPoints; ++i)
-                {
-                    const FVector PointWorld = WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
-                    if (FVector::Dist(MyLoc, PointWorld) <= WireContactRadius)
-                    {
-                        bClose = true;
-                        break;
-                    }
-                }
-            }
-        }
-        else
-        {
-            bClose = FVector::Dist(MyLoc, Wire->GetActorLocation()) <= WireContactRadius;
-        }
-
-        if (bClose)
-        {
-            bAnyPowered = true;
-            TotalCurrent += Wire->GetWireTemperature() / 100.f;
-            MagnetContactedWires.AddUnique(Wire);
-        }
-    }
-
-    bElectroActive = bAnyPowered;
-
-    if (bElectroActive)
-    {
-        const float CurrentBoost = FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier);
-        MagnetStrength = BaseMagnetStrength * CurrentBoost;
-    }
-    else
-    {
-        MagnetStrength = BaseMagnetStrength;
-    }
+    return;
 }
 
 void ATransformation_actor::CheckDemagnetize()
 {
-    if (bDemagnetized) return;
-
-    TArray<AActor*> HeatSources;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
-
-    const FVector MyLoc = GetActorLocation();
-
-    for (AActor* Actor : HeatSources)
-    {
-        const ATemperature* Heat = Cast<ATemperature>(Actor);
-        if (!Heat) continue;
-
-        const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
-
-        if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
-        {
-            bDemagnetized = true;
-            bElectroActive = false;
-            MagnetStrength = 0.f;
-            OverlappingMetals.Empty();
-            MagnetContactedWires.Empty();
-
-#if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
-            {
-                DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
-                    TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
-            }
-#endif
-            return;
-        }
-    }
+    return;
 }
 
 void ATransformation_actor::ApplyInducedMagnetism()
 {
-    const FVector MagnetLoc = MeshComp->GetComponentLocation();
-    const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
-    const int32 Num = MetalArray.Num();
-
-    for (int32 i = 0; i < Num; ++i)
-    {
-        UPrimitiveComponent* MetalA = MetalArray[i];
-        if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics()) continue;
-
-        const FVector MetalALoc = MetalA->GetComponentLocation();
-        const float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
-
-        if (DistAToMagnet > MinDistanceForInduction) continue;
-
-        const float InducedStrength = CalculateInducedStrength(DistAToMagnet, MagnetStrength);
-        const FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
-
-        for (int32 j = i + 1; j < Num; ++j)
-        {
-            UPrimitiveComponent* MetalB = MetalArray[j];
-            if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics()) continue;
-
-            const FVector MetalBLoc = MetalB->GetComponentLocation();
-            const FVector AtoB = MetalBLoc - MetalALoc;
-            const float DistAtoB = AtoB.Size();
-
-            if (DistAtoB < 10.f || DistAtoB > InductionRange) continue;
-
-            const FVector Dir = AtoB / DistAtoB;
-            const float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
-
-            float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(AlignmentFactor))
-                           / FMath::Pow(DistAtoB, MagneticDecayExponent);
-
-            const float MetalBMass = MetalB->GetMass();
-            ForceMag *= FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
-
-            const FVector CurrentVelB = MetalB->GetPhysicsLinearVelocity();
-            const float VelTowardsA = FVector::DotProduct(CurrentVelB, Dir);
-
-            float VelocityDamping = 1.0f;
-            if (VelTowardsA > MaxAttractVelocity * 0.5f)
-            {
-                VelocityDamping = FMath::Clamp(1.0f - (VelTowardsA / MaxAttractVelocity), 0.3f, 1.0f);
-            }
-
-            const FVector DampingForce = -CurrentVelB * (VelocityDampingFactor * 0.5f * MetalBMass);
-            FVector FinalForce = (Dir * ForceMag * VelocityDamping * AlignmentFactor) + DampingForce;
-            FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForceClamp);
-
-            MetalB->AddForce(FinalForce, NAME_None, false);
-            MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
-
-#if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
-            {
-                DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, FColor::Yellow, false, -1.f, 0, 1.f);
-            }
-#endif
-        }
-    }
+    return;
 }
 
 float ATransformation_actor::CalculateInducedStrength(float DistanceToMagnet, float BaseStrength) const 
 {
-    const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
-    const float InductionFactor = FMath::Clamp(
-        1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
-    return BaseStrength * InductionFactor;  
+    return 0.f;
+}
+
+void ATransformation_actor::NotifyNearbyMagnets()
+{
+    return;
 }

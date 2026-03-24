@@ -183,7 +183,7 @@ public:
     bool bAutoComputeStrength = true;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ForceMultiplier = 30.0f;
+    float ForceMultiplier = 30.0f; 
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float MagneticDecayExponent = 1.5f;
@@ -192,7 +192,7 @@ public:
     float VelocityDampingFactor = 0.2f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxAttractVelocity = 1500.f;
+    float MaxAttractVelocity = 300.f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bUseTorque = true;
@@ -223,6 +223,12 @@ public:
 
     UPROPERTY(EditAnywhere, Category="Magnet|Advanced")
     float MagnetRefreshInterval = 0.1f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
+    bool bEnablePolarity = true;
+    
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
+    float RepulsionMultiplier = 1.5f;
 
     UPROPERTY(EditAnywhere, Category="Debug")
     bool bDebugDraw = false;
@@ -280,6 +286,8 @@ private:
     void CheckDemagnetize();
     void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseStrength) const;  // BaseMagnetStrength -> BaseStrength
+    void UpdateMagnetPhysicsState();
+    void NotifyNearbyMagnets();
 
 private:
     // Ice
@@ -327,6 +335,12 @@ private:
 
     float TimeSinceLastMagnetRefresh = 0.f;
     float BaseMagnetStrength = 0.f;
+
+    UFUNCTION()
+    void OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
+        UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+    
+    bool bMagnetCollided = false;
 
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
