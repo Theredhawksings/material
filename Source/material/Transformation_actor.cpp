@@ -742,8 +742,11 @@ void ATransformation_actor::EnterMagnetMode()
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
 
-    MeshComp->SetSimulatePhysics(true); // 물리를 켭니다!
-    MeshComp->SetEnableGravity(true);   // 중력도 켭니다!
+    // 물리 ON + 중력 OFF + 속도 0 = 그 자리 고정, 콜리전은 정상 작동
+    MeshComp->SetSimulatePhysics(true);
+    MeshComp->SetEnableGravity(false);
+    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+    MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
     RefreshOverlappingMetals();

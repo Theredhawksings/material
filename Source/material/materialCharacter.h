@@ -131,7 +131,8 @@ private:
 
 	float OriginalMaxWalkSpeed = 0.f;
 	FVector HeldLocalExtent = FVector(50.f);
-
+	FRotator HeldActorOriginalRotation;
+	
 	UPROPERTY(EditAnywhere, Category = "Equipment") FName BackpackSocketName = TEXT("spine_002Socket");
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
 	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -93.f);

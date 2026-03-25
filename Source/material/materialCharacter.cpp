@@ -585,8 +585,8 @@ void AmaterialCharacter::OnPickupAnimFinished()
 
 void AmaterialCharacter::UpdateHeldActorPosition()
 {
-	if (!HeldActor) return;
-	
+    if (!HeldActor) return;
+
 	// 캐릭터 앞 1m, 높이 80cm
 	FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
 	FVector HeightOffset = FVector(0.f, 0.f, HoldHeight);
@@ -595,58 +595,40 @@ void AmaterialCharacter::UpdateHeldActorPosition()
 	HeldActor->SetActorLocation(TargetLocation);
 	HeldActor->SetActorRotation(GetActorRotation());
 }
-
+	
 void AmaterialCharacter::DropHeld()
 {
 	if (!HeldActor) return;
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	if (!PickupAnim || !MeshComp) return;
-	
+
 	if (HoldPivot)
 	{
-		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-		HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
-		HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
+		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::KeepWorldTransform);
 	}
-	
+
 	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	MeshComp->SetAnimation(PickupAnim);
 	MeshComp->SetPlayRate(-1.0f);
 	MeshComp->SetPosition(PickupAnim->GetPlayLength());
 	MeshComp->Play(false);
 	bIsPickingUp = true;
-	
+
 	FTimerHandle DropTimerHandle;
 	GetWorld()->GetTimerManager().SetTimer(DropTimerHandle, [this]()
 	{
 		if (!HeldActor) return;
-		
+
 		HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-		HeldActor->SetActorLocation(HeldActor->GetActorLocation() + 
+		HeldActor->SetActorLocation(HeldActor->GetActorLocation() +
 			GetActorForwardVector() * DropForwardOffset);
-		
+
 		SetPrimitiveComponentsPhysics(HeldActor, true);
-		
 		ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
-		if (TransActor && TransActor->GetCurrentForm() == EBlockForm::Magnet)
-		{
-			AActor* DroppedMagnet = HeldActor;
-			GetWorld()->GetTimerManager().SetTimer(
-				MagnetSettleTimerHandle, [DroppedMagnet]()
-				{
-					if (!IsValid(DroppedMagnet)) return;
-					if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(DroppedMagnet->GetRootComponent()))
-					{
-						Root->SetSimulatePhysics(false);
-						Root->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-					}
-				}, 0.25f, false);
-		}
-		
 		RestoreWalkSpeed();
 		HeldActor = nullptr;
 	}, DropDetachTime, false);
-	
+
 	GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
 	{
 		bIsPickingUp   = false;
