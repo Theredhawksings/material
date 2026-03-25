@@ -131,7 +131,7 @@ private:
 
 	float OriginalMaxWalkSpeed = 0.f;
 	FVector HeldLocalExtent = FVector(50.f);
-	FRotator HeldRelativeRotation;
+	FQuat HeldRelativeQuat = FQuat::Identity;
 	
 	UPROPERTY(EditAnywhere, Category = "Equipment") FName BackpackSocketName = TEXT("spine_002Socket");
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
@@ -231,8 +231,8 @@ private:
 	static constexpr float PickupAnimAttachTime = 1.125f;
 	static constexpr float PickupSphereRadius   = 75.f;
 	static constexpr float InteractSphereRadius = 50.f;
-	static constexpr float DropForwardOffset    = 3.f;
-	static constexpr float DropDetachTime       = 0.83f;
+	static constexpr float DropForwardOffset    = 15.f;
+	static constexpr float DropDetachTime       = 1.03f;
 
 	FTimerHandle MagnetSettleTimerHandle;
 };

@@ -537,6 +537,11 @@ bool AmaterialCharacter::TryPickup()
 	if (!bHasValidTag) return false;
 	SetPrimitiveComponentsPhysics(Target, false);
 	PendingPickupActor = Target;
+	
+	FQuat CharQuat = GetActorQuat();
+    FQuat ObjQuat  = Target->GetActorQuat();
+    HeldRelativeQuat = CharQuat.Inverse() * ObjQuat;
+
 	if (PickupAnim && GetMesh())
 	{
 		GetMesh()->PlayAnimation(PickupAnim, false);
@@ -554,17 +559,22 @@ void AmaterialCharacter::HandleActualAttachment()
     if (!PendingPickupActor || !HoldPivot) return;
     CaptureHeldLocalExtent(PendingPickupActor);
 
-    // ★ 픽업 시점에 캐릭터 기준 물체의 상대 회전 저장
-    HeldRelativeRotation = PendingPickupActor->GetActorRotation() - GetActorRotation();
-    HeldRelativeRotation.Normalize();
+    // ★ 쿼터니언으로 상대 회전 저장
+    FQuat CharQuat = GetActorQuat();
+    FQuat ObjQuat  = PendingPickupActor->GetActorQuat();
+    HeldRelativeQuat = CharQuat.Inverse() * ObjQuat;
 
     HeldActor = PendingPickupActor;
     PendingPickupActor = nullptr;
     
-    // 기존 코드 그대로
     HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
-    HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
+
+    // ★ 쿼터니언으로 역보정
+    FQuat DesiredWorldQuat = GetActorQuat() * HeldRelativeQuat;
+    FQuat PivotWorldQuat   = HoldPivot->GetComponentQuat();
+    HeldActor->SetActorRelativeRotation((PivotWorldQuat.Inverse() * DesiredWorldQuat).Rotator());
+
     UpdateHoldPivotTransform();
     ApplyWeightSpeedPenalty(HeldActor);
 }
@@ -592,15 +602,12 @@ void AmaterialCharacter::UpdateHeldActorPosition()
 {
     if (!HeldActor) return;
 
-    // 위치는 기존 그대로
     FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
-    FVector HeightOffset = FVector(0.f, 0.f, HoldHeight);
+    FVector HeightOffset  = FVector(0.f, 0.f, HoldHeight);
     FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
     
     HeldActor->SetActorLocation(TargetLocation);
-
-    // ★ 이 한 줄만 변경: 기존 GetActorRotation() → 상대 회전 유지
-    HeldActor->SetActorRotation(GetActorRotation() + HeldRelativeRotation);
+    HeldActor->SetActorRotation((GetActorQuat() * HeldRelativeQuat).Rotator());
 }
 	
 void AmaterialCharacter::DropHeld()
@@ -681,12 +688,20 @@ void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
 
 void AmaterialCharacter::UpdateHoldPivotTransform()
 {
-	if (!HoldPivot) return;
-	const bool bMoving = IsMoving();
-	FVector FinalLoc(-0.35f, -0.4f, 0.1f);
-	FinalLoc += bMoving ? HoldExtraLocalOffset_Walk : HoldExtraLocalOffset_Idle;
-	HoldPivot->SetRelativeLocation(FinalLoc);
-	HoldPivot->SetRelativeRotation(bMoving ? HoldLocalRot_Walk : HoldLocalRot_Idle);
+    if (!HoldPivot) return;
+    const bool bMoving = IsMoving();
+    FVector FinalLoc(-0.35f, -0.4f, 0.1f);
+    FinalLoc += bMoving ? HoldExtraLocalOffset_Walk : HoldExtraLocalOffset_Idle;
+    HoldPivot->SetRelativeLocation(FinalLoc);
+    HoldPivot->SetRelativeRotation(bMoving ? HoldLocalRot_Walk : HoldLocalRot_Idle);
+
+    // ★ 매 틱 쿼터니언 역보정으로 물체 회전 유지
+    if (HeldActor)
+    {
+        FQuat DesiredWorldQuat = GetActorQuat() * HeldRelativeQuat;
+        FQuat PivotWorldQuat   = HoldPivot->GetComponentQuat();
+        HeldActor->SetActorRelativeRotation((PivotWorldQuat.Inverse() * DesiredWorldQuat).Rotator());
+    }
 }
 
 void AmaterialCharacter::UpdateAnimation()
