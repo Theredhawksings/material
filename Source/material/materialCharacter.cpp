@@ -551,17 +551,22 @@ bool AmaterialCharacter::TryPickup()
 
 void AmaterialCharacter::HandleActualAttachment()
 {
-	if (!PendingPickupActor || !HoldPivot) return;
-	CaptureHeldLocalExtent(PendingPickupActor);
-	HeldActor = PendingPickupActor;
-	PendingPickupActor = nullptr;
-	
-	// 애니메이션 중에는 HoldPivot에 부착
-	HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
-	HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
-	UpdateHoldPivotTransform();
-	ApplyWeightSpeedPenalty(HeldActor);
+    if (!PendingPickupActor || !HoldPivot) return;
+    CaptureHeldLocalExtent(PendingPickupActor);
+
+    // ★ 픽업 시점에 캐릭터 기준 물체의 상대 회전 저장
+    HeldRelativeRotation = PendingPickupActor->GetActorRotation() - GetActorRotation();
+    HeldRelativeRotation.Normalize();
+
+    HeldActor = PendingPickupActor;
+    PendingPickupActor = nullptr;
+    
+    // 기존 코드 그대로
+    HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+    HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
+    HeldActor->SetActorRelativeRotation(FRotator(0.f, 8.f, 0.f));
+    UpdateHoldPivotTransform();
+    ApplyWeightSpeedPenalty(HeldActor);
 }
 
 void AmaterialCharacter::OnPickupAnimFinished()
@@ -587,13 +592,15 @@ void AmaterialCharacter::UpdateHeldActorPosition()
 {
     if (!HeldActor) return;
 
-	// 캐릭터 앞 1m, 높이 80cm
-	FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
-	FVector HeightOffset = FVector(0.f, 0.f, HoldHeight);
-	FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
-	
-	HeldActor->SetActorLocation(TargetLocation);
-	HeldActor->SetActorRotation(GetActorRotation());
+    // 위치는 기존 그대로
+    FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
+    FVector HeightOffset = FVector(0.f, 0.f, HoldHeight);
+    FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
+    
+    HeldActor->SetActorLocation(TargetLocation);
+
+    // ★ 이 한 줄만 변경: 기존 GetActorRotation() → 상대 회전 유지
+    HeldActor->SetActorRotation(GetActorRotation() + HeldRelativeRotation);
 }
 	
 void AmaterialCharacter::DropHeld()
