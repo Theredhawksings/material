@@ -33,7 +33,7 @@ private:
 	TObjectPtr<UBoxComponent> DetectionZone;
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
-	FVector DetectionBoxExtent = FVector(6.f, 3.f, 3.f);
+	FVector DetectionBoxExtent = FVector(60.f, 30.f, 30.f);
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FName MagnetTag = TEXT("Magnet");
@@ -43,15 +43,4 @@ private:
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> DetectedMagnets;
-
-	UFUNCTION()
-	void OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-		bool bFromSweep, const FHitResult& SweepResult);
-
-	UFUNCTION()
-	void OnDetectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
-	void CleanupDeadReferences();
 };

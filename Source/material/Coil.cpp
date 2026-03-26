@@ -2,6 +2,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/OverlapResult.h"
 
 ACoil::ACoil()
 {
@@ -28,29 +29,46 @@ void ACoil::BeginPlay()
 	Super::BeginPlay();
 
 	DetectionZone->SetBoxExtent(DetectionBoxExtent);
-
-	DetectionZone->OnComponentBeginOverlap.AddDynamic(this, &ACoil::OnDetectionBeginOverlap);
-	DetectionZone->OnComponentEndOverlap.AddDynamic(this, &ACoil::OnDetectionEndOverlap);
-
-	// ★ 이미 안에 있는 자석 감지
-	TArray<AActor*> AlreadyOverlapping;
-	DetectionZone->GetOverlappingActors(AlreadyOverlapping);
-	for (AActor* Actor : AlreadyOverlapping)
-	{
-		if (Actor && Actor != this && Actor->ActorHasTag(MagnetTag))
-		{
-			DetectedMagnets.Add(Actor);
-			UE_LOG(LogTemp, Log, TEXT("[Coil %s] Already inside: %s"),
-				*GetName(), *Actor->GetName());
-		}
-	}
 }
 
 void ACoil::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	CleanupDeadReferences();
+	DetectedMagnets.Empty();
+
+	if (DetectionZone)
+	{
+		TArray<FOverlapResult> Hits;
+		FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilDetect), false);
+		QParams.AddIgnoredActor(this);
+
+		GetWorld()->OverlapMultiByObjectType(
+			Hits,
+			DetectionZone->GetComponentLocation(),
+			DetectionZone->GetComponentQuat(),
+			FCollisionObjectQueryParams::AllObjects,
+			FCollisionShape::MakeBox(DetectionBoxExtent),
+			QParams
+		);
+
+		for (const FOverlapResult& H : Hits)
+		{
+			AActor* HitActor = H.GetActor();
+			if (!HitActor || HitActor == this) continue;
+			if (!HitActor->ActorHasTag(MagnetTag)) continue;
+
+			bool bAlreadyAdded = false;
+			for (const TWeakObjectPtr<AActor>& Existing : DetectedMagnets)
+			{
+				if (Existing.Get() == HitActor) { bAlreadyAdded = true; break; }
+			}
+			if (!bAlreadyAdded)
+			{
+				DetectedMagnets.Add(HitActor);
+			}
+		}
+	}
 
 #if ENABLE_DRAW_DEBUG
 	if (bDebugDraw)
@@ -68,51 +86,4 @@ void ACoil::Tick(float DeltaTime)
 		}
 	}
 #endif
-}
-
-void ACoil::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-	bool bFromSweep, const FHitResult& SweepResult)
-{
-	if (!OtherActor || OtherActor == this) return;
-	if (!OtherActor->ActorHasTag(MagnetTag)) return;
-
-	for (const TWeakObjectPtr<AActor>& Existing : DetectedMagnets)
-	{
-		if (Existing.Get() == OtherActor) return;
-	}
-
-	DetectedMagnets.Add(OtherActor);
-
-	UE_LOG(LogTemp, Log, TEXT("[Coil %s] Magnet IN: %s (Total: %d)"),
-		*GetName(), *OtherActor->GetName(), DetectedMagnets.Num());
-}
-
-void ACoil::OnDetectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-	if (!OtherActor) return;
-
-	for (int32 i = DetectedMagnets.Num() - 1; i >= 0; --i)
-	{
-		if (DetectedMagnets[i].Get() == OtherActor)
-		{
-			DetectedMagnets.RemoveAt(i);
-			break;
-		}
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("[Coil %s] Magnet OUT: %s (Remaining: %d)"),
-		*GetName(), *OtherActor->GetName(), DetectedMagnets.Num());
-}
-
-void ACoil::CleanupDeadReferences()
-{
-	for (int32 i = DetectedMagnets.Num() - 1; i >= 0; --i)
-	{
-		if (!DetectedMagnets[i].IsValid())
-		{
-			DetectedMagnets.RemoveAt(i);
-		}
-	}
 }

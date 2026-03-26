@@ -687,12 +687,35 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 {
     if (!HoldPivot) return;
     const bool bMoving = IsMoving();
-    FVector FinalLoc(-0.175f, -0.4f, 0.1f);
+
+    float ObjectScale = 0.4f;
+
+if (HeldActor)
+{
+    if (UStaticMeshComponent* MeshComp = HeldActor->FindComponentByClass<UStaticMeshComponent>())
+    {
+        ObjectScale = MeshComp->GetComponentScale().GetMax();
+    }
+    else
+    {
+        ObjectScale = HeldActor->GetActorScale3D().GetMax();
+    }
+}
+
+UE_LOG(LogTemp, Warning, TEXT("ObjectScale = %f"), ObjectScale);
+
+float AdjustedY = FMath::GetMappedRangeValueClamped(
+    FVector2D(-0.1f, 1.0f),
+    FVector2D(-0.25f, -0.40f),
+    ObjectScale
+);
+
+    FVector FinalLoc(-0.20f, AdjustedY, 0.10f);
+
     FinalLoc += bMoving ? HoldExtraLocalOffset_Walk : HoldExtraLocalOffset_Idle;
     HoldPivot->SetRelativeLocation(FinalLoc);
     HoldPivot->SetRelativeRotation(bMoving ? HoldLocalRot_Walk : HoldLocalRot_Idle);
 
-    // ★ 매 틱 쿼터니언 역보정으로 물체 회전 유지
     if (HeldActor)
     {
         FQuat DesiredWorldQuat = GetActorQuat() * HeldRelativeQuat;

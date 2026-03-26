@@ -744,7 +744,6 @@ void ATransformation_actor::EnterMagnetMode()
 
     // 물리 ON + 중력 OFF + 속도 0 = 그 자리 고정, 콜리전은 정상 작동
     MeshComp->SetSimulatePhysics(true);
-    MeshComp->SetEnableGravity(false);
     MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
     MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
