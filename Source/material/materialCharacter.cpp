@@ -538,9 +538,9 @@ bool AmaterialCharacter::TryPickup()
 	SetPrimitiveComponentsPhysics(Target, false);
 	PendingPickupActor = Target;
 	
-	FQuat CharQuat = GetActorQuat();
-    FQuat ObjQuat  = Target->GetActorQuat();
-    HeldRelativeQuat = CharQuat.Inverse() * ObjQuat;
+    float RelativeYaw = Target->GetActorRotation().Yaw - GetActorRotation().Yaw;
+    RelativeYaw = FMath::RoundToFloat(RelativeYaw / 90.f) * 90.f;
+    HeldRelativeQuat = FQuat(FRotator(0.f, RelativeYaw, 0.f));
 
 	if (PickupAnim && GetMesh())
 	{
@@ -559,10 +559,7 @@ void AmaterialCharacter::HandleActualAttachment()
     if (!PendingPickupActor || !HoldPivot) return;
     CaptureHeldLocalExtent(PendingPickupActor);
 
-    // ★ 쿼터니언으로 상대 회전 저장
-    FQuat CharQuat = GetActorQuat();
-    FQuat ObjQuat  = PendingPickupActor->GetActorQuat();
-    HeldRelativeQuat = CharQuat.Inverse() * ObjQuat;
+    // HeldRelativeQuat는 TryPickup()에서 이미 저장됨 — 여기서 다시 계산하지 않음
 
     HeldActor = PendingPickupActor;
     PendingPickupActor = nullptr;
@@ -570,7 +567,6 @@ void AmaterialCharacter::HandleActualAttachment()
     HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
 
-    // ★ 쿼터니언으로 역보정
     FQuat DesiredWorldQuat = GetActorQuat() * HeldRelativeQuat;
     FQuat PivotWorldQuat   = HoldPivot->GetComponentQuat();
     HeldActor->SetActorRelativeRotation((PivotWorldQuat.Inverse() * DesiredWorldQuat).Rotator());
@@ -602,7 +598,12 @@ void AmaterialCharacter::UpdateHeldActorPosition()
 {
     if (!HeldActor) return;
 
-    FVector ForwardOffset = GetActorForwardVector() * HoldDistance;
+    // ★ 물체 크기 비율로 거리 조정 (기준: 50 = 1.0 스케일 큐브의 extent)
+	float SizeRatio = FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.3f, 1.2f);
+	float DistanceScale = FMath::Lerp(0.6f, 1.05f, SizeRatio);
+	float AdjustedDistance = HoldDistance * DistanceScale;
+
+    FVector ForwardOffset = GetActorForwardVector() * AdjustedDistance;
     FVector HeightOffset  = FVector(0.f, 0.f, HoldHeight);
     FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
     
@@ -676,14 +677,10 @@ void AmaterialCharacter::RestoreWalkSpeed()
 
 void AmaterialCharacter::CaptureHeldLocalExtent(AActor* Actor)
 {
-	if (!Actor) { HeldLocalExtent = FVector(50.f); return; }
-	TArray<UPrimitiveComponent*> PrimComps;
-	Actor->GetComponents<UPrimitiveComponent>(PrimComps);
-	if (PrimComps.Num() == 0) { HeldLocalExtent = FVector(50.f); return; }
-	FBox Box(ForceInit);
-	for (const UPrimitiveComponent* PC : PrimComps)
-		if (PC) Box += PC->CalcBounds(FTransform::Identity).GetBox();
-	HeldLocalExtent = Box.IsValid ? Box.GetExtent() : FVector(50.f);
+    if (!Actor) { HeldLocalExtent = FVector(50.f); return; }
+    FVector Origin, BoxExtent;
+    Actor->GetActorBounds(false, Origin, BoxExtent);
+    HeldLocalExtent = BoxExtent.IsNearlyZero() ? FVector(50.f) : BoxExtent;
 }
 
 void AmaterialCharacter::UpdateHoldPivotTransform()
