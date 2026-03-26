@@ -31,6 +31,19 @@ void ACoil::BeginPlay()
 
 	DetectionZone->OnComponentBeginOverlap.AddDynamic(this, &ACoil::OnDetectionBeginOverlap);
 	DetectionZone->OnComponentEndOverlap.AddDynamic(this, &ACoil::OnDetectionEndOverlap);
+
+	// ★ 이미 안에 있는 자석 감지
+	TArray<AActor*> AlreadyOverlapping;
+	DetectionZone->GetOverlappingActors(AlreadyOverlapping);
+	for (AActor* Actor : AlreadyOverlapping)
+	{
+		if (Actor && Actor != this && Actor->ActorHasTag(MagnetTag))
+		{
+			DetectedMagnets.Add(Actor);
+			UE_LOG(LogTemp, Log, TEXT("[Coil %s] Already inside: %s"),
+				*GetName(), *Actor->GetName());
+		}
+	}
 }
 
 void ACoil::Tick(float DeltaTime)
