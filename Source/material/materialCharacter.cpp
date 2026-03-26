@@ -687,7 +687,7 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 {
     if (!HoldPivot) return;
     const bool bMoving = IsMoving();
-    FVector FinalLoc(-0.35f, -0.4f, 0.1f);
+    FVector FinalLoc(-0.175f, -0.4f, 0.1f);
     FinalLoc += bMoving ? HoldExtraLocalOffset_Walk : HoldExtraLocalOffset_Idle;
     HoldPivot->SetRelativeLocation(FinalLoc);
     HoldPivot->SetRelativeRotation(bMoving ? HoldLocalRot_Walk : HoldLocalRot_Idle);
