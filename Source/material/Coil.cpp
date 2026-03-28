@@ -36,11 +36,14 @@ ACoil::ACoil()
 
 void ACoil::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	DetectionZone->SetBoxExtent(DetectionBoxExtent);
-	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
-	BaseCoilLocation = GetActorLocation();
+    DetectionZone->SetBoxExtent(DetectionBoxExtent);
+    MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
+    BaseCoilLocation = GetActorLocation();
+
+    // ★ 코일 물리 끄기 (수동으로 위치 제어하니까)
+    CoilMesh->SetSimulatePhysics(false);
 }
 
 void ACoil::Tick(float DeltaTime)
@@ -91,15 +94,14 @@ if (HasMagnetInside())
 
     float OffsetZ = FMath::Sin(OscillationTime * OscillationSpeed) * OscillationAmplitude;
     FVector NewLoc = BaseCoilLocation + FVector(0.f, 0.f, OffsetZ);
-    SetActorLocation(NewLoc);
+    SetActorLocation(NewLoc, false);  // ★ sweep = false
 
-    // ★ 자기장 구체는 원래 위치에 고정
     MagneticFieldSphere->SetWorldLocation(BaseCoilLocation);
 }
 else
 {
     OscillationTime = 0.f;
-    SetActorLocation(BaseCoilLocation);
+    SetActorLocation(BaseCoilLocation, false);  // ★ sweep = false
 }
 
 	// ── 디버그 ──
