@@ -77,6 +77,28 @@ float AStage2_WeightPlatform::CalculateTotalWeight()
 		if (!Actor)
 			continue;
 
+		if (Actor->ActorHasTag(FName("Magnet")))
+		{
+			TArray<UStaticMeshComponent*> MeshComps;
+			Actor->GetComponents<UStaticMeshComponent>(MeshComps);
+			
+			for (UStaticMeshComponent* MeshComp : MeshComps)
+			{
+				if (MeshComp && MeshComp->GetStaticMesh())
+				{
+					FVector Scale = MeshComp->GetComponentScale();
+					FBoxSphereBounds Bounds = MeshComp->GetStaticMesh()->GetBounds();
+					FVector Size = Bounds.BoxExtent * 2.0f * Scale;
+					
+					float VolumeInCubicMeters = (Size.X * Size.Y * Size.Z) / 1000000.0f;
+					float Mass = VolumeInCubicMeters * MagnetDensity;
+					
+					TotalWeight += Mass;
+				}
+			}
+			continue;
+		}
+
 		TArray<UPrimitiveComponent*> PrimComps;
 		Actor->GetComponents<UPrimitiveComponent>(PrimComps);
 
@@ -100,6 +122,28 @@ bool AStage2_WeightPlatform::IsWeightInRange() const
 	{
 		if (!Actor)
 			continue;
+
+		if (Actor->ActorHasTag(FName("Magnet")))
+		{
+			TArray<UStaticMeshComponent*> MeshComps;
+			Actor->GetComponents<UStaticMeshComponent>(MeshComps);
+			
+			for (UStaticMeshComponent* MeshComp : MeshComps)
+			{
+				if (MeshComp && MeshComp->GetStaticMesh())
+				{
+					FVector Scale = MeshComp->GetComponentScale();
+					FBoxSphereBounds Bounds = MeshComp->GetStaticMesh()->GetBounds();
+					FVector Size = Bounds.BoxExtent * 2.0f * Scale;
+					
+					float VolumeInCubicMeters = (Size.X * Size.Y * Size.Z) / 1000000.0f;
+					float Mass = VolumeInCubicMeters * MagnetDensity;
+					
+					TotalWeight += Mass;
+				}
+			}
+			continue;
+		}
 
 		TArray<UPrimitiveComponent*> PrimComps;
 		Actor->GetComponents<UPrimitiveComponent>(PrimComps);

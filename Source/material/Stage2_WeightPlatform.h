@@ -47,6 +47,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weight")
 	float MaxWeight = 200.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weight")
+	float MagnetDensity = 1500.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Display")
 	class AActor* WeightTextActor; 
 
