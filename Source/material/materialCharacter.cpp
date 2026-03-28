@@ -111,6 +111,8 @@ AmaterialCharacter::AmaterialCharacter()
     	{ TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"),             &PickupAnim }, 
     	{ TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
     	{ TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim },
+	// { TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"),           &UseEAnim },
+    // { TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"),     &UseLeftAnim },
 	};
 
 	for (const FAnimLoader& Loader : AnimAssets)
