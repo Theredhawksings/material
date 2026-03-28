@@ -84,19 +84,23 @@ void ACoil::Tick(float DeltaTime)
 	}
 
 	// ── 코일(스프링) 위아래 진동 ──
-	if (HasMagnetInside())
-	{
-		OscillationTime += DeltaTime;
+// ── 코일(스프링) 위아래 진동 ──
+if (HasMagnetInside())
+{
+    OscillationTime += DeltaTime;
 
-		float OffsetZ = FMath::Sin(OscillationTime * OscillationSpeed) * OscillationAmplitude;
-		FVector NewLoc = BaseCoilLocation + FVector(0.f, 0.f, OffsetZ);
-		SetActorLocation(NewLoc);
-	}
-	else
-	{
-		OscillationTime = 0.f;
-		SetActorLocation(BaseCoilLocation);
-	}
+    float OffsetZ = FMath::Sin(OscillationTime * OscillationSpeed) * OscillationAmplitude;
+    FVector NewLoc = BaseCoilLocation + FVector(0.f, 0.f, OffsetZ);
+    SetActorLocation(NewLoc);
+
+    // ★ 자기장 구체는 원래 위치에 고정
+    MagneticFieldSphere->SetWorldLocation(BaseCoilLocation);
+}
+else
+{
+    OscillationTime = 0.f;
+    SetActorLocation(BaseCoilLocation);
+}
 
 	// ── 디버그 ──
 #if ENABLE_DRAW_DEBUG
