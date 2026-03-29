@@ -115,6 +115,8 @@ private:
 	UPROPERTY() TObjectPtr<UAnimSequence> PickupAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> IdleBringAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> WalkBringAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> UseEAnim;
+	UPROPERTY() TObjectPtr<UAnimSequence> UseLeftAnim;	
 
 	UPROPERTY(EditAnywhere, Category = "Animation")
 	TSubclassOf<UAnimInstance> AnimBPClass;
@@ -246,7 +248,10 @@ private:
     void OpenRadialMenu(ATransformation_actor* Target);
     void CloseRadialMenu(bool bConfirm);
 
+	UPROPERTY() ATransformation_actor* PendingRadialTarget = nullptr;
+	FTimerHandle RadialMenuAnimTimer;
+	void OnUseEAnimFinished();
+	void OnUseLeftAnimFinished();
 
-	
 	FTimerHandle MagnetSettleTimerHandle;
 };

@@ -118,8 +118,8 @@ AmaterialCharacter::AmaterialCharacter()
     	{ TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"),             &PickupAnim }, 
     	{ TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
     	{ TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim },
-	// { TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"),           &UseEAnim },
-    // { TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"),     &UseLeftAnim },
+	 	{ TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"),           &UseEAnim },
+     	{ TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"),     &UseLeftAnim },
 	};
 
 	for (const FAnimLoader& Loader : AnimAssets)
@@ -481,7 +481,18 @@ void AmaterialCharacter::ChangeForm()
     {
         if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
         {
-            OpenRadialMenu(TransformActor);
+            PendingRadialTarget = TransformActor;
+
+            if (UseEAnim && GetMesh())
+            {
+                GetMesh()->PlayAnimation(UseEAnim, false);
+                GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+                    &AmaterialCharacter::OnUseEAnimFinished, UseEAnim->GetPlayLength(), false);
+            }
+            else
+            {
+                OpenRadialMenu(TransformActor);
+            }
         }
     }
 }
@@ -904,23 +915,55 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 {
     if (!RadialMenuWidget) return;
 
-    if (bConfirm)
-    {
-        RadialMenuWidget->ConfirmSelection();
-    }
-
     RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
 
     APlayerController* PC = Cast<APlayerController>(GetController());
     if (PC)
     {
+        PC->SetPause(false);
         PC->bShowMouseCursor = false;
         FInputModeGameOnly InputMode;
         PC->SetInputMode(InputMode);
         bMouseCaptured = true;
     }
 
-	PC->SetPause(false);	
-    bRadialMenuOpen = false;
+    if (bConfirm && UseLeftAnim && GetMesh())
+    {
+        GetMesh()->PlayAnimation(UseLeftAnim, false);
+        bIsPickingUp = true;
+        GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+            &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
+    }
+    else
+    {
+        if (bConfirm)
+        {
+            RadialMenuWidget->ConfirmSelection();
+        }
+        bRadialMenuOpen = false;
+    }
 }
 
+void AmaterialCharacter::OnUseEAnimFinished()
+{
+    if (PendingRadialTarget)
+    {
+        OpenRadialMenu(PendingRadialTarget);
+        PendingRadialTarget = nullptr;
+    }
+}
+
+void AmaterialCharacter::OnUseLeftAnimFinished()
+{
+    if (RadialMenuWidget)
+    {
+        RadialMenuWidget->ConfirmSelection();
+        RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    bRadialMenuOpen = false;
+    bIsPickingUp = false;
+    bWasHolding = false;
+    bIsPlayingWalk = false;
+    UpdateAnimation();
+}
