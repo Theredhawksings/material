@@ -173,22 +173,22 @@ public:
     float MinDistance = 10.f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxDistance = 800.f;
+    float MaxDistance = 500.f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bAutoComputeStrength = true;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ForceMultiplier = 30.0f;
+    float ForceMultiplier = 7.0f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     float MagneticDecayExponent = 1.5f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float VelocityDampingFactor = 0.2f;
+    float VelocityDampingFactor = 1.5f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxAttractVelocity = 300.f;
+    float MaxAttractVelocity = 100.f;
 
     UPROPERTY(EditAnywhere, Category="Magnet|Physics")
     bool bUseTorque = true;
@@ -343,7 +343,7 @@ private:
     bool bMagnetCollided = false;
     bool bMagnetSnapped = false;
 
-    static constexpr float MaxForceClamp = 6e7f;
+    static constexpr float MaxForceClamp = 5e5f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
 };
