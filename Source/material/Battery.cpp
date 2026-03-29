@@ -60,8 +60,8 @@ void ABATTERY::SetupInputBinding()
     {
         BatteryInputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass(), TEXT("BatteryInput"));
         BatteryInputComponent->RegisterComponent();
-        BatteryInputComponent->BindAction("Hold", IE_Pressed, this, &ABATTERY::OnHoldPressed);
-        BatteryInputComponent->BindAction("Hold", IE_Released, this, &ABATTERY::OnHoldReleased);
+        BatteryInputComponent->BindAction("Interaction", IE_Pressed, this, &ABATTERY::OnHoldPressed);
+        BatteryInputComponent->BindAction("Interaction", IE_Released, this, &ABATTERY::OnHoldReleased);
         BatteryInputComponent->Priority = 10;
     }
 

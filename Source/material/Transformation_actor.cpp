@@ -145,7 +145,8 @@ void ATransformation_actor::RefreshConnectedWires()
     Q.AddIgnoredActor(this);
 
     TArray<FOverlapResult> Hits;
-    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj, FCollisionShape::MakeSphere(Radius), Q);
+    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj,
+        FCollisionShape::MakeSphere(Radius), Q);
 
     ConnectedWires.Empty();
     bool bAnyPowerFound = false;
@@ -179,6 +180,10 @@ void ATransformation_actor::RefreshConnectedWires()
             }
             WiresEnergizedByMetal.Empty();
         }
+    }
+    else if (bElectrified)
+    {
+        EnergizeWiresIfElectrified();
     }
 }
 
