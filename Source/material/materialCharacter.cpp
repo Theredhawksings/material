@@ -344,7 +344,7 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 				Slot.Radius * Slot.Temperature));
 
 		float CollisionRadius = Slot.Radius * FMath::Pow(Slot.Temperature, 3.0f);
-		DrawDebugSphere(GetWorld(), Slot.Position, CollisionRadius, 16, FColor::Red, false, 0.0f);
+		//DrawDebugSphere(GetWorld(), Slot.Position, CollisionRadius, 16, FColor::Red, false, 0.0f);
 
 		TArray<FOverlapResult> Overlaps;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(HeatOverlap), false, this);
@@ -396,12 +396,12 @@ void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
 		for (UPrimitiveComponent* PC : PrimComps)
 			if (PC) PC->SetCustomDepthStencilValue(FinalStencil);
 
-		DrawDebugString(
+		/*DrawDebugString(
 			GetWorld(),
 			Actor->GetActorLocation() + FVector(0.f, 0.f, 100.f),
 			FString::Printf(TEXT("Stencil: %d"), FinalStencil),
 			nullptr, FColor::Yellow, 0.0f, true
-		);
+		);*/
 
 		if (Heat <= 0.f)
 		{
