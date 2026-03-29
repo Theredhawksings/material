@@ -70,6 +70,13 @@ AmaterialCharacter::AmaterialCharacter()
 		GetMesh()->SetAnimInstanceClass(AnimBPClass);
 	}
 
+	static ConstructorHelpers::FClassFinder<UTestUI> RadialMenuBP(
+	TEXT("/Game/modeling/UI/Matarial_Change/WBP_RadialMenu"));
+	if (RadialMenuBP.Succeeded())
+	{
+    RadialMenuClass = RadialMenuBP.Class;
+	}
+
 	HoldPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPivot"));
 	HoldPivot->SetupAttachment(GetMesh());
 
@@ -456,17 +463,27 @@ void AmaterialCharacter::JumpStopped() { StopJumping(); }
 
 void AmaterialCharacter::ChangeForm()
 {
-	if (!FollowCamera) return;
-	const FVector Start = FollowCamera->GetComponentLocation();
-	const FVector End   = Start + FollowCamera->GetForwardVector() * InteractRange;
-	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
-	if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-		ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
-	{
-		if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
-			TransformActor->NextForm();
-	}
+    if (bRadialMenuOpen)
+    {
+        CloseRadialMenu(false);
+        return;
+    }
+
+    if (!FollowCamera) return;
+
+    const FVector Start = FollowCamera->GetComponentLocation();
+    const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
+    FHitResult Hit;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
+
+    if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+        ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
+    {
+        if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
+        {
+            OpenRadialMenu(TransformActor);
+        }
+    }
 }
 
 void AmaterialCharacter::CheckWeight()
@@ -495,6 +512,13 @@ void AmaterialCharacter::HoldPressed()
 
 void AmaterialCharacter::OnLeftClick()
 {
+	
+	if(bRadialMenuOpen)
+    {
+        CloseRadialMenu(true);
+        return;
+    }
+
 	static bool bIsProcessing = false;
 	if (bIsProcessing) return;  
 	bIsProcessing = true;
@@ -847,3 +871,56 @@ void AmaterialCharacter::DecreaseGaugeForMaterial(const FName& MaterialTag)
 	else if (MaterialTag == TEXT("Wood"))
 		WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0.f, 100.f);
 }
+
+void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    if (!RadialMenuWidget && RadialMenuClass)
+    {
+        RadialMenuWidget = CreateWidget<UTestUI>(PC, RadialMenuClass);
+        RadialMenuWidget->AddToViewport(100);
+        RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    if (!RadialMenuWidget) return;
+
+    RadialMenuWidget->TargetActor = Target;
+    RadialMenuWidget->SetVisibility(ESlateVisibility::Visible);
+
+    PC->bShowMouseCursor = true;
+    FInputModeGameAndUI InputMode;
+    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    InputMode.SetHideCursorDuringCapture(false);
+    PC->SetInputMode(InputMode);
+
+    bRadialMenuOpen = true;
+    bMouseCaptured = false;
+	PC->SetPause(true);
+}
+
+void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
+{
+    if (!RadialMenuWidget) return;
+
+    if (bConfirm)
+    {
+        RadialMenuWidget->ConfirmSelection();
+    }
+
+    RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (PC)
+    {
+        PC->bShowMouseCursor = false;
+        FInputModeGameOnly InputMode;
+        PC->SetInputMode(InputMode);
+        bMouseCaptured = true;
+    }
+
+	PC->SetPause(false);	
+    bRadialMenuOpen = false;
+}
+

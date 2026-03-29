@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
+#include "TestUI.h"
 #include "Materials/MaterialParameterCollection.h"
 #include "materialCharacter.generated.h"
 
@@ -73,7 +74,10 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetJokerGaugePercent() const { return JokerGauge / 100.f; }
-	
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UTestUI> RadialMenuClass;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -234,5 +238,15 @@ private:
 	static constexpr float DropForwardOffset    = 15.f;
 	static constexpr float DropDetachTime       = 1.03f;
 
+	UPROPERTY()
+    UTestUI* RadialMenuWidget = nullptr;
+
+    bool bRadialMenuOpen = false;
+
+    void OpenRadialMenu(ATransformation_actor* Target);
+    void CloseRadialMenu(bool bConfirm);
+
+
+	
 	FTimerHandle MagnetSettleTimerHandle;
 };
