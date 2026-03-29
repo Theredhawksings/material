@@ -16,6 +16,7 @@
 #include "Transformation_actor.h"
 #include "TimerManager.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
 
 AmaterialCharacter::AmaterialCharacter()
@@ -423,8 +424,13 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	PlayerInputComponent->BindAction("ChangeForm",  IE_Pressed, this, &AmaterialCharacter::ChangeForm);
 	PlayerInputComponent->BindAction("Hold",        IE_Pressed, this, &AmaterialCharacter::HoldPressed);
 	PlayerInputComponent->BindAction("Checkweight", IE_Pressed, this, &AmaterialCharacter::CheckWeight);
+	PlayerInputComponent->BindAction("laboratory", IE_Pressed, this, &AmaterialCharacter::OnWarpLaboratory);
+	PlayerInputComponent->BindAction("Stage1", IE_Pressed, this, &AmaterialCharacter::OnWarpStage1);
+	PlayerInputComponent->BindAction("Stage2", IE_Pressed, this, &AmaterialCharacter::OnWarpStage2);
+	PlayerInputComponent->BindAction("Stage3", IE_Pressed, this, &AmaterialCharacter::OnWarpStage3);	
 
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+
 	if (!EIC) return;
 
 	if (IA_Move)      EIC->BindAction(IA_Move,      ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
@@ -944,7 +950,7 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
     bRadialMenuOpen = false;
     UpdateAnimation();
 }
-
+ 
 
 void AmaterialCharacter::OnUseEAnimFinished()
 {
@@ -966,4 +972,30 @@ void AmaterialCharacter::OnUseLeftAnimFinished()
     bWasHolding = false;
     bIsPlayingWalk = false;
     UpdateAnimation();
+}
+
+
+void AmaterialCharacter::WarpToLevel(const FString& LevelPath)
+{
+    UGameplayStatics::OpenLevel(GetWorld(), FName(*LevelPath));
+}
+
+void AmaterialCharacter::OnWarpLaboratory()
+{
+    WarpToLevel(TEXT("/Game/ThirdPerson/Lvl_ThirdPerson"));
+}
+
+void AmaterialCharacter::OnWarpStage1()
+{
+    WarpToLevel(TEXT("/Game/stage/Stage1/Stage1"));
+}
+
+void AmaterialCharacter::OnWarpStage2()
+{
+    WarpToLevel(TEXT("/Game/stage/Stage2/Stage2"));
+}
+
+void AmaterialCharacter::OnWarpStage3()
+{
+    WarpToLevel(TEXT("/Game/stage/Stage3/Stage3"));
 }

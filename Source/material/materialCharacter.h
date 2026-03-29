@@ -254,4 +254,11 @@ private:
 	void OnUseLeftAnimFinished();
 
 	FTimerHandle MagnetSettleTimerHandle;
+
+	void WarpToLevel(const FString& LevelPath);
+	void OnWarpLaboratory();
+	void OnWarpStage1();
+	void OnWarpStage2();
+	void OnWarpStage3();
+	
 };
