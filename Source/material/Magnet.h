@@ -44,7 +44,7 @@ protected:
     float ReferenceDistance = 100.f;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
-    float MaxLiftMass = 70.f;
+    float MaxLiftMass = 30.f;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
     float MinDistance = 10.f;
@@ -56,7 +56,7 @@ protected:
     bool bAutoComputeStrength = true;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
-    float ForceMultiplier = 30.0f;
+    float ForceMultiplier = 20.0f;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
     float MagneticDecayExponent = 1.5f;

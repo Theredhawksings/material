@@ -469,31 +469,16 @@ void AmaterialCharacter::ChangeForm()
         return;
     }
 
-    if (!FollowCamera) return;
-
-    const FVector Start = FollowCamera->GetComponentLocation();
-    const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
-    FHitResult Hit;
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
-
-    if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-        ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
+    if (UseEAnim && GetMesh())
     {
-        if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
-        {
-            PendingRadialTarget = TransformActor;
-
-            if (UseEAnim && GetMesh())
-            {
-                GetMesh()->PlayAnimation(UseEAnim, false);
-                GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-                    &AmaterialCharacter::OnUseEAnimFinished, UseEAnim->GetPlayLength(), false);
-            }
-            else
-            {
-                OpenRadialMenu(TransformActor);
-            }
-        }
+        GetMesh()->PlayAnimation(UseEAnim, false);
+        bIsPickingUp = true;
+        GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+            &AmaterialCharacter::OnUseEAnimFinished, UseEAnim->GetPlayLength(), false);
+    }
+    else
+    {
+        OpenRadialMenu(nullptr);
     }
 }
 
@@ -897,7 +882,7 @@ void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
 
     if (!RadialMenuWidget) return;
 
-    RadialMenuWidget->TargetActor = Target;
+    RadialMenuWidget->TargetActor = nullptr;
     RadialMenuWidget->SetVisibility(ESlateVisibility::Visible);
 
     PC->bShowMouseCursor = true;
@@ -908,7 +893,6 @@ void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
 
     bRadialMenuOpen = true;
     bMouseCaptured = false;
-	PC->SetPause(true);
 }
 
 void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
@@ -920,37 +904,53 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
     APlayerController* PC = Cast<APlayerController>(GetController());
     if (PC)
     {
-        PC->SetPause(false);
         PC->bShowMouseCursor = false;
         FInputModeGameOnly InputMode;
         PC->SetInputMode(InputMode);
         bMouseCaptured = true;
     }
 
-    if (bConfirm && UseLeftAnim && GetMesh())
+    if (bConfirm && FollowCamera)
     {
-        GetMesh()->PlayAnimation(UseLeftAnim, false);
-        bIsPickingUp = true;
-        GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-            &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
-    }
-    else
-    {
-        if (bConfirm)
+        const FVector Start = FollowCamera->GetComponentLocation();
+        const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
+        FHitResult Hit;
+        FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
+
+        if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+            ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
         {
-            RadialMenuWidget->ConfirmSelection();
+            if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
+            {
+                RadialMenuWidget->TargetActor = TransformActor;
+
+                if (UseLeftAnim && GetMesh())
+                {
+                    GetMesh()->PlayAnimation(UseLeftAnim, false);
+                    bIsPickingUp = true;
+                    bRadialMenuOpen = false;
+                    GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+                        &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
+                    return;
+                }
+                else
+                {
+                    RadialMenuWidget->ConfirmSelection();
+                }
+            }
         }
-        bRadialMenuOpen = false;
     }
+
+    bRadialMenuOpen = false;
+    UpdateAnimation();
 }
+
 
 void AmaterialCharacter::OnUseEAnimFinished()
 {
-    if (PendingRadialTarget)
-    {
-        OpenRadialMenu(PendingRadialTarget);
-        PendingRadialTarget = nullptr;
-    }
+    bIsPickingUp = false;
+    UpdateAnimation();
+    OpenRadialMenu(nullptr);
 }
 
 void AmaterialCharacter::OnUseLeftAnimFinished()
