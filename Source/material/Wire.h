@@ -53,7 +53,7 @@ protected:
     TObjectPtr<UStaticMesh> SegmentMesh;
 
     UPROPERTY(EditAnywhere, Category = "Wire|Build")
-    FVector2D SegmentScale = FVector2D(0.15f, 0.15f);
+    FVector2D SegmentScale = FVector2D(0.03f, 0.03f);
 
     UPROPERTY(EditAnywhere, Category = "Wire|Visual")
     TObjectPtr<UMaterialInterface> OffMaterial;
