@@ -22,6 +22,7 @@ AMagnet::AMagnet()
     MagnetRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     MagnetRange->SetCollisionResponseToAllChannels(ECR_Ignore);
     MagnetRange->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+    MagnetRange->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 
     WireContactRange = CreateDefaultSubobject<USphereComponent>(TEXT("WireContactRange"));
     WireContactRange->SetupAttachment(MagnetMesh);
@@ -350,25 +351,29 @@ void AMagnet::CheckDemagnetize()
 
 void AMagnet::RefreshOverlappingMetals()
 {
-    if (!MagnetRange)
+    OverlappingMetals.Empty();
+
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    const FVector Center = MagnetMesh->GetComponentLocation();
+    FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
+    FCollisionQueryParams Q(SCENE_QUERY_STAT(MagnetSense), false);
+    Q.AddIgnoredActor(this);
+
+    TArray<FOverlapResult> Hits;
+    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj,
+        FCollisionShape::MakeSphere(MaxDistance), Q);
+
+    for (const FOverlapResult& H : Hits)
     {
-        return;
-    }
+        UPrimitiveComponent* Comp = H.GetComponent();
+        if (!Comp) continue;
 
-    TArray<UPrimitiveComponent*> OverlappingComps;
-    MagnetRange->GetOverlappingComponents(OverlappingComps);
+        AActor* CompOwner = Comp->GetOwner();
+        if (!CompOwner || CompOwner == this) continue;
 
-    OverlappingMetals.Empty(OverlappingComps.Num());
-
-    for (UPrimitiveComponent* Comp : OverlappingComps)
-    {
-        if (!Comp || !Comp->IsSimulatingPhysics())
-        {
-            continue;
-        }
-
-        const AActor* CompOwner = Comp->GetOwner();
-        if (CompOwner && CompOwner != this && CompOwner->ActorHasTag(MetalTag))
+        if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
         {
             OverlappingMetals.Add(Comp);
         }
