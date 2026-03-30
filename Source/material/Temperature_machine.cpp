@@ -75,6 +75,17 @@ void ATemperature_machine::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// 머신 상태 항상 표시
+	GEngine->AddOnScreenDebugMessage(
+		static_cast<int32>(GetUniqueID()) + 2000,
+		0.f,
+		bIsActive ? FColor::Green : FColor::Red,
+		FString::Printf(TEXT("[%s] Active: %s | Overlapping: %d"),
+			*GetName(),
+			bIsActive ? TEXT("ON") : TEXT("OFF"),
+			OverlappingTemperatureActors.Num())
+	);
+
 	if (bIsActive && OverlappingTemperatureActors.Num() > 0)
 	{
 		ApplyConductionHeatTransfer(DeltaTime);

@@ -53,6 +53,8 @@ void ATemperature::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	const float PrevTemp = Temperature;
+
 	if (CoolRate > 0.f)
 	{
 		Temperature = FMath::Max(0.f, Temperature - CoolRate * DeltaTime);
@@ -61,6 +63,19 @@ void ATemperature::Tick(float DeltaTime)
 	UpdateSphereRadius(false);
 	UpdateVisuals();
 	EnsureOverlappingActorsHeating();
+
+	// 디버그
+	if (bUseStencil && MeshComp)
+	{
+		const int32 Stencil = MeshComp->CustomDepthStencilValue;
+		GEngine->AddOnScreenDebugMessage(
+			static_cast<int32>(GetUniqueID()),
+			0.f,
+			FColor::Orange,
+			FString::Printf(TEXT("[%s] Temp: %.2f | CoolDelta: %.4f | Stencil: %d"),
+				*GetName(), Temperature, Temperature - PrevTemp, Stencil)
+		);
+	}
 }
 
 float ATemperature::GetTotalRadiantPowerW() const
@@ -180,6 +195,16 @@ void ATemperature::UpdateVisuals()
 	if (bUseCPD)
 	{
 		MeshComp->SetCustomPrimitiveDataFloat(CPDIndex_Temperature, Temperature);
+	}
+
+	if (bUseStencil)
+	{
+		MeshComp->SetRenderCustomDepth(true);
+
+		const float Ratio = FMath::Clamp(Temperature / FMath::Max(MaxStencilTemperature, 1.f), 0.f, 1.f);
+		const int32 StencilValue = FMath::RoundToInt(Ratio * 255.f);
+
+		MeshComp->SetCustomDepthStencilValue(StencilValue);
 	}
 }
 

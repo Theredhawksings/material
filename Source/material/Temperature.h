@@ -66,6 +66,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heat|Visual")
 	int32 CPDIndex_Temperature = 0;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heat|Visual")
+	bool bUseStencil = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heat|Visual", meta = (EditCondition = "bUseStencil"))
+	float MaxStencilTemperature = 2000.0f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
