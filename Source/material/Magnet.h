@@ -124,6 +124,21 @@ protected:
     void OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
+        UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    TSubclassOf<AActor> ArrowEffectClass;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowPower = 5.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowX = 100.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowY = 100.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    bool bShowFieldArrows = true;
+
 private:
     UPROPERTY()
     TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
@@ -142,4 +157,13 @@ private:
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
+
+    FRotator ArrowRotationOffset = FRotator(180.f, 90.f, 0.f);
+
+
+// 헤더 private 섹션에서
+// TObjectPtr<UChildActorComponent> ArrowEffectComp;  ← 삭제 또는 주석처리
+UPROPERTY()
+TObjectPtr<AActor> SpawnedArrowEffect;
+
 };
