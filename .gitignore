@@ -78,7 +78,65 @@ Plugins/**/Intermediate/*
 # Content/**/*.utexture
 # Content/**/*.uasset.importsettings
 
+# ============================================
+# Blender
+# ============================================
+# 블렌더 자동 백업 파일 (용량만 차지함)
+*.blend1
+*.blend2
+
+# 블렌더 임시/캐시
+*.blend_tmp
+
+# ============================================
+# Unreal Engine 추가
+# ============================================
+# 로컬 에디터 설정
+*.DotSettings.user
+.idea/
+.vs/
+
+# Crash reports
+CrashReportClient/*
+
+# Screen captures
+Screenshots/*
+Saved/**
+
+# Auto-save
+**/*_AutoSaved.uasset
+
+# Local plugin config
+*.uplugin.meta
+
+# ============================================
+# OS / 시스템 파일
+# ============================================
+# Windows
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# macOS
+.DS_Store
+._*
+
+# Linux
+*~
+
+# ============================================
+# 기타
+# ============================================
+# 압축/임시
+*.tmp
+*.bak
+*.swp
+*.log
+
+# Python (블렌더 스크립트 관련)
+__pycache__/
+*.pyc
 
 # Cache files for the editor to use
 DerivedDataCache/*
-출처: https://splayer.tistory.com/102 [S Player:티스토리]
+#출처: https://splayer.tistory.com/102 [S Player:티스토리]
