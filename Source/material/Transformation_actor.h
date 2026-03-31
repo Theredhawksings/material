@@ -66,6 +66,9 @@ public:
 
     void SetPowered(bool bNewPowered);
     bool IsElectrified() const { return bElectrified; }
+    
+    UPROPERTY()
+    TObjectPtr<AActor> SpawnedArrowEffect;
 
 protected:
     virtual void BeginPlay() override;
@@ -346,4 +349,21 @@ private:
     static constexpr float MaxForceClamp = 5e5f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
+
+    // ── Arrow Effect (Magnet Visual) ──
+UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+TSubclassOf<AActor> ArrowEffectClass;
+
+UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+float ArrowPower = 5.0f;
+
+UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+float ArrowX = 100.0f;
+
+UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+float ArrowY = 100.0f;
+
+UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+bool bShowFieldArrows = true;
+
 };

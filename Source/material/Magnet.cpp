@@ -593,6 +593,7 @@ if (SpawnedArrowEffect)
 
 void AMagnet::SetAllArrowsVisible(bool bVisible)
 {
+    // AMagnet 처리
     for (TObjectIterator<AMagnet> It; It; ++It)
     {
         AMagnet* Magnet = *It;
@@ -601,15 +602,34 @@ void AMagnet::SetAllArrowsVisible(bool bVisible)
 
         Magnet->SpawnedArrowEffect->SetActorHiddenInGame(!bVisible);
 
-        // SplineMesh의 Stencil 값 토글
         TArray<UActorComponent*> MeshComps;
         Magnet->SpawnedArrowEffect->GetComponents(
             UMeshComponent::StaticClass(), MeshComps);
-
         for (UActorComponent* Comp : MeshComps)
         {
-            UMeshComponent* Mesh = Cast<UMeshComponent>(Comp);
-            if (Mesh)
+            if (UMeshComponent* Mesh = Cast<UMeshComponent>(Comp))
+            {
+                Mesh->SetCustomDepthStencilValue(bVisible ? 255 : 0);
+                Mesh->SetRenderCustomDepth(bVisible);
+            }
+        }
+    }
+
+    // ATransformation_actor (자석 모드) 처리
+    for (TObjectIterator<ATransformation_actor> It; It; ++It)
+    {
+        ATransformation_actor* TA = *It;
+        if (!IsValid(TA) || !TA->SpawnedArrowEffect)
+            continue;
+
+        TA->SpawnedArrowEffect->SetActorHiddenInGame(!bVisible);
+
+        TArray<UActorComponent*> MeshComps;
+        TA->SpawnedArrowEffect->GetComponents(
+            UMeshComponent::StaticClass(), MeshComps);
+        for (UActorComponent* Comp : MeshComps)
+        {
+            if (UMeshComponent* Mesh = Cast<UMeshComponent>(Comp))
             {
                 Mesh->SetCustomDepthStencilValue(bVisible ? 255 : 0);
                 Mesh->SetRenderCustomDepth(bVisible);

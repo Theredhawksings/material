@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "Temperature.h"
+#include "Transformation_actor.h"
 #include "Wire.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SplineComponent.h"
@@ -29,6 +30,13 @@ ATransformation_actor::ATransformation_actor()
     if (WoodMatFinder.Succeeded())
     {
         BurnMaterial = WoodMatFinder.Object;
+    }
+
+    static ConstructorHelpers::FClassFinder<AActor> ArrowBP(
+        TEXT("/Game/modeling/Object/Arrow/Arrow_Effect"));
+    if (ArrowBP.Succeeded())
+    {
+        ArrowEffectClass = ArrowBP.Class;
     }
 }
 
@@ -742,13 +750,73 @@ void ATransformation_actor::EnterMagnetMode()
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
 
-    // 물리 ON + 중력 OFF + 속도 0 = 그 자리 고정, 콜리전은 정상 작동
     MeshComp->SetSimulatePhysics(true);
     MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
     MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
     RefreshOverlappingMetals();
+
+    // ── 화살표 이펙트 스폰 ──
+    if (bShowFieldArrows && ArrowEffectClass)
+    {
+        FTimerHandle ArrowSpawnTimer;
+        GetWorldTimerManager().SetTimer(ArrowSpawnTimer, [this]()
+        {
+            if (!IsValid(this) || !ArrowEffectClass) return;
+            if (CurrentForm != EBlockForm::Magnet) return;
+
+            FQuat ActorQuat = GetActorRotation().Quaternion();
+            FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
+            FTransform SpawnTransform((ActorQuat * OffsetQuat).Rotator(), GetActorLocation());
+
+            AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
+                ArrowEffectClass, SpawnTransform, this, nullptr,
+                ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+            if (Arrow)
+            {
+                FProperty* PowerProp = Arrow->GetClass()->FindPropertyByName(TEXT("Power"));
+                FProperty* XProp     = Arrow->GetClass()->FindPropertyByName(TEXT("X"));
+                FProperty* YProp     = Arrow->GetClass()->FindPropertyByName(TEXT("Y"));
+
+                if (PowerProp)
+                {
+                    if (FDoubleProperty* D = CastField<FDoubleProperty>(PowerProp))
+                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowPower);
+                    else if (FFloatProperty* F = CastField<FFloatProperty>(PowerProp))
+                        F->SetPropertyValue_InContainer(Arrow, ArrowPower);
+                }
+                if (XProp)
+                {
+                    if (FDoubleProperty* D = CastField<FDoubleProperty>(XProp))
+                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowX);
+                    else if (FFloatProperty* F = CastField<FFloatProperty>(XProp))
+                        F->SetPropertyValue_InContainer(Arrow, ArrowX);
+                }
+                if (YProp)
+                {
+                    if (FDoubleProperty* D = CastField<FDoubleProperty>(YProp))
+                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowY);
+                    else if (FFloatProperty* F = CastField<FFloatProperty>(YProp))
+                        F->SetPropertyValue_InContainer(Arrow, ArrowY);
+                }
+
+                UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
+
+                TArray<USceneComponent*> AllComps;
+                Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
+                AllComps.Add(Arrow->GetRootComponent());
+                for (USceneComponent* Comp : AllComps)
+                {
+                    Comp->SetMobility(EComponentMobility::Movable);
+                }
+
+                SpawnedArrowEffect = Arrow;
+                SpawnedArrowEffect->SetActorHiddenInGame(true);  // 기본 숨김
+            }
+        }, 1.0f, false);
+    }
 }
 
 void ATransformation_actor::ExitMagnetMode()
@@ -763,6 +831,13 @@ void ATransformation_actor::ExitMagnetMode()
 
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
+
+    // 화살표 제거
+    if (SpawnedArrowEffect)
+    {
+        SpawnedArrowEffect->Destroy();
+        SpawnedArrowEffect = nullptr;
+    }
 }
 
 void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
@@ -781,9 +856,6 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     {
         TimeSinceLastMagnetRefresh = 0.f;
         RefreshOverlappingMetals();
-
-        UE_LOG(LogTemp, Log, TEXT("[%s] MagStr=%.0f, Targets=%d"),
-            *GetName(), MagnetStrength, OverlappingMetals.Num());
     }
 
     if (OverlappingMetals.Num() == 0) return;
@@ -828,7 +900,15 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 
         if (OtherMagnetActor)
         {
-            if (bMagnetSnapped) continue;
+            if (bMagnetSnapped || OtherMagnetActor->bMagnetSnapped) continue;
+
+            // 이중 처리 방지
+            if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMagnetActor))
+                continue;
+
+            // 상대 MeshComp 유효성 확인
+            if (!OtherMagnetActor->MeshComp || !OtherMagnetActor->MeshComp->IsSimulatingPhysics())
+                continue;
 
             const FVector OtherNorth = OtherMagnetActor->GetNorthPoleWorldDir();
 
@@ -836,21 +916,42 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             const float OtherPoleToward = FVector::DotProduct(OtherNorth, -DirToOther);
             const float PolarityFactor = -(MyPoleToward * OtherPoleToward);
 
+            // 거리 기반 속도 스케일
             float SpeedScale = (ReferenceDistance / FMath::Max(SafeDist, 1.f));
             SpeedScale = FMath::Clamp(SpeedScale, 0.1f, 5.f);
 
             float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(PolarityFactor);
 
+            // 인력/척력 방향
             FVector MoveDir = DirToOther * FMath::Sign(PolarityFactor);
 
-            FVector MoveDelta = MoveDir * Speed * DeltaTime;
+            // ── 질량 비례: 가벼운 쪽이 더 많이 움직임 ──
+            const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
+            const float OtherMass = FMath::Max(OtherMagnetActor->MeshComp->GetMass(), 0.1f);
+            const float TotalMass = MyMass + OtherMass;
 
-            AddActorWorldOffset(MoveDelta, true);
+            const float MySpeed = Speed * (OtherMass / TotalMass);
+            const float OtherSpeed = Speed * (MyMass / TotalMass);
 
+            // ── SetPhysicsLinearVelocity: 물리 엔진과 충돌 없이 확실히 움직임 ──
+            const FVector MyCurrentVel = MeshComp->GetPhysicsLinearVelocity();
+            FVector MyNewVel = MoveDir * MySpeed;
+            MyNewVel.Z = MyCurrentVel.Z;  // 중력(수직) 유지
+            MeshComp->SetPhysicsLinearVelocity(MyNewVel);
+
+            const FVector OtherCurrentVel = OtherMagnetActor->MeshComp->GetPhysicsLinearVelocity();
+            FVector OtherNewVel = -MoveDir * OtherSpeed;
+            OtherNewVel.Z = OtherCurrentVel.Z;
+            OtherMagnetActor->MeshComp->SetPhysicsLinearVelocity(OtherNewVel);
+
+            // 스냅
             if (PolarityFactor > 0.f && Distance <= MagnetSnapDistance)
             {
                 bMagnetSnapped = true;
-                UE_LOG(LogTemp, Log, TEXT("[%s] Snapped to [%s]"), *GetName(), *OtherActor->GetName());
+                OtherMagnetActor->bMagnetSnapped = true;
+
+                MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                OtherMagnetActor->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
             }
 
             if (bDebugDraw)
@@ -858,7 +959,8 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
                 FColor DebugColor = (PolarityFactor > 0) ? FColor::Green : FColor::Red;
                 DrawDebugLine(GetWorld(), MagnetLoc, OtherLoc, DebugColor, false, 0.1f, 0, 2.f);
                 DrawDebugString(GetWorld(), MagnetLoc + FVector(0, 0, 50),
-                    FString::Printf(TEXT("P=%.2f D=%.0f"), PolarityFactor, Distance),
+                    FString::Printf(TEXT("P=%.2f D=%.0f MyM=%.1f OtM=%.1f"),
+                        PolarityFactor, Distance, MyMass, OtherMass),
                     nullptr, FColor::White, 0.1f);
             }
         }
@@ -879,8 +981,22 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 
             TargetComp->AddForce(FinalForce, NAME_None, false);
         }
+    } // for 끝
+
+    // ── 화살표 위치 동기화 ──
+    if (SpawnedArrowEffect)
+    {
+        const FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
+        const FQuat DesiredQuat = GetActorQuat() * OffsetQuat;
+        const FVector DesiredLoc = GetActorLocation();
+
+        if (!SpawnedArrowEffect->GetActorQuat().Equals(DesiredQuat, 0.01f) ||
+            !SpawnedArrowEffect->GetActorLocation().Equals(DesiredLoc, 1.f))
+        {
+            SpawnedArrowEffect->SetActorLocationAndRotation(DesiredLoc, DesiredQuat);
+        }
     }
-}
+} // 함수 끝 // 함수 끝
 
 void ATransformation_actor::RefreshOverlappingMetals()
 {
