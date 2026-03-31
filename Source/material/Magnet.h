@@ -22,6 +22,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Magnet")
     void RefreshOverlappingMetals();
 
+UFUNCTION(BlueprintCallable, Category = "Magnet|Visual")
+static void SetAllArrowsVisible(bool bVisible);
+
 protected:
     virtual void BeginPlay() override;
 
@@ -165,5 +168,6 @@ private:
 // TObjectPtr<UChildActorComponent> ArrowEffectComp;  ← 삭제 또는 주석처리
 UPROPERTY()
 TObjectPtr<AActor> SpawnedArrowEffect;
+
 
 };

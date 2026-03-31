@@ -6,8 +6,10 @@
     #include "Components/PrimitiveComponent.h"
     #include "DrawDebugHelpers.h"
     #include "Temperature.h"
+    #include "EngineUtils.h"
+    #include "Components/MeshComponent.h"
     #include "Kismet/GameplayStatics.h"
-
+    
     AMagnet::AMagnet()
     {
         PrimaryActorTick.bCanEverTick = true;
@@ -119,6 +121,7 @@ for (USceneComponent* Comp : AllComps)
 }
 
 SpawnedArrowEffect = Arrow;
+SpawnedArrowEffect->SetActorHiddenInGame(true);  // 기본 비활성
         }
     }, 1.0f, false);
 }
@@ -587,3 +590,30 @@ if (SpawnedArrowEffect)
             1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
         return BaseMagnetStrength * InductionFactor;
     }
+
+void AMagnet::SetAllArrowsVisible(bool bVisible)
+{
+    for (TObjectIterator<AMagnet> It; It; ++It)
+    {
+        AMagnet* Magnet = *It;
+        if (!IsValid(Magnet) || !Magnet->SpawnedArrowEffect)
+            continue;
+
+        Magnet->SpawnedArrowEffect->SetActorHiddenInGame(!bVisible);
+
+        // SplineMesh의 Stencil 값 토글
+        TArray<UActorComponent*> MeshComps;
+        Magnet->SpawnedArrowEffect->GetComponents(
+            UMeshComponent::StaticClass(), MeshComps);
+
+        for (UActorComponent* Comp : MeshComps)
+        {
+            UMeshComponent* Mesh = Cast<UMeshComponent>(Comp);
+            if (Mesh)
+            {
+                Mesh->SetCustomDepthStencilValue(bVisible ? 255 : 0);
+                Mesh->SetRenderCustomDepth(bVisible);
+            }
+        }
+    }
+}
