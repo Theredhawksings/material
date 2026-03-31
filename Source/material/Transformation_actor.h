@@ -6,6 +6,7 @@
 #include "Transformation_actor.generated.h"
 
 class UStaticMeshComponent;
+class USphereComponent;
 class UStaticMesh;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
@@ -296,6 +297,12 @@ private:
     void RefreshOverlappingMetals();
     void DecreaseGaugeForCurrentTag();
 
+    // ── AMagnet에서 가져온 누락 기능들 ──
+    void CheckDemagnetize();
+    void UpdateMagnetElectroBoost();
+    void ApplyInducedMagnetism();
+    float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const;
+
 private:
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* IceMID = nullptr;
@@ -339,6 +346,10 @@ private:
     float TimeSinceLastMagnetRefresh = 0.f;
     float BaseMagnetStrength = 0.f;
 
+    /** 범위에 처음 들어온 금속을 추적하여 InitialImpulse 중복 방지 */
+    UPROPERTY(Transient)
+    TSet<TObjectPtr<UPrimitiveComponent>> PreviousOverlappingMetals;
+
     UFUNCTION()
     void OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -351,19 +362,18 @@ private:
     static constexpr float GravityAccel = 980.f;
 
     // ── Arrow Effect (Magnet Visual) ──
-UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-TSubclassOf<AActor> ArrowEffectClass;
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    TSubclassOf<AActor> ArrowEffectClass;
 
-UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-float ArrowPower = 5.0f;
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowPower = 5.0f;
 
-UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-float ArrowX = 100.0f;
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowX = 100.0f;
 
-UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-float ArrowY = 100.0f;
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowY = 100.0f;
 
-UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-bool bShowFieldArrows = true;
-
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    bool bShowFieldArrows = true;
 };

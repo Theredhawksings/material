@@ -13,7 +13,9 @@
 #include "Wire.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SplineComponent.h"
+#include "Components/MeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 
 ATransformation_actor::ATransformation_actor()
 {
@@ -165,9 +167,9 @@ void ATransformation_actor::RefreshConnectedWires()
 
         ConnectedWires.AddUnique(Wire);
 
-        if (Wire->IsPowered())
+        if (Wire->IsSourcePowered())
         {
-            bAnyPowerFound = true;
+    bAnyPowerFound = true;
         }
     }
 
@@ -730,6 +732,206 @@ FVector ATransformation_actor::GetSouthPoleWorldDir() const
     return -GetNorthPoleWorldDir();
 }
 
+// ============================================================================
+//  [추가 1] CheckDemagnetize — 열원 근처에서 자력 상실
+// ============================================================================
+void ATransformation_actor::CheckDemagnetize()
+{
+    if (bDemagnetized) return;
+
+    TArray<AActor*> HeatSources;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
+
+    const FVector MyLoc = GetActorLocation();
+
+    for (AActor* Actor : HeatSources)
+    {
+        const ATemperature* Heat = Cast<ATemperature>(Actor);
+        if (!Heat) continue;
+
+        const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
+
+        if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
+        {
+            bDemagnetized = true;
+            bElectroActive = false;
+            MagnetStrength = 0.f;
+            OverlappingMetals.Empty();
+            MagnetContactedWires.Empty();
+            PreviousOverlappingMetals.Empty();
+
+            if (SpawnedArrowEffect)
+            {
+                SpawnedArrowEffect->Destroy();
+                SpawnedArrowEffect = nullptr;
+            }
+
+#if ENABLE_DRAW_DEBUG
+            if (bDebugDraw)
+            {
+                DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
+                    TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
+            }
+#endif
+            return;
+        }
+    }
+}
+
+// ============================================================================
+//  [추가 2] UpdateMagnetElectroBoost — 전선 접촉 시 전자석 부스트
+// ============================================================================
+void ATransformation_actor::UpdateMagnetElectroBoost()
+{
+    bool bAnyPowered = false;
+    float TotalCurrent = 0.f;
+
+    TArray<AActor*> NearbyActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
+
+    MagnetContactedWires.Empty();
+
+    const FVector MyLoc = GetActorLocation();
+
+    for (AActor* Actor : NearbyActors)
+    {
+        AWire* Wire = Cast<AWire>(Actor);
+        if (!Wire) continue;
+        if (!Wire->IsPowered()) continue;
+
+        bool bClose = false;
+
+        USplineComponent* WireSpline = Wire->GetSplineComponent();
+        if (WireSpline)
+        {
+            const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
+            if (FVector::Dist(MyLoc, Closest) <= WireContactRadius)
+            {
+                bClose = true;
+            }
+
+            if (!bClose)
+            {
+                const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
+                for (int32 i = 0; i < NumPoints; ++i)
+                {
+                    const FVector PointWorld = WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
+                    if (FVector::Dist(MyLoc, PointWorld) <= WireContactRadius)
+                    {
+                        bClose = true;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            bClose = FVector::Dist(MyLoc, Wire->GetActorLocation()) <= WireContactRadius;
+        }
+
+        if (bClose)
+        {
+            bAnyPowered = true;
+            TotalCurrent += Wire->GetWireTemperature() / 100.f;
+            MagnetContactedWires.AddUnique(Wire);
+        }
+    }
+
+    bElectroActive = bAnyPowered;
+
+    if (bElectroActive)
+    {
+        const float CurrentBoost = FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier);
+        MagnetStrength = BaseMagnetStrength * CurrentBoost;
+    }
+    else
+    {
+        MagnetStrength = BaseMagnetStrength;
+    }
+}
+
+// ============================================================================
+//  [추가 3] ApplyInducedMagnetism — 금속 간 유도 자기
+// ============================================================================
+void ATransformation_actor::ApplyInducedMagnetism()
+{
+    const FVector MagnetLoc = GetActorLocation();
+    const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
+    const int32 Num = MetalArray.Num();
+
+    for (int32 i = 0; i < Num; ++i)
+    {
+        UPrimitiveComponent* MetalA = MetalArray[i];
+        if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics()) continue;
+
+        const FVector MetalALoc = MetalA->GetComponentLocation();
+        const float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
+
+        if (DistAToMagnet > MinDistanceForInduction) continue;
+
+        const float InducedStrength = CalculateInducedStrength(DistAToMagnet, MagnetStrength);
+        const FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
+
+        for (int32 j = i + 1; j < Num; ++j)
+        {
+            UPrimitiveComponent* MetalB = MetalArray[j];
+            if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics()) continue;
+
+            const FVector MetalBLoc = MetalB->GetComponentLocation();
+            const FVector AtoB = MetalBLoc - MetalALoc;
+            const float DistAtoB = AtoB.Size();
+
+            if (DistAtoB < 10.f || DistAtoB > InductionRange) continue;
+
+            const FVector Dir = AtoB / DistAtoB;
+            const float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
+
+            float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(AlignmentFactor))
+                        / FMath::Pow(DistAtoB, MagneticDecayExponent);
+
+            const float MetalBMass = MetalB->GetMass();
+            ForceMag *= FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
+
+            const FVector CurrentVelB = MetalB->GetPhysicsLinearVelocity();
+            const float VelTowardsA = FVector::DotProduct(CurrentVelB, Dir);
+
+            float VelDamping = 1.0f;
+            if (VelTowardsA > MaxAttractVelocity * 0.5f)
+            {
+                VelDamping = FMath::Clamp(1.0f - (VelTowardsA / MaxAttractVelocity), 0.3f, 1.0f);
+            }
+
+            const FVector DampingForce = -CurrentVelB * (VelocityDampingFactor * 0.5f * MetalBMass);
+            FVector FinalForce = (Dir * ForceMag * VelDamping * AlignmentFactor) + DampingForce;
+            FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForceClamp);
+
+            MetalB->AddForce(FinalForce, NAME_None, false);
+            MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
+
+#if ENABLE_DRAW_DEBUG
+            if (bDebugDraw)
+            {
+                DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, FColor::Yellow, false, -1.f, 0, 1.f);
+            }
+#endif
+        }
+    }
+}
+
+// ============================================================================
+//  [추가 4] CalculateInducedStrength
+// ============================================================================
+float ATransformation_actor::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const
+{
+    const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
+    const float InductionFactor = FMath::Clamp(
+        1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
+    return BaseMagnetStrengthVal * InductionFactor;
+}
+
+// ============================================================================
+//  EnterMagnetMode
+// ============================================================================
 void ATransformation_actor::EnterMagnetMode()
 {
     if (!MeshComp) return;
@@ -749,22 +951,30 @@ void ATransformation_actor::EnterMagnetMode()
 
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
+    PreviousOverlappingMetals.Empty();
 
     MeshComp->SetSimulatePhysics(true);
     MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
     MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-    RefreshOverlappingMetals();
+    // 초기 소자 체크
+    CheckDemagnetize();
+
+    if (!bDemagnetized)
+    {
+        RefreshOverlappingMetals();
+    }
 
     // ── 화살표 이펙트 스폰 ──
-    if (bShowFieldArrows && ArrowEffectClass)
+    if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
     {
         FTimerHandle ArrowSpawnTimer;
         GetWorldTimerManager().SetTimer(ArrowSpawnTimer, [this]()
         {
             if (!IsValid(this) || !ArrowEffectClass) return;
             if (CurrentForm != EBlockForm::Magnet) return;
+            if (bDemagnetized) return;
 
             FQuat ActorQuat = GetActorRotation().Quaternion();
             FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
@@ -813,7 +1023,7 @@ void ATransformation_actor::EnterMagnetMode()
                 }
 
                 SpawnedArrowEffect = Arrow;
-                SpawnedArrowEffect->SetActorHiddenInGame(true);  // 기본 숨김
+                SpawnedArrowEffect->SetActorHiddenInGame(true);
             }
         }, 1.0f, false);
     }
@@ -831,8 +1041,8 @@ void ATransformation_actor::ExitMagnetMode()
 
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
+    PreviousOverlappingMetals.Empty();
 
-    // 화살표 제거
     if (SpawnedArrowEffect)
     {
         SpawnedArrowEffect->Destroy();
@@ -846,6 +1056,9 @@ void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* Ot
     return;
 }
 
+// ============================================================================
+//  UpdateMagnetism — 누락 기능 모두 통합
+// ============================================================================
 void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 {
     if (bDemagnetized || !MeshComp) return;
@@ -855,23 +1068,93 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     if (TimeSinceLastMagnetRefresh >= MagnetRefreshInterval)
     {
         TimeSinceLastMagnetRefresh = 0.f;
+
+        // [추가] 소자 체크
+        CheckDemagnetize();
+        if (bDemagnetized)
+        {
+            OverlappingMetals.Empty();
+            PreviousOverlappingMetals.Empty();
+            return;
+        }
+
+        // [추가] 전자석 부스트
+        UpdateMagnetElectroBoost();
+
         RefreshOverlappingMetals();
     }
 
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw)
+    {
+        if (bElectroActive)
+        {
+            DrawDebugSphere(GetWorld(), GetActorLocation(), WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
+            const float BoostRatio = (BaseMagnetStrength > 0.f) ? (MagnetStrength / BaseMagnetStrength) : 1.f;
+            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
+                FString::Printf(TEXT("[전자석 활성]\n연결 전선: %d개\n기본 자력: %.0f\n현재 자력: %.0f\n부스트: x%.2f"),
+                    MagnetContactedWires.Num(), BaseMagnetStrength, MagnetStrength, BoostRatio),
+                nullptr, FColor::Cyan, 0.0f, true);
+        }
+        else
+        {
+            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
+                FString::Printf(TEXT("[자석 모드]\n자력: %.0f"), MagnetStrength),
+                nullptr, FColor::White, 0.0f, true);
+        }
+    }
+#endif
+
     if (OverlappingMetals.Num() == 0) return;
+
+    // ── [추가] InitialImpulse: 새로 범위에 들어온 금속에 초기 임펄스 ──
+    if (bApplyInitialImpulse)
+    {
+        for (UPrimitiveComponent* Comp : OverlappingMetals)
+        {
+            if (!IsValid(Comp) || !Comp->IsSimulatingPhysics()) continue;
+
+            AActor* OwnerActor = Comp->GetOwner();
+            if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) continue;
+
+            // 이전 프레임에 없었으면 새로 진입
+            if (!PreviousOverlappingMetals.Contains(Comp))
+            {
+                const FVector ToMagnet =
+                    (GetActorLocation() - Comp->GetComponentLocation()).GetSafeNormal();
+                Comp->AddImpulse(ToMagnet * InitialImpulseStrength * Comp->GetMass());
+            }
+        }
+    }
+    // 현재 목록을 저장해두고 다음 프레임과 비교
+    PreviousOverlappingMetals = OverlappingMetals;
 
     const FVector MagnetLoc = GetActorLocation();
     const FVector MyNorth = GetNorthPoleWorldDir();
+    const FVector MagnetForward = MeshComp->GetForwardVector();
+    const bool bMagnetSimulating = MeshComp->IsSimulatingPhysics();
     const float StrengthTimesMultiplier = MagnetStrength * ForceMultiplier;
 
+    // 유효하지 않은 항목 제거
     for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
     {
         UPrimitiveComponent* Comp = It->Get();
-        if (!IsValid(Comp)) { It.RemoveCurrent(); continue; }
+        if (!IsValid(Comp))
+        {
+            It.RemoveCurrent();
+            continue;
+        }
         AActor* OwnerActor = Comp->GetOwner();
-        if (!OwnerActor) { It.RemoveCurrent(); continue; }
+        if (!OwnerActor)
+        {
+            It.RemoveCurrent();
+            continue;
+        }
         if (!OwnerActor->ActorHasTag(MetalTag) && !OwnerActor->ActorHasTag(MagnetTag))
-        { It.RemoveCurrent(); continue; }
+        {
+            It.RemoveCurrent();
+            continue;
+        }
     }
 
     if (OverlappingMetals.Num() == 0) return;
@@ -898,15 +1181,14 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             OtherMagnetActor = Cast<ATransformation_actor>(OtherActor);
         }
 
+        // ── 자석-자석 상호작용 (기존 로직 유지) ──
         if (OtherMagnetActor)
         {
             if (bMagnetSnapped || OtherMagnetActor->bMagnetSnapped) continue;
 
-            // 이중 처리 방지
             if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMagnetActor))
                 continue;
 
-            // 상대 MeshComp 유효성 확인
             if (!OtherMagnetActor->MeshComp || !OtherMagnetActor->MeshComp->IsSimulatingPhysics())
                 continue;
 
@@ -916,16 +1198,13 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             const float OtherPoleToward = FVector::DotProduct(OtherNorth, -DirToOther);
             const float PolarityFactor = -(MyPoleToward * OtherPoleToward);
 
-            // 거리 기반 속도 스케일
             float SpeedScale = (ReferenceDistance / FMath::Max(SafeDist, 1.f));
             SpeedScale = FMath::Clamp(SpeedScale, 0.1f, 5.f);
 
             float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(PolarityFactor);
 
-            // 인력/척력 방향
             FVector MoveDir = DirToOther * FMath::Sign(PolarityFactor);
 
-            // ── 질량 비례: 가벼운 쪽이 더 많이 움직임 ──
             const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
             const float OtherMass = FMath::Max(OtherMagnetActor->MeshComp->GetMass(), 0.1f);
             const float TotalMass = MyMass + OtherMass;
@@ -933,10 +1212,9 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             const float MySpeed = Speed * (OtherMass / TotalMass);
             const float OtherSpeed = Speed * (MyMass / TotalMass);
 
-            // ── SetPhysicsLinearVelocity: 물리 엔진과 충돌 없이 확실히 움직임 ──
             const FVector MyCurrentVel = MeshComp->GetPhysicsLinearVelocity();
             FVector MyNewVel = MoveDir * MySpeed;
-            MyNewVel.Z = MyCurrentVel.Z;  // 중력(수직) 유지
+            MyNewVel.Z = MyCurrentVel.Z;
             MeshComp->SetPhysicsLinearVelocity(MyNewVel);
 
             const FVector OtherCurrentVel = OtherMagnetActor->MeshComp->GetPhysicsLinearVelocity();
@@ -944,7 +1222,6 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             OtherNewVel.Z = OtherCurrentVel.Z;
             OtherMagnetActor->MeshComp->SetPhysicsLinearVelocity(OtherNewVel);
 
-            // 스냅
             if (PolarityFactor > 0.f && Distance <= MagnetSnapDistance)
             {
                 bMagnetSnapped = true;
@@ -964,24 +1241,82 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
                     nullptr, FColor::White, 0.1f);
             }
         }
+        // ── 자석-금속 상호작용 (누락 기능 모두 추가) ──
         else
         {
             if (!TargetComp->IsSimulatingPhysics()) continue;
 
-            const FVector DirToMagnet = -DirToOther;
-            float ForceMag = StrengthTimesMultiplier / FMath::Pow(SafeDist, MagneticDecayExponent);
+            const FVector MetalLoc = TargetComp->GetComponentLocation();
+            const FVector ToMagnet = MagnetLoc - MetalLoc;
+            const float Dist = ToMagnet.Size();
+
+            if (Dist < MinDistance || Dist > MaxDistance) continue;
+
+            const FVector Dir = ToMagnet / Dist;
+
+            // [추가] DirectionFactor — 자석 전방 방향 보정
+            const float DirDot = FVector::DotProduct(Dir, MagnetForward);
+            const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
+
+            const float MetalSafeDist = FMath::Max(Dist, MinDistance);
+            float ForceMag = (StrengthTimesMultiplier * DirectionFactor)
+                           / FMath::Pow(MetalSafeDist, MagneticDecayExponent);
 
             const float MetalMass = TargetComp->GetMass();
             ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
 
+            // [추가] VelocityDamping — 접근 속도 제한
             const FVector CurrentVel = TargetComp->GetPhysicsLinearVelocity();
+            const float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
+
+            float VelocityDamping = 1.0f;
+            if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
+            {
+                VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
+            }
+
             const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
-            FVector FinalForce = (DirToMagnet * ForceMag) + DampingForce;
+            FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
             FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
 
             TargetComp->AddForce(FinalForce, NAME_None, false);
+
+            // [추가] Torque — 금속을 자석 쪽으로 회전
+            if (bUseTorque)
+            {
+                const FVector CrossProduct = FVector::CrossProduct(TargetComp->GetForwardVector(), Dir);
+                const float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
+
+                if (TorqueMagnitude > 0.01f)
+                {
+                    TargetComp->AddTorqueInRadians(CrossProduct.GetSafeNormal() * TorqueMagnitude, NAME_None, false);
+                }
+            }
+
+            // [추가] 반작용력 — 자석 자체에도 반대 힘
+            if (bMagnetSimulating)
+            {
+                MeshComp->AddForce(-FinalForce * 0.2f, NAME_None, false);
+            }
+
+#if ENABLE_DRAW_DEBUG
+            if (bDebugDraw)
+            {
+                const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
+                DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
+                DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
+                DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
+                    FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
+            }
+#endif
         }
     } // for 끝
+
+    // [추가] 유도 자기
+    if (bEnableInduction)
+    {
+        ApplyInducedMagnetism();
+    }
 
     // ── 화살표 위치 동기화 ──
     if (SpawnedArrowEffect)
@@ -996,7 +1331,7 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             SpawnedArrowEffect->SetActorLocationAndRotation(DesiredLoc, DesiredQuat);
         }
     }
-} // 함수 끝 // 함수 끝
+}
 
 void ATransformation_actor::RefreshOverlappingMetals()
 {
