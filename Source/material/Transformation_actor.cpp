@@ -170,7 +170,7 @@ void ATransformation_actor::RefreshConnectedWires()
         if (Wire->IsSourcePowered())
         {
     bAnyPowerFound = true;
-        }
+        }   
     }
 
     if (bElectrified != bAnyPowerFound)
@@ -328,7 +328,15 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
     }
 
-    if (CurrentForm == EBlockForm::Magnet)
+    // ── Metal / Rubber / Magnet 공용: 열 스텐실 + 냉각 ──
+    if (CurrentForm == EBlockForm::Metal
+     || CurrentForm == EBlockForm::Rubber
+     || CurrentForm == EBlockForm::Magnet)
+    {
+        UpdateFormHeat(DeltaTime);
+    }
+
+    if (CurrentForm == EBlockForm::Magnet && !bDemagnetized)
     {
         UpdateMagnetism(DeltaTime);
     }
@@ -338,6 +346,14 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
     if (CurrentForm == NewForm)
     {
+        // 소자된 자석이면 → 다시 자석 모드 완전 재진입
+        if (NewForm == EBlockForm::Magnet && bDemagnetized)
+        {
+            bDemagnetized = false;
+            EnterMagnetMode();
+            return;
+        }
+
         if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
         {
             ApplySpec(*Spec);
@@ -375,6 +391,14 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     if (CurrentForm == EBlockForm::Magnet)
     {
         ExitMagnetMode();
+    }
+
+    // 폼 전환 시 온도 · 스텐실 리셋
+    FormTemperatureC = 20.f;
+    if (MeshComp)
+    {
+        MeshComp->SetRenderCustomDepth(false);
+        MeshComp->SetCustomDepthStencilValue(0);
     }
 
     CurrentForm = NewForm;
@@ -487,11 +511,6 @@ void ATransformation_actor::StartHeating(ATemperature* FireRef)
 {
     CurrentFire = FireRef;
     bHeating = (CurrentFire != nullptr);
-
-    if (CurrentForm != EBlockForm::Ice && CurrentForm != EBlockForm::Wood)
-    {
-        bHeating = false;
-    }
 }
 
 void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
@@ -523,8 +542,13 @@ void ATransformation_actor::StopHeating()
         {
             return;
         }
-        MeshComp->SetRenderCustomDepth(false);
-        MeshComp->SetCustomDepthStencilValue(0);
+        // Ice / Wood: 즉시 스텐실 리셋
+        if (CurrentForm == EBlockForm::Ice || CurrentForm == EBlockForm::Wood)
+        {
+            MeshComp->SetRenderCustomDepth(false);
+            MeshComp->SetCustomDepthStencilValue(0);
+        }
+        // Metal, Rubber, Magnet: 냉각(UpdateFormHeat)이 자동으로 스텐실을 내림
     }
 }
 
@@ -733,48 +757,234 @@ FVector ATransformation_actor::GetSouthPoleWorldDir() const
 }
 
 // ============================================================================
-//  [추가 1] CheckDemagnetize — 열원 근처에서 자력 상실
+//  UpdateFormHeat — Metal / Rubber / Magnet 공용 열 스텐실 + 자석 점진적 소자
 // ============================================================================
-void ATransformation_actor::CheckDemagnetize()
+void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 {
-    if (bDemagnetized) return;
+    if (!MeshComp) return;
 
-    TArray<AActor*> HeatSources;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
+    // ── 1. 현재 Form에 맞는 최대 온도 / 최대 스텐실 결정 ──
+    float MaxTempC = 1000.f;
+    int32 MaxStencil = 120;
 
-    const FVector MyLoc = GetActorLocation();
-
-    for (AActor* Actor : HeatSources)
+    switch (CurrentForm)
     {
-        const ATemperature* Heat = Cast<ATemperature>(Actor);
-        if (!Heat) continue;
+    case EBlockForm::Metal:
+        MaxTempC   = MetalMaxHeatTempC;
+        MaxStencil = MetalMaxStencilValue;
+        break;
+    case EBlockForm::Rubber:
+        MaxTempC   = RubberMaxHeatTempC;
+        MaxStencil = RubberMaxStencilValue;
+        break;
+    case EBlockForm::Magnet:
+        MaxTempC   = MagnetCurieTempC;
+        MaxStencil = MagnetMaxStencilValue;
+        break;
+    default:
+        return;
+    }
 
-        const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
+    // ── 2. 가열 또는 냉각 ──
+    if (bHeating && CurrentFire)
+    {
+        const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
 
-        if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
+        bool bInRange = (CurrentFire->MaxHeatDistance <= 0.f)
+                     || (DistCm <= CurrentFire->MaxHeatDistance);
+
+        if (bInRange)
         {
-            bDemagnetized = true;
-            bElectroActive = false;
-            MagnetStrength = 0.f;
-            OverlappingMetals.Empty();
-            MagnetContactedWires.Empty();
-            PreviousOverlappingMetals.Empty();
+            const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+            const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+            float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
+            float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
 
-            if (SpawnedArrowEffect)
+            if (CurrentFire->MaxHeatDistance > 0.f)
             {
-                SpawnedArrowEffect->Destroy();
-                SpawnedArrowEffect = nullptr;
+                const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+                ReceivedPowerW *= Fade;
             }
+
+            const float DeltaT = (ReceivedPowerW * DeltaTime * FormHeatSimTimeScale)
+                               / (FormMassKg * FormSpecificHeatJPerKgK);
+            FormTemperatureC += DeltaT;
+        }
+    }
+    else
+    {
+        // 열원 없으면 냉각
+        if (FormTemperatureC > 20.f)
+        {
+            FormTemperatureC -= FormCoolingRatePerSec * DeltaTime;
+            FormTemperatureC = FMath::Max(FormTemperatureC, 20.f);
+        }
+    }
+
+    // 최대 온도 클램프
+    FormTemperatureC = FMath::Min(FormTemperatureC, MaxTempC);
+
+    // ── 3. 열 비율 계산 (0 = 상온, 1 = 최대 온도) ──
+    const float HeatRatio = FMath::Clamp(
+        (FormTemperatureC - 20.f) / FMath::Max(MaxTempC - 20.f, 1.f), 0.0f, 1.0f);
+
+    // ── 4. 스텐실 적용 ──
+    const int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
+
+    if (StencilValue > 0)
+    {
+        MeshComp->SetRenderCustomDepth(true);
+        MeshComp->SetCustomDepthStencilValue(StencilValue);
+    }
+    else
+    {
+        // 스텐실 0 → 패스 완전 OFF
+        MeshComp->SetRenderCustomDepth(false);
+        MeshComp->SetCustomDepthStencilValue(0);
+    }
+
+    // ── 5. 자석 전용: 점진적 약화 / 소자 / 복구 ──
+    if (CurrentForm == EBlockForm::Magnet)
+    {
+        if (!bDemagnetized)
+        {
+            // ── 정상 작동 중: 온도에 비례해 자력 감소 ──
+            const float PowerRatio = 1.0f - HeatRatio;   // 1 = 풀파워, 0 = 소자
+
+            MagnetStrength = BaseMagnetStrength * PowerRatio;
+            UpdateMagnetArrowPower(PowerRatio);
+
+            // 퀴리 온도 도달 → 완전 소자
+            if (HeatRatio >= 1.0f)
+            {
+                bDemagnetized = true;
+                bMagnetCollided = false;
+                bMagnetSnapped = false;
+                bElectroActive = false;
+                MagnetStrength = 0.f;
+                BaseMagnetStrength = 0.f;
+                TimeSinceLastMagnetRefresh = 0.f;
+
+                OverlappingMetals.Empty();
+                MagnetContactedWires.Empty();
+                PreviousOverlappingMetals.Empty();
+
+                if (SpawnedArrowEffect)
+                {
+                    SpawnedArrowEffect->SetActorHiddenInGame(true);
+                    UpdateMagnetArrowPower(0.f);  // Power도 0으로
+                }
+
+                if (MeshComp->IsSimulatingPhysics())
+                {
+                    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                    MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                }
 
 #if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
+                if (bDebugDraw)
+                {
+                    DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100),
+                        TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
+                }
+#endif
+            }
+#if ENABLE_DRAW_DEBUG
+            else if (bDebugDraw && HeatRatio > 0.01f)
             {
-                DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
-                    TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
+                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
+                    FString::Printf(TEXT("자석 온도: %.0f°C / %.0f°C\n자력: %.0f%%\nStencil: %d/%d"),
+                        FormTemperatureC, MaxTempC,
+                        PowerRatio * 100.f,
+                        StencilValue, MaxStencil),
+                    nullptr, FColor::Orange, 0.0f, true);
             }
 #endif
-            return;
         }
+        else
+        {
+            // ── 소자 상태: 충분히 냉각되어야 복구 (히스테리시스) ──
+            if (HeatRatio < MagnetRecoveryRatio)
+            {
+                bDemagnetized = false;
+                bMagnetCollided = false;
+                bMagnetSnapped = false;
+                TimeSinceLastMagnetRefresh = 0.f;
+
+                // 자력 재계산
+                if (bAutoComputeStrength)
+                {
+                    BaseMagnetStrength = MaxLiftMass * GravityAccel
+                                       * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
+                }
+                else
+                {
+                    BaseMagnetStrength = MagnetStrength;
+                }
+
+                const float PowerRatio = 1.0f - HeatRatio;
+                MagnetStrength = BaseMagnetStrength * PowerRatio;
+
+                RefreshOverlappingMetals();
+
+                // Power만 복구 (화살표는 숨김 유지)
+                if (SpawnedArrowEffect)
+                {
+                    UpdateMagnetArrowPower(PowerRatio);
+                }
+
+#if ENABLE_DRAW_DEBUG
+                if (bDebugDraw)
+                {
+                    const float PowerRatioDbg = 1.0f - HeatRatio;
+                    DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
+                        FString::Printf(TEXT("자석 복구 중\n온도: %.0f°C / %.0f°C\n자력: %.0f%%"),
+                            FormTemperatureC, MaxTempC, PowerRatioDbg * 100.f),
+                        nullptr, FColor::Green, 0.0f, true);
+                }
+#endif
+            }
+            else
+            {
+                // 아직 소자 상태 — 외부에서 SetAllArrowsVisible(true)로 켜져도 강제 숨김
+                if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
+                {
+                    SpawnedArrowEffect->SetActorHiddenInGame(true);
+                }
+            }
+        }
+    }
+
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw && CurrentForm != EBlockForm::Magnet && HeatRatio > 0.01f)
+    {
+        const FString FormName = (CurrentForm == EBlockForm::Metal) ? TEXT("Metal")
+                               : (CurrentForm == EBlockForm::Rubber) ? TEXT("Rubber")
+                               : TEXT("Other");
+        DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
+            FString::Printf(TEXT("[%s] 온도: %.0f°C\nStencil: %d/%d"),
+                *FormName, FormTemperatureC, StencilValue, MaxStencil),
+            nullptr, FColor::Orange, 0.0f, true);
+    }
+#endif
+}
+
+// ============================================================================
+//  UpdateMagnetArrowPower — 화살표 이펙트의 Power를 런타임으로 갱신
+// ============================================================================
+void ATransformation_actor::UpdateMagnetArrowPower(float PowerRatio)
+{
+    if (!SpawnedArrowEffect) return;
+
+    const float CurrentPower = BaseArrowPower * FMath::Max(PowerRatio, 0.f);
+
+    FProperty* PowerProp = SpawnedArrowEffect->GetClass()->FindPropertyByName(TEXT("Power"));
+    if (PowerProp)
+    {
+        if (FDoubleProperty* D = CastField<FDoubleProperty>(PowerProp))
+            D->SetPropertyValue_InContainer(SpawnedArrowEffect, (double)CurrentPower);
+        else if (FFloatProperty* F = CastField<FFloatProperty>(PowerProp))
+            F->SetPropertyValue_InContainer(SpawnedArrowEffect, CurrentPower);
     }
 }
 
@@ -958,16 +1168,18 @@ void ATransformation_actor::EnterMagnetMode()
     MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-    // 초기 소자 체크
-    CheckDemagnetize();
+    // 온도 초기화 (점진적 가열은 Tick의 UpdateFormHeat에서 처리)
+    FormTemperatureC = 20.f;
+    BaseArrowPower = ArrowPower;
 
-    if (!bDemagnetized)
-    {
-        RefreshOverlappingMetals();
-    }
+    // 스텐실 초기화
+    MeshComp->SetRenderCustomDepth(false);
+    MeshComp->SetCustomDepthStencilValue(0);
+
+    RefreshOverlappingMetals();
 
     // ── 화살표 이펙트 스폰 ──
-    if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
+    if (bShowFieldArrows && ArrowEffectClass)
     {
         FTimerHandle ArrowSpawnTimer;
         GetWorldTimerManager().SetTimer(ArrowSpawnTimer, [this]()
@@ -1038,6 +1250,7 @@ void ATransformation_actor::ExitMagnetMode()
     MagnetStrength = 0.f;
     BaseMagnetStrength = 0.f;
     TimeSinceLastMagnetRefresh = 0.f;
+    FormTemperatureC = 20.f;
 
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
@@ -1047,6 +1260,13 @@ void ATransformation_actor::ExitMagnetMode()
     {
         SpawnedArrowEffect->Destroy();
         SpawnedArrowEffect = nullptr;
+    }
+
+    // 스텐실 리셋
+    if (MeshComp)
+    {
+        MeshComp->SetRenderCustomDepth(false);
+        MeshComp->SetCustomDepthStencilValue(0);
     }
 }
 
@@ -1069,16 +1289,7 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     {
         TimeSinceLastMagnetRefresh = 0.f;
 
-        // [추가] 소자 체크
-        CheckDemagnetize();
-        if (bDemagnetized)
-        {
-            OverlappingMetals.Empty();
-            PreviousOverlappingMetals.Empty();
-            return;
-        }
-
-        // [추가] 전자석 부스트
+        // 전자석 부스트 (UpdateFormHeat가 소자 체크를 담당)
         UpdateMagnetElectroBoost();
 
         RefreshOverlappingMetals();

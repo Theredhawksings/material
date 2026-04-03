@@ -181,8 +181,8 @@ void AmaterialCharacter::BeginPlay()
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	if (!MeshComp) return;
 
-	MeshComp->SetRenderCustomDepth(true);
-	MeshComp->SetCustomDepthStencilValue(CustomDepthStencilValue);
+	MeshComp->SetRenderCustomDepth(false);
+	MeshComp->SetCustomDepthStencilValue(0);
 	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	PlayAnimIfValid(IdleAnim, true);
 

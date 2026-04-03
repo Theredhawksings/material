@@ -248,8 +248,45 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Curie")
     bool bDemagnetized = false;
 
+    // ── 자석 퀴리 온도 (점진적 소자) ──
+    UPROPERTY(EditAnywhere, Category="Magnet|Curie")
+    float MagnetCurieTempC = 450.f;
+
+    UPROPERTY(EditAnywhere, Category="Magnet|Curie")
+    int32 MagnetMaxStencilValue = 120;
+
+    /** 퀴리 온도 대비 이 비율 이하로 냉각되어야 복구 시작 (0.5 = 50%) */
+    UPROPERTY(EditAnywhere, Category="Magnet|Curie", meta=(ClampMin="0.0", ClampMax="0.95"))
+    float MagnetRecoveryRatio = 0.5f;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Electro")
     bool bElectroActive = false;
+
+    // ── 각 Form별 열 스텐실 ──
+    UPROPERTY(EditAnywhere, Category="Metal|Heat")
+    int32 MetalMaxStencilValue = 220;
+
+    UPROPERTY(EditAnywhere, Category="Metal|Heat")
+    float MetalMaxHeatTempC = 1500.f;
+
+    UPROPERTY(EditAnywhere, Category="Rubber|Heat")
+    int32 RubberMaxStencilValue = 150;
+
+    UPROPERTY(EditAnywhere, Category="Rubber|Heat")
+    float RubberMaxHeatTempC = 180.f;
+
+    // ── 공용 열 파라미터 (Metal / Rubber / Magnet 공용) ──
+    UPROPERTY(EditAnywhere, Category="Form|Heat")
+    float FormCoolingRatePerSec = 30.f;
+
+    UPROPERTY(EditAnywhere, Category="Form|Heat")
+    float FormHeatSimTimeScale = 500.f;
+
+    UPROPERTY(EditAnywhere, Category="Form|Heat")
+    float FormMassKg = 5.f;
+
+    UPROPERTY(EditAnywhere, Category="Form|Heat")
+    float FormSpecificHeatJPerKgK = 500.f;
 
     UPROPERTY(EditAnywhere, Category="Transformation|Tags")
     bool bAutoUpdateTags = true;
@@ -297,8 +334,9 @@ private:
     void RefreshOverlappingMetals();
     void DecreaseGaugeForCurrentTag();
 
-    // ── AMagnet에서 가져온 누락 기능들 ──
-    void CheckDemagnetize();
+    // ── 열 기반 스텐실 + 자석 점진적 소자 ──
+    void UpdateFormHeat(float DeltaTime);
+    void UpdateMagnetArrowPower(float PowerRatio);
     void UpdateMagnetElectroBoost();
     void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const;
@@ -345,6 +383,8 @@ private:
 
     float TimeSinceLastMagnetRefresh = 0.f;
     float BaseMagnetStrength = 0.f;
+    float FormTemperatureC = 20.f;
+    float BaseArrowPower = 5.f;
 
     /** 범위에 처음 들어온 금속을 추적하여 InitialImpulse 중복 방지 */
     UPROPERTY(Transient)

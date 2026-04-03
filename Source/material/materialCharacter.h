@@ -144,7 +144,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -93.f);
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeScale = FVector(0.55f);
 	UPROPERTY(EditAnywhere, Category = "Interaction") float InteractRange = 2000.f;
-	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 95;
+	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 0;
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 	UPROPERTY(EditAnywhere, Category = "Thermal") TObjectPtr<UMaterialParameterCollection> HeatMPC;
 	
