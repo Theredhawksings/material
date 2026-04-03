@@ -48,12 +48,24 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
 	float MagneticFieldRadius = 100.f;
 
+	/** 자석 1개 추가될 때마다 자기장 반경 증가량 */
+	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
+	float FieldRadiusPerMagnet = 50.f;
+
+	/** 자석에 가하는 인력 세기 */
+	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
+	float MagneticForceStrength = 500000.f;
+
 	// ── 코일 진동 설정 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
 	float OscillationSpeed = 3.f;
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
 	float OscillationAmplitude = 15.f;
+
+	/** 자석 1개 추가될 때마다 진동 속도 증가량 */
+	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
+	float SpeedPerExtraMagnet = 1.5f;
 
 	// ── 디버그 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
@@ -63,9 +75,13 @@ private:
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> DetectedMagnets;
 
-	// 코일 원래 위치
 	FVector BaseCoilLocation;
-
-	// 진동 타이머
 	float OscillationTime = 0.f;
+
+	// ── 내부 함수 ──
+	void DetectMagnets();
+	void ApplyOscillation(float DeltaTime);
+	void ApplyMagneticForce();
+	void UpdateFieldRadius();
+	void DebugVisualize();
 };
