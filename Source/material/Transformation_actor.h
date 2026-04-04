@@ -67,7 +67,7 @@ public:
 
     void SetPowered(bool bNewPowered);
     bool IsElectrified() const { return bElectrified; }
-    
+
     UPROPERTY()
     TObjectPtr<AActor> SpawnedArrowEffect;
 
@@ -110,243 +110,139 @@ public:
     EBlockForm GetCurrentForm() const { return CurrentForm; }
     const FBlockFormSpec* FindSpec(EBlockForm Form) const;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric")
-    float WireSenseExtraRadius = 8.f;
+    // ── 재질별 에디터 프로퍼티 ──
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric") float WireSenseExtraRadius = 8.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")
-    UMaterialInterface* IceMeltMaterial = nullptr;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")    UMaterialInterface* IceMeltMaterial = nullptr;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")    FName MeltParamName = TEXT("MeltAlpha");
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")      float MinScaleRatio = 0.01f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")      bool bDestroyWhenMelted = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")   float IceDensityKgM3 = 917.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")   float LatentHeatJPerKg = 334000.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")   float SimTimeScale = 3600.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")
-    FName MeltParamName = TEXT("MeltAlpha");
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Ignition")   float WoodIgnitionTempC = 300.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion") float CombustionHeatJPerKg = 15000000.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion") float BurnRateKgPerSec = 0.1f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties") float WoodDensityKgM3 = 600.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties") float SpecificHeatJPerKgK = 1700.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")            bool bDestroyWhenBurned = true;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")     UMaterialInterface* BurnMaterial = nullptr;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")     FName BurnParamName = TEXT("BurnAlpha");
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")     float MinBurnScaleRatio = 0.05f;
+    UPROPERTY(EditAnywhere, Category="Wood|Physics")                        float WoodSimTimeScale = 100.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")
-    float MinScaleRatio = 0.01f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MagnetStrength = 0.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float ReferenceDistance = 100.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MaxLiftMass = 70.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MinDistance = 10.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MaxDistance = 500.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") bool  bAutoComputeStrength = true;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float ForceMultiplier = 7.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MagneticDecayExponent = 1.5f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float VelocityDampingFactor = 1.5f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float MaxAttractVelocity = 100.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") bool  bUseTorque = true;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") bool  bApplyInitialImpulse = false;
+    UPROPERTY(EditAnywhere, Category="Magnet|Physics") float InitialImpulseStrength = 200.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")
-    bool bDestroyWhenMelted = false;
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction") bool  bEnableInduction = true;
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction") float InductionStrengthRatio = 0.3f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction") float InductionRange = 250.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Induction") float MinDistanceForInduction = 200.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
-    float IceDensityKgM3 = 917.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Electro") float WireContactRadius = 80.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Electro") float ElectroBoostMultiplier = 3.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
-    float LatentHeatJPerKg = 334000.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Advanced") float MagnetRefreshInterval = 0.1f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Physics")
-    float SimTimeScale = 3600.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity") bool    bEnablePolarity = true;
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity") float   RepulsionMultiplier = 1.5f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity") FVector NorthPoleLocalDir = FVector(1.f, 0.f, 0.f);
+    UPROPERTY(EditAnywhere, Category="Magnet|Polarity") float   MagnetToMagnetForceMultiplier = 15.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Ignition")
-    float WoodIgnitionTempC = 300.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Movement") float MagnetApproachSpeed = 300.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Movement") float MagnetSnapDistance = 5.f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion")
-    float CombustionHeatJPerKg = 15000000.0f;
+    UPROPERTY(EditAnywhere, Category="Debug") bool bDebugDraw = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Combustion")
-    float BurnRateKgPerSec = 0.1f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Curie") bool bDemagnetized = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties")
-    float WoodDensityKgM3 = 600.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Properties")
-    float SpecificHeatJPerKgK = 1700.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood")
-    bool bDestroyWhenBurned = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
-    UMaterialInterface* BurnMaterial = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
-    FName BurnParamName = TEXT("BurnAlpha");
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wood|Visual")
-    float MinBurnScaleRatio = 0.05f;
-
-    UPROPERTY(EditAnywhere, Category="Wood|Physics")
-    float WoodSimTimeScale = 100.0f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MagnetStrength = 0.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ReferenceDistance = 100.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxLiftMass = 70.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MinDistance = 10.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxDistance = 500.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    bool bAutoComputeStrength = true;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float ForceMultiplier = 7.0f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MagneticDecayExponent = 1.5f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float VelocityDampingFactor = 1.5f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float MaxAttractVelocity = 100.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    bool bUseTorque = true;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    bool bApplyInitialImpulse = false;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Physics")
-    float InitialImpulseStrength = 200.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
-    bool bEnableInduction = true;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
-    float InductionStrengthRatio = 0.3f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
-    float InductionRange = 250.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Induction")
-    float MinDistanceForInduction = 200.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Electro")
-    float WireContactRadius = 80.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Electro")
-    float ElectroBoostMultiplier = 3.0f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Advanced")
-    float MagnetRefreshInterval = 0.1f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
-    bool bEnablePolarity = true;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
-    float RepulsionMultiplier = 1.5f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
-    FVector NorthPoleLocalDir = FVector(1.f, 0.f, 0.f);
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Polarity")
-    float MagnetToMagnetForceMultiplier = 15.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Movement")
-    float MagnetApproachSpeed = 300.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Movement")
-    float MagnetSnapDistance = 5.f;
-
-    UPROPERTY(EditAnywhere, Category="Debug")
-    bool bDebugDraw = false;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Curie")
-    bool bDemagnetized = false;
-
-    // ── 자석 퀴리 온도 (점진적 소자) ──
-    UPROPERTY(EditAnywhere, Category="Magnet|Curie")
-    float MagnetCurieTempC = 450.f;
-
-    UPROPERTY(EditAnywhere, Category="Magnet|Curie")
-    int32 MagnetMaxStencilValue = 120;
-
-    /** 퀴리 온도 대비 이 비율 이하로 냉각되어야 복구 시작 (0.5 = 50%) */
+    UPROPERTY(EditAnywhere, Category="Magnet|Curie") float MagnetCurieTempC = 450.f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Curie") int32 MagnetMaxStencilValue = 220;
     UPROPERTY(EditAnywhere, Category="Magnet|Curie", meta=(ClampMin="0.0", ClampMax="0.95"))
     float MagnetRecoveryRatio = 0.5f;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Electro")
-    bool bElectroActive = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Magnet|Electro") bool bElectroActive = false;
 
-    // ── 각 Form별 열 스텐실 ──
-    UPROPERTY(EditAnywhere, Category="Metal|Heat")
-    int32 MetalMaxStencilValue = 220;
+    UPROPERTY(EditAnywhere, Category="Metal|Heat")  int32 MetalMaxStencilValue = 220;
+    UPROPERTY(EditAnywhere, Category="Metal|Heat")  float MetalMaxHeatTempC = 1500.f;
+    UPROPERTY(EditAnywhere, Category="Rubber|Heat") int32 RubberMaxStencilValue = 150;
+    UPROPERTY(EditAnywhere, Category="Rubber|Heat") float RubberMaxHeatTempC = 180.f;
 
-    UPROPERTY(EditAnywhere, Category="Metal|Heat")
-    float MetalMaxHeatTempC = 1500.f;
+    UPROPERTY(EditAnywhere, Category="Form|Heat") float FormCoolingRatePerSec = 30.f;
+    UPROPERTY(EditAnywhere, Category="Form|Heat") float FormHeatSimTimeScale = 500.f;
+    UPROPERTY(EditAnywhere, Category="Form|Heat") float FormMassKg = 5.f;
+    UPROPERTY(EditAnywhere, Category="Form|Heat") float FormSpecificHeatJPerKgK = 500.f;
 
-    UPROPERTY(EditAnywhere, Category="Rubber|Heat")
-    int32 RubberMaxStencilValue = 150;
-
-    UPROPERTY(EditAnywhere, Category="Rubber|Heat")
-    float RubberMaxHeatTempC = 180.f;
-
-    // ── 공용 열 파라미터 (Metal / Rubber / Magnet 공용) ──
-    UPROPERTY(EditAnywhere, Category="Form|Heat")
-    float FormCoolingRatePerSec = 30.f;
-
-    UPROPERTY(EditAnywhere, Category="Form|Heat")
-    float FormHeatSimTimeScale = 500.f;
-
-    UPROPERTY(EditAnywhere, Category="Form|Heat")
-    float FormMassKg = 5.f;
-
-    UPROPERTY(EditAnywhere, Category="Form|Heat")
-    float FormSpecificHeatJPerKgK = 500.f;
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    bool bAutoUpdateTags = true;
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    FName IceTag = "Ice";
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    FName MetalTag = "Metal";
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    FName WoodTag = "Wood";
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    FName RubberTag = "Rubber";
-
-    UPROPERTY(EditAnywhere, Category="Transformation|Tags")
-    FName MagnetTag = "Magnet";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") bool  bAutoUpdateTags = true;
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName IceTag = "Ice";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName MetalTag = "Metal";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName WoodTag = "Wood";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName RubberTag = "Rubber";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName MagnetTag = "Magnet";
 
     FVector GetNorthPoleWorldDir() const;
     FVector GetSouthPoleWorldDir() const;
 
 private:
+    // ── 전기 ──
     void RefreshConnectedWires();
     void SetElectrified(bool bNewElectrified);
     void EnergizeWiresIfElectrified();
 
+    // ── 태그/스펙 ──
     void UpdateTagsForForm(EBlockForm Form);
     void ClearAllFormTags();
     void ApplySpec(const FBlockFormSpec& Spec);
 
+    // ── 얼음 ──
     void EnterIceMode();
     void ExitIceMode();
     void RecalcIceMassAndEnergy();
     void ApplyIceMeltVisual(float Alpha01);
 
+    // ── 나무 ──
     void EnterWoodMode();
     void ExitWoodMode();
     void RecalcWoodMassAndVolume();
     void ApplyWoodBurnVisual(float Alpha01);
 
+    // ── 자석 ──
     void EnterMagnetMode();
     void ExitMagnetMode();
     void UpdateMagnetism(float DeltaTime);
     void RefreshOverlappingMetals();
     void DecreaseGaugeForCurrentTag();
 
-    // ── 열 기반 스텐실 + 자석 점진적 소자 ──
+    // ── 열/소자 ──
     void UpdateFormHeat(float DeltaTime);
     void UpdateMagnetArrowPower(float PowerRatio);
     void UpdateMagnetElectroBoost();
     void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const;
 
-private:
-    UPROPERTY(Transient)
-    UMaterialInstanceDynamic* IceMID = nullptr;
+    // ── [최적화] 공용 유틸리티 ──
 
-    UPROPERTY(Transient)
-    ATemperature* CurrentFire = nullptr;
+    /** 열원→자신 거리(cm)로부터 수신 전력(W) 계산. Ice/Wood/FormHeat 공용 */
+    float CalcReceivedPower(float DistCm) const;
+
+    /** 스텐실 값이 바뀔 때만 실제 Set 호출 (렌더 스레드 부하 감소) */
+    void SetStencilSafe(int32 NewValue, bool bDepthOn);
+
+private:
+    UPROPERTY(Transient) UMaterialInstanceDynamic* IceMID = nullptr;
+    UPROPERTY(Transient) ATemperature* CurrentFire = nullptr;
 
     bool bHeating = false;
     float MeltAlpha = 0.0f;
@@ -356,8 +252,7 @@ private:
     float TotalMeltEnergyJ = 1.0f;
     FVector BaseScaleBeforeMelt = FVector(1.0f);
 
-    UPROPERTY(Transient)
-    UMaterialInstanceDynamic* BurnMID = nullptr;
+    UPROPERTY(Transient) UMaterialInstanceDynamic* BurnMID = nullptr;
 
     float WoodTemperatureC = 20.0f;
     float WoodVolumeM3 = 1.0f;
@@ -367,28 +262,23 @@ private:
     bool bIsBurning = false;
     FVector BaseScaleBeforeBurn = FVector(1.0f);
 
-    UPROPERTY(Transient)
-    TArray<TObjectPtr<AWire>> ConnectedWires;
-
+    UPROPERTY(Transient) TArray<TObjectPtr<AWire>> ConnectedWires;
     bool bElectrified = false;
     TSet<TWeakObjectPtr<AWire>> WiresEnergizedByMetal;
-
     FTimerHandle RefreshTimerHandle;
 
-    UPROPERTY(Transient)
-    TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
-
-    UPROPERTY(Transient)
-    TArray<TObjectPtr<AWire>> MagnetContactedWires;
+    UPROPERTY(Transient) TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
+    UPROPERTY(Transient) TArray<TObjectPtr<AWire>> MagnetContactedWires;
 
     float TimeSinceLastMagnetRefresh = 0.f;
     float BaseMagnetStrength = 0.f;
     float FormTemperatureC = 20.f;
     float BaseArrowPower = 5.f;
 
-    /** 범위에 처음 들어온 금속을 추적하여 InitialImpulse 중복 방지 */
-    UPROPERTY(Transient)
-    TSet<TObjectPtr<UPrimitiveComponent>> PreviousOverlappingMetals;
+    int32 CachedStencilValue = -1;
+    bool  bCachedDepthOn = false;
+
+    UPROPERTY(Transient) TSet<TObjectPtr<UPrimitiveComponent>> PreviousOverlappingMetals;
 
     UFUNCTION()
     void OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
@@ -401,19 +291,9 @@ private:
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
 
-    // ── Arrow Effect (Magnet Visual) ──
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    TSubclassOf<AActor> ArrowEffectClass;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowPower = 5.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowX = 100.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowY = 100.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    bool bShowFieldArrows = true;
+    UPROPERTY(EditAnywhere, Category="Magnet|Visual") TSubclassOf<AActor> ArrowEffectClass;
+    UPROPERTY(EditAnywhere, Category="Magnet|Visual") float ArrowPower = 5.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Visual") float ArrowX = 100.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Visual") float ArrowY = 100.0f;
+    UPROPERTY(EditAnywhere, Category="Magnet|Visual") bool  bShowFieldArrows = true;
 };

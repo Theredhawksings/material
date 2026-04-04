@@ -9,7 +9,6 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "Temperature.h"
-#include "Transformation_actor.h"
 #include "Wire.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SplineComponent.h"
@@ -17,103 +16,135 @@
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 
+// ============================================================================
+//  Constructor
+// ============================================================================
 ATransformation_actor::ATransformation_actor()
 {
     PrimaryActorTick.bCanEverTick = true;
 
     MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
     SetRootComponent(MeshComp);
-
     MeshComp->SetMobility(EComponentMobility::Movable);
     MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
     MeshComp->SetGenerateOverlapEvents(true);
 
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WoodMatFinder(TEXT("/Game/modeling/Texture/M_wood"));
-    if (WoodMatFinder.Succeeded())
-    {
-        BurnMaterial = WoodMatFinder.Object;
-    }
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WoodMatFinder(
+        TEXT("/Game/modeling/Texture/M_wood"));
+    if (WoodMatFinder.Succeeded()) BurnMaterial = WoodMatFinder.Object;
 
     static ConstructorHelpers::FClassFinder<AActor> ArrowBP(
         TEXT("/Game/modeling/Object/Arrow/Arrow_Effect"));
-    if (ArrowBP.Succeeded())
+    if (ArrowBP.Succeeded()) ArrowEffectClass = ArrowBP.Class;
+}
+
+// ============================================================================
+//  [최적화] CalcReceivedPower — 열 유속 공용 계산
+//  Ice Tick, Wood Tick, UpdateFormHeat 에서 동일 코드 3번 반복 → 1곳으로 통합
+// ============================================================================
+float ATransformation_actor::CalcReceivedPower(float DistCm) const
+{
+    if (!CurrentFire) return 0.f;
+
+    if (CurrentFire->MaxHeatDistance > 0.f && DistCm > CurrentFire->MaxHeatDistance)
+        return 0.f;
+
+    const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
+    const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
+    float ReceivedW = (PtotalW / (4.0f * PI * DistM * DistM)) * EffectiveAreaM2;
+
+    if (CurrentFire->MaxHeatDistance > 0.f)
     {
-        ArrowEffectClass = ArrowBP.Class;
+        ReceivedW *= FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
+    }
+    return ReceivedW;
+}
+
+// ============================================================================
+//  [최적화] SetStencilSafe — 값 변경 시에만 렌더 커맨드 전송
+// ============================================================================
+void ATransformation_actor::SetStencilSafe(int32 NewValue, bool bDepthOn)
+{
+    if (!MeshComp) return;
+
+    if (CachedStencilValue != NewValue)
+    {
+        MeshComp->SetCustomDepthStencilValue(NewValue);
+        CachedStencilValue = NewValue;
+    }
+    if (bCachedDepthOn != bDepthOn)
+    {
+        MeshComp->SetRenderCustomDepth(bDepthOn);
+        bCachedDepthOn = bDepthOn;
     }
 }
 
+// ============================================================================
+//  BeginPlay
+// ============================================================================
 void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
 
-    MeshComp->SetRenderCustomDepth(false);
-    MeshComp->SetCustomDepthStencilValue(0);
+    SetStencilSafe(0, false);
 
     if (!CycleOrder.Contains(EBlockForm::Magnet))
-    {
         CycleOrder.Add(EBlockForm::Magnet);
-    }
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
-    {
         ApplySpec(*Spec);
-    }
 
     if (bAutoUpdateTags)
-    {
         UpdateTagsForForm(CurrentForm);
-    }
 
     if (CurrentForm == EBlockForm::Ice)
     {
         BaseScaleBeforeMelt = MeshComp->GetComponentScale();
         EnterIceMode();
     }
-
-    if (CurrentForm == EBlockForm::Wood)
+    else if (CurrentForm == EBlockForm::Wood)
     {
         BaseScaleBeforeBurn = MeshComp->GetComponentScale();
         EnterWoodMode();
     }
-
-    if (CurrentForm == EBlockForm::Magnet)
+    else if (CurrentForm == EBlockForm::Magnet)
     {
         EnterMagnetMode();
     }
 
-    GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this, &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
+    GetWorld()->GetTimerManager().SetTimer(
+        RefreshTimerHandle, this,
+        &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
 }
 
+// ============================================================================
+//  OnConstruction
+// ============================================================================
 void ATransformation_actor::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
 
-    if (MeshComp && MeshComp->GetStaticMesh() == nullptr)
+    if (MeshComp && !MeshComp->GetStaticMesh())
     {
         if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
-        {
             ApplySpec(*Spec);
-        }
-        if (CurrentForm == EBlockForm::Ice)
+
+        switch (CurrentForm)
         {
-            EnterIceMode();
-        }
-        if (CurrentForm == EBlockForm::Wood)
-        {
-            EnterWoodMode();
-        }
-        if (CurrentForm == EBlockForm::Magnet)
-        {
-            EnterMagnetMode();
+        case EBlockForm::Ice:    EnterIceMode();    break;
+        case EBlockForm::Wood:   EnterWoodMode();   break;
+        case EBlockForm::Magnet: EnterMagnetMode(); break;
+        default: break;
         }
     }
 }
 
+// ============================================================================
+//  Metal 전기
+// ============================================================================
 void ATransformation_actor::SetPowered(bool bNewPowered)
 {
-    if (CurrentForm != EBlockForm::Metal) return;
-    if (bElectrified == bNewPowered) return;
-
+    if (CurrentForm != EBlockForm::Metal || bElectrified == bNewPowered) return;
     SetElectrified(bNewPowered);
     EnergizeWiresIfElectrified();
 }
@@ -123,70 +154,48 @@ void ATransformation_actor::RefreshConnectedWires()
     if (CurrentForm != EBlockForm::Metal || !MeshComp)
     {
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-        {
-            if (AWire* W = It->Get())
-            {
-                W->SetPoweredByMetal(false);
-            }
-        }
+            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
-
-        if (bElectrified)
-        {
-            SetElectrified(false);
-        }
+        if (bElectrified) SetElectrified(false);
         return;
     }
 
     UWorld* World = GetWorld();
-    if (!World)
-    {
-        ConnectedWires.Empty();
-        SetElectrified(false);
-        return;
-    }
+    if (!World) { ConnectedWires.Empty(); SetElectrified(false); return; }
 
     const FVector Center = MeshComp->Bounds.Origin;
     const float Radius = FMath::Max(MeshComp->Bounds.SphereRadius + WireSenseExtraRadius, 5.f);
 
-    FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MetalWireSense), false);
     Q.AddIgnoredActor(this);
 
     TArray<FOverlapResult> Hits;
-    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj, FCollisionShape::MakeSphere(Radius), Q);
+    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
+        FCollisionShape::MakeSphere(Radius), Q);
 
     ConnectedWires.Empty();
     bool bAnyPowerFound = false;
 
     for (const FOverlapResult& H : Hits)
     {
-        AWire* Wire = Cast<AWire>(H.GetActor());
-        if (!Wire) continue;
-
-        ConnectedWires.AddUnique(Wire);
-
-        if (Wire->IsSourcePowered())
+        if (AWire* Wire = Cast<AWire>(H.GetActor()))
         {
-    bAnyPowerFound = true;
-        }   
+            ConnectedWires.AddUnique(Wire);
+            if (Wire->IsSourcePowered()) bAnyPowerFound = true;
+        }
     }
 
     if (bElectrified != bAnyPowerFound)
     {
         SetElectrified(bAnyPowerFound);
-
         if (bElectrified)
-        {
             EnergizeWiresIfElectrified();
-        }
         else
         {
             for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-            {
                 if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
-            }
             WiresEnergizedByMetal.Empty();
         }
     }
@@ -203,9 +212,7 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
     if (!bElectrified)
     {
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-        {
             if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
-        }
         WiresEnergizedByMetal.Empty();
         return;
     }
@@ -213,55 +220,39 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
     TSet<TWeakObjectPtr<AWire>> Current;
     for (AWire* Wire : ConnectedWires)
     {
-        if (!Wire) continue;
-        if (Wire->IsSourcePowered()) continue;
-
+        if (!Wire || Wire->IsSourcePowered()) continue;
         Wire->SetPoweredByMetal(true);
         Wire->RefreshConnectedActors();
-
         Current.Add(Wire);
     }
     WiresEnergizedByMetal = MoveTemp(Current);
 }
 
+// ============================================================================
+//  Tick — Ice/Wood는 CalcReceivedPower 사용으로 간결화
+// ============================================================================
 void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (CurrentForm == EBlockForm::Ice)
+    // ── Ice ──
+    if (CurrentForm == EBlockForm::Ice && bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
     {
-        if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
+        const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+        const float ReceivedPowerW = CalcReceivedPower(DistCm);
+
+        if (ReceivedPowerW > 0.0f)
         {
-            const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-            if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
-            {
-                const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
-                const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
-                float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
-                float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
+            SetStencilSafe(CachedStencilValue, true);
+            EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
+            MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+            ApplyIceMeltVisual(MeltAlpha);
 
-                if (CurrentFire->MaxHeatDistance > 0.0f)
-                {
-                    const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
-                    ReceivedPowerW *= Fade;
-                }
-
-                if (ReceivedPowerW > 0.0f)
-                {
-                    MeshComp->SetRenderCustomDepth(true);
-                    EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
-                    MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
-                    ApplyIceMeltVisual(MeltAlpha);
-
-                    if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
-                    {
-                        Destroy();
-                    }
-                }
-            }
+            if (MeltAlpha >= 1.0f && bDestroyWhenMelted) { Destroy(); return; }
         }
     }
 
+    // ── Wood ──
     if (CurrentForm == EBlockForm::Wood)
     {
         if (!bIsBurning)
@@ -269,27 +260,16 @@ void ATransformation_actor::Tick(float DeltaTime)
             if (bHeating && CurrentFire && MeshComp)
             {
                 const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+                const float ReceivedPowerW = CalcReceivedPower(DistCm);
 
-                if (CurrentFire->MaxHeatDistance <= 0.0f || DistCm <= CurrentFire->MaxHeatDistance)
+                if (ReceivedPowerW > 0.f)
                 {
-                    const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
-                    const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
-                    float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
-                    float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
-
-                    if (CurrentFire->MaxHeatDistance > 0.0f)
-                    {
-                        const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
-                        ReceivedPowerW *= Fade;
-                    }
-
-                    const float MassKg = CurrentWoodMassKg;
-                    const float DeltaT = (ReceivedPowerW * DeltaTime * WoodSimTimeScale) / (MassKg * SpecificHeatJPerKgK);
+                    const float DeltaT = (ReceivedPowerW * DeltaTime * WoodSimTimeScale)
+                                        / (CurrentWoodMassKg * SpecificHeatJPerKgK);
                     WoodTemperatureC += DeltaT;
 
-                    MeshComp->SetRenderCustomDepth(true);
                     const float TempRatio = FMath::Clamp(WoodTemperatureC / WoodIgnitionTempC, 0.f, 1.f);
-                    MeshComp->SetCustomDepthStencilValue(FMath::RoundToInt(TempRatio * 255.f));
+                    SetStencilSafe(FMath::RoundToInt(TempRatio * 255.f), true);
 
                     if (WoodTemperatureC >= WoodIgnitionTempC)
                     {
@@ -301,34 +281,22 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
         else
         {
-            const float BurnedMassKg = BurnRateKgPerSec * DeltaTime;
-            CurrentWoodMassKg -= BurnedMassKg;
-            CurrentWoodMassKg = FMath::Max(CurrentWoodMassKg, 0.0f);
-
+            CurrentWoodMassKg = FMath::Max(CurrentWoodMassKg - BurnRateKgPerSec * DeltaTime, 0.0f);
             BurnAlpha = 1.0f - (CurrentWoodMassKg / FMath::Max(WoodMassKg, 0.01f));
 
-            MeshComp->SetRenderCustomDepth(true);
-            MeshComp->SetCustomDepthStencilValue(255);
-
+            SetStencilSafe(255, true);
             ApplyWoodBurnVisual(BurnAlpha);
 
             if (CurrentWoodMassKg <= 0.0f)
             {
-                if (bDestroyWhenBurned)
-                {
-                    Destroy();
-                }
-                else
-                {
-                    bIsBurning = false;
-                    MeshComp->SetRenderCustomDepth(false);
-                    MeshComp->SetCustomDepthStencilValue(0);
-                }
+                if (bDestroyWhenBurned) { Destroy(); return; }
+                bIsBurning = false;
+                SetStencilSafe(0, false);
             }
         }
     }
 
-    // ── Metal / Rubber / Magnet 공용: 열 스텐실 + 냉각 ──
+    // ── Metal / Rubber / Magnet 공용 열 ──
     if (CurrentForm == EBlockForm::Metal
      || CurrentForm == EBlockForm::Rubber
      || CurrentForm == EBlockForm::Magnet)
@@ -336,93 +304,72 @@ void ATransformation_actor::Tick(float DeltaTime)
         UpdateFormHeat(DeltaTime);
     }
 
+    // ── Magnet 물리 ──
     if (CurrentForm == EBlockForm::Magnet && !bDemagnetized)
     {
         UpdateMagnetism(DeltaTime);
     }
 }
 
+// ============================================================================
+//  SetForm
+// ============================================================================
 void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
     if (CurrentForm == NewForm)
     {
-        // 소자된 자석이면 → 다시 자석 모드 완전 재진입
         if (NewForm == EBlockForm::Magnet && bDemagnetized)
         {
             bDemagnetized = false;
             EnterMagnetMode();
             return;
         }
-
         if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
-        {
             ApplySpec(*Spec);
-        }
         return;
     }
 
-    float SavedMeltAlpha = MeltAlpha;
-    float SavedEnergyAccumJ = EnergyAccumJ;
+    const float SavedMeltAlpha = MeltAlpha;
+    const float SavedEnergyAccumJ = EnergyAccumJ;
     ATemperature* SavedFire = CurrentFire;
-    bool bWasHeating = bHeating;
-    FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1, 1, 1);
+    const bool bWasHeating = bHeating;
+    const FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1);
 
-    if (CurrentForm == EBlockForm::Ice)
+    // 이전 폼 정리
+    switch (CurrentForm)
     {
-        ExitIceMode();
-    }
-
-    if (CurrentForm == EBlockForm::Wood)
-    {
-        ExitWoodMode();
-    }
-
-    if (CurrentForm == EBlockForm::Metal)
-    {
+    case EBlockForm::Ice:    ExitIceMode();    break;
+    case EBlockForm::Wood:   ExitWoodMode();   break;
+    case EBlockForm::Magnet: ExitMagnetMode(); break;
+    case EBlockForm::Metal:
         SetElectrified(false);
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-        {
             if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
-        }
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
+        break;
+    default: break;
     }
 
-    if (CurrentForm == EBlockForm::Magnet)
-    {
-        ExitMagnetMode();
-    }
-
-    // 폼 전환 시 온도 · 스텐실 리셋
     FormTemperatureC = 20.f;
-    if (MeshComp)
-    {
-        MeshComp->SetRenderCustomDepth(false);
-        MeshComp->SetCustomDepthStencilValue(0);
-    }
-
+    SetStencilSafe(0, false);
     CurrentForm = NewForm;
 
     if (bAutoUpdateTags)
-    {
         UpdateTagsForForm(NewForm);
-    }
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
-    {
         ApplySpec(*Spec);
-    }
 
-    MeshComp->SetRenderCustomDepth(false);
-    MeshComp->SetCustomDepthStencilValue(0);
+    SetStencilSafe(0, false);
 
     if (MeshComp && SavedMeltAlpha > 0.0f)
-    {
         MeshComp->SetWorldScale3D(SavedCurrentScale);
-    }
 
-    if (CurrentForm == EBlockForm::Ice)
+    // 새 폼 진입
+    switch (CurrentForm)
     {
+    case EBlockForm::Ice:
         BaseScaleBeforeMelt = SavedCurrentScale;
         EnterIceMode();
         MeltAlpha = SavedMeltAlpha;
@@ -430,60 +377,49 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         CurrentFire = SavedFire;
         bHeating = bWasHeating && (CurrentFire != nullptr);
         ApplyIceMeltVisual(MeltAlpha);
-    }
-
-    if (CurrentForm == EBlockForm::Wood)
-    {
+        break;
+    case EBlockForm::Wood:
         BaseScaleBeforeBurn = SavedCurrentScale;
         EnterWoodMode();
         CurrentFire = SavedFire;
         bHeating = bWasHeating && (CurrentFire != nullptr);
-    }
-
-    if (CurrentForm == EBlockForm::Magnet)
-    {
+        break;
+    case EBlockForm::Magnet:
         EnterMagnetMode();
+        break;
+    default: break;
     }
 }
 
+// ============================================================================
+//  게이지 / 폼 사이클
+// ============================================================================
 void ATransformation_actor::DecreaseGaugeForCurrentTag()
 {
     APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
     if (!PC) return;
-
     AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn());
     if (!PlayerChar) return;
 
-    if (ActorHasTag(TEXT("Rubber")))
-        PlayerChar->DecreaseGaugeForMaterial(TEXT("Rubber"));
-    else if (ActorHasTag(TEXT("Metal")))
-        PlayerChar->DecreaseGaugeForMaterial(TEXT("Metal"));
-    else if (ActorHasTag(TEXT("Ice")))
-        PlayerChar->DecreaseGaugeForMaterial(TEXT("Ice"));
-    else if (ActorHasTag(TEXT("Wood")))
-        PlayerChar->DecreaseGaugeForMaterial(TEXT("Wood"));
-    else if (ActorHasTag(TEXT("Magnet")))
-        PlayerChar->DecreaseGaugeForMaterial(TEXT("Magnet"));
+    static const FName TagNames[] = { TEXT("Rubber"), TEXT("Metal"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
+    for (const FName& Tag : TagNames)
+    {
+        if (ActorHasTag(Tag)) { PlayerChar->DecreaseGaugeForMaterial(Tag); return; }
+    }
 }
 
 void ATransformation_actor::NextForm()
 {
     if (CycleOrder.Num() <= 0) return;
-
     int32 Idx = CycleOrder.Find(CurrentForm);
-
-    if (Idx == INDEX_NONE)
-    {
-        SetForm(CycleOrder[0]);
-        DecreaseGaugeForCurrentTag();
-        return;
-    }
-
-    Idx = (Idx + 1) % CycleOrder.Num();
+    Idx = (Idx == INDEX_NONE) ? 0 : (Idx + 1) % CycleOrder.Num();
     SetForm(CycleOrder[Idx]);
     DecreaseGaugeForCurrentTag();
 }
 
+// ============================================================================
+//  태그
+// ============================================================================
 void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)
 {
     ClearAllFormTags();
@@ -507,6 +443,9 @@ void ATransformation_actor::ClearAllFormTags()
     Tags.Remove(MagnetTag);
 }
 
+// ============================================================================
+//  Heating
+// ============================================================================
 void ATransformation_actor::StartHeating(ATemperature* FireRef)
 {
     CurrentFire = FireRef;
@@ -515,20 +454,14 @@ void ATransformation_actor::StartHeating(ATemperature* FireRef)
 
 void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
 {
-    if (CurrentForm != EBlockForm::Ice) return;
-    if (!MeshComp) return;
-    if (EnergyJ <= 0.f) return;
+    if (CurrentForm != EBlockForm::Ice || !MeshComp || EnergyJ <= 0.f) return;
 
-    MeshComp->SetRenderCustomDepth(true);
-
+    SetStencilSafe(CachedStencilValue, true);
     EnergyAccumJ += EnergyJ * FMath::Max(SimTimeScale, 0.0f);
     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
     ApplyIceMeltVisual(MeltAlpha);
 
-    if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
-    {
-        Destroy();
-    }
+    if (MeltAlpha >= 1.0f && bDestroyWhenMelted) Destroy();
 }
 
 void ATransformation_actor::StopHeating()
@@ -538,26 +471,20 @@ void ATransformation_actor::StopHeating()
 
     if (MeshComp)
     {
-        if (CurrentForm == EBlockForm::Wood && bIsBurning)
-        {
-            return;
-        }
-        // Ice / Wood: 즉시 스텐실 리셋
+        if (CurrentForm == EBlockForm::Wood && bIsBurning) return;
         if (CurrentForm == EBlockForm::Ice || CurrentForm == EBlockForm::Wood)
-        {
-            MeshComp->SetRenderCustomDepth(false);
-            MeshComp->SetCustomDepthStencilValue(0);
-        }
-        // Metal, Rubber, Magnet: 냉각(UpdateFormHeat)이 자동으로 스텐실을 내림
+            SetStencilSafe(0, false);
+        // Metal, Rubber, Magnet: UpdateFormHeat가 냉각 처리
     }
 }
 
+// ============================================================================
+//  Spec
+// ============================================================================
 const FBlockFormSpec* ATransformation_actor::FindSpec(EBlockForm Form) const
 {
     for (const FBlockFormSpec& S : FormSpecs)
-    {
         if (S.Form == Form) return &S;
-    }
     return nullptr;
 }
 
@@ -565,13 +492,8 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
 {
     if (!MeshComp) return;
     if (Spec.Mesh) MeshComp->SetStaticMesh(Spec.Mesh);
-    if (Spec.Materials.Num() > 0)
-    {
-        for (int32 i = 0; i < Spec.Materials.Num(); ++i)
-        {
-            if (Spec.Materials[i]) MeshComp->SetMaterial(i, Spec.Materials[i]);
-        }
-    }
+    for (int32 i = 0; i < Spec.Materials.Num(); ++i)
+        if (Spec.Materials[i]) MeshComp->SetMaterial(i, Spec.Materials[i]);
     MeshComp->SetSimulatePhysics(Spec.bSimulatePhysics);
     MeshComp->SetLinearDamping(Spec.LinearDamping);
     MeshComp->SetAngularDamping(Spec.AngularDamping);
@@ -579,6 +501,9 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
     if (Spec.bOverrideMass) MeshComp->SetMassOverrideInKg(NAME_None, Spec.MassKg, true);
 }
 
+// ============================================================================
+//  Ice
+// ============================================================================
 void ATransformation_actor::EnterIceMode()
 {
     if (!MeshComp) return;
@@ -586,107 +511,63 @@ void ATransformation_actor::EnterIceMode()
     RecalcIceMassAndEnergy();
     IceMID = nullptr;
 
-    if (IceMeltMaterial)
+    UMaterialInterface* SrcMat = IceMeltMaterial ? IceMeltMaterial : MeshComp->GetMaterial(0);
+    if (SrcMat)
     {
-        IceMID = UMaterialInstanceDynamic::Create(IceMeltMaterial, this);
+        IceMID = UMaterialInstanceDynamic::Create(SrcMat, this);
         if (IceMID) MeshComp->SetMaterial(0, IceMID);
-    }
-    else
-    {
-        UMaterialInterface* M0 = MeshComp->GetMaterial(0);
-        if (M0)
-        {
-            IceMID = UMaterialInstanceDynamic::Create(M0, this);
-            if (IceMID) MeshComp->SetMaterial(0, IceMID);
-        }
     }
 }
 
-void ATransformation_actor::ExitIceMode()
-{
-    IceMID = nullptr;
-}
+void ATransformation_actor::ExitIceMode() { IceMID = nullptr; }
 
 void ATransformation_actor::RecalcIceMassAndEnergy()
 {
     if (!MeshComp || !MeshComp->GetStaticMesh())
     {
-        VolumeM3 = 1.0f;
-        EffectiveAreaM2 = 1.0f;
+        VolumeM3 = 1.0f; EffectiveAreaM2 = 1.0f;
         TotalMeltEnergyJ = IceDensityKgM3 * VolumeM3 * LatentHeatJPerKg;
         return;
     }
-
-    const FBoxSphereBounds LocalBounds = MeshComp->GetStaticMesh()->GetBounds();
-    const FVector SafeBaseScale = FVector(
-        FMath::Max(BaseScaleBeforeMelt.X, 0.01f),
-        FMath::Max(BaseScaleBeforeMelt.Y, 0.01f),
-        FMath::Max(BaseScaleBeforeMelt.Z, 0.01f)
-    );
-    const FVector OriginalSizeCm = LocalBounds.BoxExtent * 2.0f * SafeBaseScale;
-    const FVector SizeM = OriginalSizeCm / 100.0f;
+    const FBoxSphereBounds LB = MeshComp->GetStaticMesh()->GetBounds();
+    const FVector SafeScale(FMath::Max(BaseScaleBeforeMelt.X, 0.01f),
+                            FMath::Max(BaseScaleBeforeMelt.Y, 0.01f),
+                            FMath::Max(BaseScaleBeforeMelt.Z, 0.01f));
+    const FVector SizeM = LB.BoxExtent * 2.0f * SafeScale / 100.0f;
     VolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
-    const float Axy = SizeM.X * SizeM.Y;
-    const float Axz = SizeM.X * SizeM.Z;
-    const float Ayz = SizeM.Y * SizeM.Z;
-    EffectiveAreaM2 = FMath::Max3(Axy, Axz, Ayz);
-    const float MassKg = IceDensityKgM3 * VolumeM3;
-    TotalMeltEnergyJ = FMath::Max(MassKg * LatentHeatJPerKg, 1.0f);
+    EffectiveAreaM2 = FMath::Max3(SizeM.X * SizeM.Y, SizeM.X * SizeM.Z, SizeM.Y * SizeM.Z);
+    TotalMeltEnergyJ = FMath::Max(IceDensityKgM3 * VolumeM3 * LatentHeatJPerKg, 1.0f);
 }
 
 void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
 {
     if (!MeshComp) return;
-
     const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
-    const float Ratio = FMath::Clamp(MinScaleRatio, 0.0f, 1.0f);
-    const FVector From = BaseScaleBeforeMelt;
-    const FVector To = BaseScaleBeforeMelt * Ratio;
-    const FVector NewScale = FMath::Lerp(From, To, A);
+    const FVector NewScale = FMath::Lerp(BaseScaleBeforeMelt, BaseScaleBeforeMelt * FMath::Clamp(MinScaleRatio, 0.f, 1.f), A);
     MeshComp->SetWorldScale3D(NewScale);
-
-    if (IceMID)
-    {
-        IceMID->SetScalarParameterValue(MeltParamName, A);
-    }
-
-    if (NewScale.X <= MinScaleRatio && NewScale.Y <= MinScaleRatio && NewScale.Z <= MinScaleRatio)
-    {
-        Destroy();
-    }
+    if (IceMID) IceMID->SetScalarParameterValue(MeltParamName, A);
+    if (NewScale.GetMax() <= MinScaleRatio) Destroy();
 }
 
+// ============================================================================
+//  Wood
+// ============================================================================
 void ATransformation_actor::EnterWoodMode()
 {
     if (!MeshComp) return;
-
     RecalcWoodMassAndVolume();
-
     WoodTemperatureC = 20.0f;
     CurrentWoodMassKg = WoodMassKg;
     BurnAlpha = 0.0f;
     bIsBurning = false;
-
     BurnMID = nullptr;
 
-    if (BurnMaterial)
+    UMaterialInterface* SrcMat = BurnMaterial ? BurnMaterial : MeshComp->GetMaterial(0);
+    if (SrcMat)
     {
-        BurnMID = UMaterialInstanceDynamic::Create(BurnMaterial, this);
-        if (BurnMID)
-        {
-            MeshComp->SetMaterial(0, BurnMID);
-        }
+        BurnMID = UMaterialInstanceDynamic::Create(SrcMat, this);
+        if (BurnMID) MeshComp->SetMaterial(0, BurnMID);
     }
-    else
-    {
-        UMaterialInterface* M0 = MeshComp->GetMaterial(0);
-        if (M0)
-        {
-            BurnMID = UMaterialInstanceDynamic::Create(M0, this);
-            if (BurnMID) MeshComp->SetMaterial(0, BurnMID);
-        }
-    }
-
     ApplyWoodBurnVisual(0.0f);
 }
 
@@ -707,330 +588,205 @@ void ATransformation_actor::RecalcWoodMassAndVolume()
         WoodMassKg = WoodDensityKgM3 * WoodVolumeM3;
         return;
     }
-
-    const FBoxSphereBounds LocalBounds = MeshComp->GetStaticMesh()->GetBounds();
-    const FVector SafeBaseScale = FVector(
-        FMath::Max(BaseScaleBeforeBurn.X, 0.01f),
-        FMath::Max(BaseScaleBeforeBurn.Y, 0.01f),
-        FMath::Max(BaseScaleBeforeBurn.Z, 0.01f)
-    );
-    const FVector SizeCm = LocalBounds.BoxExtent * 2.0f * SafeBaseScale;
-    const FVector SizeM = SizeCm / 100.0f;
-
+    const FBoxSphereBounds LB = MeshComp->GetStaticMesh()->GetBounds();
+    const FVector SafeScale(FMath::Max(BaseScaleBeforeBurn.X, 0.01f),
+                            FMath::Max(BaseScaleBeforeBurn.Y, 0.01f),
+                            FMath::Max(BaseScaleBeforeBurn.Z, 0.01f));
+    const FVector SizeM = LB.BoxExtent * 2.0f * SafeScale / 100.0f;
     WoodVolumeM3 = FMath::Max(SizeM.X * SizeM.Y * SizeM.Z, 1e-6f);
     WoodMassKg = WoodDensityKgM3 * WoodVolumeM3;
-
-    const float Axy = SizeM.X * SizeM.Y;
-    const float Axz = SizeM.X * SizeM.Z;
-    const float Ayz = SizeM.Y * SizeM.Z;
-    EffectiveAreaM2 = FMath::Max3(Axy, Axz, Ayz);
+    EffectiveAreaM2 = FMath::Max3(SizeM.X * SizeM.Y, SizeM.X * SizeM.Z, SizeM.Y * SizeM.Z);
 }
 
 void ATransformation_actor::ApplyWoodBurnVisual(float Alpha01)
 {
     if (!MeshComp) return;
-
     const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
-
-    if (BurnMID)
-    {
-        BurnMID->SetScalarParameterValue(BurnParamName, A);
-    }
-
-    const float MassRatio = (1.0f - A);
-    const float VolumeRatio = FMath::Max(MassRatio, MinBurnScaleRatio);
-    const float ScaleRatio = FMath::Pow(VolumeRatio, 1.0f / 3.0f);
-
-    const FVector NewScale = BaseScaleBeforeBurn * ScaleRatio;
-    MeshComp->SetWorldScale3D(NewScale);
+    if (BurnMID) BurnMID->SetScalarParameterValue(BurnParamName, A);
+    const float ScaleRatio = FMath::Pow(FMath::Max(1.0f - A, MinBurnScaleRatio), 1.0f / 3.0f);
+    MeshComp->SetWorldScale3D(BaseScaleBeforeBurn * ScaleRatio);
 }
 
+// ============================================================================
+//  Polarity helpers
+// ============================================================================
 FVector ATransformation_actor::GetNorthPoleWorldDir() const
 {
     if (!MeshComp) return FVector::ForwardVector;
     return MeshComp->GetComponentTransform().TransformVectorNoScale(NorthPoleLocalDir).GetSafeNormal();
 }
 
-FVector ATransformation_actor::GetSouthPoleWorldDir() const
-{
-    return -GetNorthPoleWorldDir();
-}
+FVector ATransformation_actor::GetSouthPoleWorldDir() const { return -GetNorthPoleWorldDir(); }
 
 // ============================================================================
-//  UpdateFormHeat — Metal / Rubber / Magnet 공용 열 스텐실 + 자석 점진적 소자
+//  UpdateFormHeat
 // ============================================================================
 void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 {
     if (!MeshComp) return;
 
-    // ── 1. 현재 Form에 맞는 최대 온도 / 최대 스텐실 결정 ──
-    float MaxTempC = 1000.f;
-    int32 MaxStencil = 120;
-
+    float MaxTempC; int32 MaxStencil;
     switch (CurrentForm)
     {
-    case EBlockForm::Metal:
-        MaxTempC   = MetalMaxHeatTempC;
-        MaxStencil = MetalMaxStencilValue;
-        break;
-    case EBlockForm::Rubber:
-        MaxTempC   = RubberMaxHeatTempC;
-        MaxStencil = RubberMaxStencilValue;
-        break;
-    case EBlockForm::Magnet:
-        MaxTempC   = MagnetCurieTempC;
-        MaxStencil = MagnetMaxStencilValue;
-        break;
-    default:
-        return;
+    case EBlockForm::Metal:  MaxTempC = MetalMaxHeatTempC;  MaxStencil = MetalMaxStencilValue;  break;
+    case EBlockForm::Rubber: MaxTempC = RubberMaxHeatTempC; MaxStencil = RubberMaxStencilValue; break;
+    case EBlockForm::Magnet: MaxTempC = MagnetCurieTempC;   MaxStencil = MagnetMaxStencilValue; break;
+    default: return;
     }
 
-    // ── 2. 가열 또는 냉각 ──
+    // 가열 / 냉각
     if (bHeating && CurrentFire)
     {
         const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-
-        bool bInRange = (CurrentFire->MaxHeatDistance <= 0.f)
-                     || (DistCm <= CurrentFire->MaxHeatDistance);
-
-        if (bInRange)
+        const float ReceivedW = CalcReceivedPower(DistCm);
+        if (ReceivedW > 0.f)
         {
-            const float DistM = FMath::Max(DistCm / 100.0f, 0.05f);
-            const float PtotalW = CurrentFire->GetTotalRadiantPowerW();
-            float HeatFluxWm2 = PtotalW / (4.0f * PI * DistM * DistM);
-            float ReceivedPowerW = HeatFluxWm2 * EffectiveAreaM2;
-
-            if (CurrentFire->MaxHeatDistance > 0.f)
-            {
-                const float Fade = FMath::Clamp(1.0f - (DistCm / CurrentFire->MaxHeatDistance), 0.0f, 1.0f);
-                ReceivedPowerW *= Fade;
-            }
-
-            const float DeltaT = (ReceivedPowerW * DeltaTime * FormHeatSimTimeScale)
-                               / (FormMassKg * FormSpecificHeatJPerKgK);
-            FormTemperatureC += DeltaT;
+            FormTemperatureC += (ReceivedW * DeltaTime * FormHeatSimTimeScale)
+                              / (FormMassKg * FormSpecificHeatJPerKgK);
         }
     }
-    else
+    else if (FormTemperatureC > 20.f)
     {
-        // 열원 없으면 냉각
-        if (FormTemperatureC > 20.f)
-        {
-            FormTemperatureC -= FormCoolingRatePerSec * DeltaTime;
-            FormTemperatureC = FMath::Max(FormTemperatureC, 20.f);
-        }
+        FormTemperatureC = FMath::Max(FormTemperatureC - FormCoolingRatePerSec * DeltaTime, 20.f);
     }
 
-    // 최대 온도 클램프
     FormTemperatureC = FMath::Min(FormTemperatureC, MaxTempC);
 
-    // ── 3. 열 비율 계산 (0 = 상온, 1 = 최대 온도) ──
-    const float HeatRatio = FMath::Clamp(
-        (FormTemperatureC - 20.f) / FMath::Max(MaxTempC - 20.f, 1.f), 0.0f, 1.0f);
+    // 열원 없고 상온이면 아래 연산 전부 스킵 (매 프레임 절약)
+    const bool bAtRoomTemp = (FormTemperatureC <= 20.f + KINDA_SMALL_NUMBER);
 
-    // ── 4. 스텐실 적용 ──
+    const float HeatRatio = bAtRoomTemp ? 0.f
+        : FMath::Clamp((FormTemperatureC - 20.f) / FMath::Max(MaxTempC - 20.f, 1.f), 0.f, 1.f);
+
     const int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
 
-    if (StencilValue > 0)
+    // 스텐실 적용
+    if (CurrentForm == EBlockForm::Magnet)
+        SetStencilSafe(StencilValue, true);    // 자석: 항상 ON
+    else
+        SetStencilSafe(StencilValue, StencilValue > 0);
+
+    // ── 자석 전용: 점진적 약화 / 소자 / 복구 ──
+    if (CurrentForm != EBlockForm::Magnet) return;
+
+    if (!bDemagnetized)
     {
-        MeshComp->SetRenderCustomDepth(true);
-        MeshComp->SetCustomDepthStencilValue(StencilValue);
+        const float PowerRatio = 1.0f - HeatRatio;
+        MagnetStrength = BaseMagnetStrength * PowerRatio;
+        UpdateMagnetArrowPower(PowerRatio);
+
+        if (HeatRatio >= 1.0f)
+        {
+            bDemagnetized = true;
+            bMagnetCollided = false;
+            bMagnetSnapped = false;
+            bElectroActive = false;
+            MagnetStrength = 0.f;
+            BaseMagnetStrength = 0.f;
+            TimeSinceLastMagnetRefresh = 0.f;
+            OverlappingMetals.Empty();
+            MagnetContactedWires.Empty();
+            PreviousOverlappingMetals.Empty();
+
+            if (SpawnedArrowEffect)
+            {
+                SpawnedArrowEffect->SetActorHiddenInGame(true);
+                UpdateMagnetArrowPower(0.f);
+            }
+            if (MeshComp->IsSimulatingPhysics())
+            {
+                MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+        }
     }
     else
     {
-        // 스텐실 0 → 패스 완전 OFF
-        MeshComp->SetRenderCustomDepth(false);
-        MeshComp->SetCustomDepthStencilValue(0);
-    }
-
-    // ── 5. 자석 전용: 점진적 약화 / 소자 / 복구 ──
-    if (CurrentForm == EBlockForm::Magnet)
-    {
-        if (!bDemagnetized)
+        if (HeatRatio < MagnetRecoveryRatio)
         {
-            // ── 정상 작동 중: 온도에 비례해 자력 감소 ──
-            const float PowerRatio = 1.0f - HeatRatio;   // 1 = 풀파워, 0 = 소자
+            bDemagnetized = false;
+            bMagnetCollided = false;
+            bMagnetSnapped = false;
+            TimeSinceLastMagnetRefresh = 0.f;
 
+            BaseMagnetStrength = bAutoComputeStrength
+                ? MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent)
+                : MagnetStrength;
+
+            const float PowerRatio = 1.0f - HeatRatio;
             MagnetStrength = BaseMagnetStrength * PowerRatio;
-            UpdateMagnetArrowPower(PowerRatio);
+            RefreshOverlappingMetals();
 
-            // 퀴리 온도 도달 → 완전 소자
-            if (HeatRatio >= 1.0f)
-            {
-                bDemagnetized = true;
-                bMagnetCollided = false;
-                bMagnetSnapped = false;
-                bElectroActive = false;
-                MagnetStrength = 0.f;
-                BaseMagnetStrength = 0.f;
-                TimeSinceLastMagnetRefresh = 0.f;
-
-                OverlappingMetals.Empty();
-                MagnetContactedWires.Empty();
-                PreviousOverlappingMetals.Empty();
-
-                if (SpawnedArrowEffect)
-                {
-                    SpawnedArrowEffect->SetActorHiddenInGame(true);
-                    UpdateMagnetArrowPower(0.f);  // Power도 0으로
-                }
-
-                if (MeshComp->IsSimulatingPhysics())
-                {
-                    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
-                    MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-                }
-
-#if ENABLE_DRAW_DEBUG
-                if (bDebugDraw)
-                {
-                    DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100),
-                        TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
-                }
-#endif
-            }
-#if ENABLE_DRAW_DEBUG
-            else if (bDebugDraw && HeatRatio > 0.01f)
-            {
-                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
-                    FString::Printf(TEXT("자석 온도: %.0f°C / %.0f°C\n자력: %.0f%%\nStencil: %d/%d"),
-                        FormTemperatureC, MaxTempC,
-                        PowerRatio * 100.f,
-                        StencilValue, MaxStencil),
-                    nullptr, FColor::Orange, 0.0f, true);
-            }
-#endif
+            if (SpawnedArrowEffect)
+                UpdateMagnetArrowPower(PowerRatio);
         }
-        else
+        else if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
         {
-            // ── 소자 상태: 충분히 냉각되어야 복구 (히스테리시스) ──
-            if (HeatRatio < MagnetRecoveryRatio)
-            {
-                bDemagnetized = false;
-                bMagnetCollided = false;
-                bMagnetSnapped = false;
-                TimeSinceLastMagnetRefresh = 0.f;
-
-                // 자력 재계산
-                if (bAutoComputeStrength)
-                {
-                    BaseMagnetStrength = MaxLiftMass * GravityAccel
-                                       * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
-                }
-                else
-                {
-                    BaseMagnetStrength = MagnetStrength;
-                }
-
-                const float PowerRatio = 1.0f - HeatRatio;
-                MagnetStrength = BaseMagnetStrength * PowerRatio;
-
-                RefreshOverlappingMetals();
-
-                // Power만 복구 (화살표는 숨김 유지)
-                if (SpawnedArrowEffect)
-                {
-                    UpdateMagnetArrowPower(PowerRatio);
-                }
-
-#if ENABLE_DRAW_DEBUG
-                if (bDebugDraw)
-                {
-                    const float PowerRatioDbg = 1.0f - HeatRatio;
-                    DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
-                        FString::Printf(TEXT("자석 복구 중\n온도: %.0f°C / %.0f°C\n자력: %.0f%%"),
-                            FormTemperatureC, MaxTempC, PowerRatioDbg * 100.f),
-                        nullptr, FColor::Green, 0.0f, true);
-                }
-#endif
-            }
-            else
-            {
-                // 아직 소자 상태 — 외부에서 SetAllArrowsVisible(true)로 켜져도 강제 숨김
-                if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
-                {
-                    SpawnedArrowEffect->SetActorHiddenInGame(true);
-                }
-            }
+            SpawnedArrowEffect->SetActorHiddenInGame(true);
         }
     }
-
-#if ENABLE_DRAW_DEBUG
-    if (bDebugDraw && CurrentForm != EBlockForm::Magnet && HeatRatio > 0.01f)
-    {
-        const FString FormName = (CurrentForm == EBlockForm::Metal) ? TEXT("Metal")
-                               : (CurrentForm == EBlockForm::Rubber) ? TEXT("Rubber")
-                               : TEXT("Other");
-        DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 120),
-            FString::Printf(TEXT("[%s] 온도: %.0f°C\nStencil: %d/%d"),
-                *FormName, FormTemperatureC, StencilValue, MaxStencil),
-            nullptr, FColor::Orange, 0.0f, true);
-    }
-#endif
 }
 
 // ============================================================================
-//  UpdateMagnetArrowPower — 화살표 이펙트의 Power를 런타임으로 갱신
+//  UpdateMagnetArrowPower
 // ============================================================================
 void ATransformation_actor::UpdateMagnetArrowPower(float PowerRatio)
 {
     if (!SpawnedArrowEffect) return;
-
-    const float CurrentPower = BaseArrowPower * FMath::Max(PowerRatio, 0.f);
-
-    FProperty* PowerProp = SpawnedArrowEffect->GetClass()->FindPropertyByName(TEXT("Power"));
-    if (PowerProp)
+    const float Power = BaseArrowPower * FMath::Max(PowerRatio, 0.f);
+    if (FProperty* P = SpawnedArrowEffect->GetClass()->FindPropertyByName(TEXT("Power")))
     {
-        if (FDoubleProperty* D = CastField<FDoubleProperty>(PowerProp))
-            D->SetPropertyValue_InContainer(SpawnedArrowEffect, (double)CurrentPower);
-        else if (FFloatProperty* F = CastField<FFloatProperty>(PowerProp))
-            F->SetPropertyValue_InContainer(SpawnedArrowEffect, CurrentPower);
+        if (FDoubleProperty* D = CastField<FDoubleProperty>(P))
+            D->SetPropertyValue_InContainer(SpawnedArrowEffect, (double)Power);
+        else if (FFloatProperty* F = CastField<FFloatProperty>(P))
+            F->SetPropertyValue_InContainer(SpawnedArrowEffect, Power);
     }
 }
 
 // ============================================================================
-//  [추가 2] UpdateMagnetElectroBoost — 전선 접촉 시 전자석 부스트
+//  [최적화] UpdateMagnetElectroBoost
+//  GetAllActorsOfClass(AWire) → 공간 쿼리(OverlapMulti)로 교체
+//  월드 전체 순회 → WireContactRadius 범위만 검색
 // ============================================================================
 void ATransformation_actor::UpdateMagnetElectroBoost()
 {
+    MagnetContactedWires.Empty();
     bool bAnyPowered = false;
     float TotalCurrent = 0.f;
 
-    TArray<AActor*> NearbyActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
-
-    MagnetContactedWires.Empty();
-
     const FVector MyLoc = GetActorLocation();
 
-    for (AActor* Actor : NearbyActors)
+    // 공간 쿼리로 반경 내 와이어만 검색 (GetAllActorsOfClass 대비 훨씬 빠름)
+    FCollisionQueryParams Q(SCENE_QUERY_STAT(ElectroBoost), false);
+    Q.AddIgnoredActor(this);
+
+    TArray<FOverlapResult> Hits;
+    GetWorld()->OverlapMultiByObjectType(Hits, MyLoc, FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
+        FCollisionShape::MakeSphere(WireContactRadius), Q);
+
+    for (const FOverlapResult& H : Hits)
     {
-        AWire* Wire = Cast<AWire>(Actor);
-        if (!Wire) continue;
-        if (!Wire->IsPowered()) continue;
+        AWire* Wire = Cast<AWire>(H.GetActor());
+        if (!Wire || !Wire->IsPowered()) continue;
+
+        // 이미 처리한 와이어 스킵
+        if (MagnetContactedWires.Contains(Wire)) continue;
 
         bool bClose = false;
 
-        USplineComponent* WireSpline = Wire->GetSplineComponent();
-        if (WireSpline)
+        if (USplineComponent* Spline = Wire->GetSplineComponent())
         {
-            const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
-            if (FVector::Dist(MyLoc, Closest) <= WireContactRadius)
-            {
-                bClose = true;
-            }
+            const FVector Closest = Spline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
+            bClose = FVector::Dist(MyLoc, Closest) <= WireContactRadius;
 
             if (!bClose)
             {
-                const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
-                for (int32 i = 0; i < NumPoints; ++i)
+                const int32 NumPts = Spline->GetNumberOfSplinePoints();
+                for (int32 i = 0; i < NumPts; ++i)
                 {
-                    const FVector PointWorld = WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
-                    if (FVector::Dist(MyLoc, PointWorld) <= WireContactRadius)
-                    {
-                        bClose = true;
-                        break;
-                    }
+                    if (FVector::Dist(MyLoc, Spline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World)) <= WireContactRadius)
+                    { bClose = true; break; }
                 }
             }
         }
@@ -1048,26 +804,20 @@ void ATransformation_actor::UpdateMagnetElectroBoost()
     }
 
     bElectroActive = bAnyPowered;
-
-    if (bElectroActive)
-    {
-        const float CurrentBoost = FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier);
-        MagnetStrength = BaseMagnetStrength * CurrentBoost;
-    }
-    else
-    {
-        MagnetStrength = BaseMagnetStrength;
-    }
+    MagnetStrength = bElectroActive
+        ? BaseMagnetStrength * FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier)
+        : BaseMagnetStrength;
 }
 
 // ============================================================================
-//  [추가 3] ApplyInducedMagnetism — 금속 간 유도 자기
+//  ApplyInducedMagnetism
 // ============================================================================
 void ATransformation_actor::ApplyInducedMagnetism()
 {
     const FVector MagnetLoc = GetActorLocation();
     const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
     const int32 Num = MetalArray.Num();
+    if (Num < 2) return;  // 최소 2개 이상이어야 유도 자기 의미 있음
 
     for (int32 i = 0; i < Num; ++i)
     {
@@ -1076,10 +826,9 @@ void ATransformation_actor::ApplyInducedMagnetism()
 
         const FVector MetalALoc = MetalA->GetComponentLocation();
         const float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
-
         if (DistAToMagnet > MinDistanceForInduction) continue;
 
-        const float InducedStrength = CalculateInducedStrength(DistAToMagnet, MagnetStrength);
+        const float InducedStr = CalculateInducedStrength(DistAToMagnet, MagnetStrength);
         const FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
 
         for (int32 j = i + 1; j < Num; ++j)
@@ -1087,56 +836,37 @@ void ATransformation_actor::ApplyInducedMagnetism()
             UPrimitiveComponent* MetalB = MetalArray[j];
             if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics()) continue;
 
-            const FVector MetalBLoc = MetalB->GetComponentLocation();
-            const FVector AtoB = MetalBLoc - MetalALoc;
+            const FVector AtoB = MetalB->GetComponentLocation() - MetalALoc;
             const float DistAtoB = AtoB.Size();
-
             if (DistAtoB < 10.f || DistAtoB > InductionRange) continue;
 
             const FVector Dir = AtoB / DistAtoB;
-            const float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
+            const float Alignment = FVector::DotProduct(Dir, MagnetToA);
 
-            float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(AlignmentFactor))
-                        / FMath::Pow(DistAtoB, MagneticDecayExponent);
+            float ForceMag = (InducedStr * InductionStrengthRatio * FMath::Abs(Alignment))
+                           / FMath::Pow(DistAtoB, MagneticDecayExponent);
+            ForceMag *= FMath::Clamp(MetalB->GetMass() / 10.0f, 0.5f, 2.0f);
 
-            const float MetalBMass = MetalB->GetMass();
-            ForceMag *= FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
+            const FVector VelB = MetalB->GetPhysicsLinearVelocity();
+            float VelDamp = 1.0f;
+            const float VelToA = FVector::DotProduct(VelB, Dir);
+            if (VelToA > MaxAttractVelocity * 0.5f)
+                VelDamp = FMath::Clamp(1.0f - (VelToA / MaxAttractVelocity), 0.3f, 1.0f);
 
-            const FVector CurrentVelB = MetalB->GetPhysicsLinearVelocity();
-            const float VelTowardsA = FVector::DotProduct(CurrentVelB, Dir);
+            FVector Force = (Dir * ForceMag * VelDamp * Alignment)
+                          + (-VelB * VelocityDampingFactor * 0.5f * MetalB->GetMass());
+            Force = Force.GetClampedToMaxSize(MaxInducedForceClamp);
 
-            float VelDamping = 1.0f;
-            if (VelTowardsA > MaxAttractVelocity * 0.5f)
-            {
-                VelDamping = FMath::Clamp(1.0f - (VelTowardsA / MaxAttractVelocity), 0.3f, 1.0f);
-            }
-
-            const FVector DampingForce = -CurrentVelB * (VelocityDampingFactor * 0.5f * MetalBMass);
-            FVector FinalForce = (Dir * ForceMag * VelDamping * AlignmentFactor) + DampingForce;
-            FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForceClamp);
-
-            MetalB->AddForce(FinalForce, NAME_None, false);
-            MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
-
-#if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
-            {
-                DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, FColor::Yellow, false, -1.f, 0, 1.f);
-            }
-#endif
+            MetalB->AddForce(Force, NAME_None, false);
+            MetalA->AddForce(-Force * 0.5f, NAME_None, false);
         }
     }
 }
 
-// ============================================================================
-//  [추가 4] CalculateInducedStrength
-// ============================================================================
-float ATransformation_actor::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const
+float ATransformation_actor::CalculateInducedStrength(float Dist, float BaseStr) const
 {
-    const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
-    const float InductionFactor = FMath::Clamp(
-        1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
-    return BaseMagnetStrengthVal * InductionFactor;
+    const float Safe = FMath::Max(Dist, 1.0f);
+    return BaseStr * FMath::Clamp(1.0f / FMath::Pow(Safe / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
 }
 
 // ============================================================================
@@ -1150,15 +880,12 @@ void ATransformation_actor::EnterMagnetMode()
     bMagnetSnapped = false;
 
     if (bAutoComputeStrength)
-    {
         MagnetStrength = MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
-    }
 
     BaseMagnetStrength = MagnetStrength;
     bDemagnetized = false;
     bElectroActive = false;
     TimeSinceLastMagnetRefresh = 0.f;
-
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
     PreviousOverlappingMetals.Empty();
@@ -1168,75 +895,52 @@ void ATransformation_actor::EnterMagnetMode()
     MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-    // 온도 초기화 (점진적 가열은 Tick의 UpdateFormHeat에서 처리)
     FormTemperatureC = 20.f;
     BaseArrowPower = ArrowPower;
-
-    // 스텐실 초기화
-    MeshComp->SetRenderCustomDepth(false);
-    MeshComp->SetCustomDepthStencilValue(0);
+    SetStencilSafe(0, true);  // 자석: 패스 항상 ON, 값 0
 
     RefreshOverlappingMetals();
 
-    // ── 화살표 이펙트 스폰 ──
     if (bShowFieldArrows && ArrowEffectClass)
     {
-        FTimerHandle ArrowSpawnTimer;
-        GetWorldTimerManager().SetTimer(ArrowSpawnTimer, [this]()
+        FTimerHandle Timer;
+        GetWorldTimerManager().SetTimer(Timer, [this]()
         {
             if (!IsValid(this) || !ArrowEffectClass) return;
-            if (CurrentForm != EBlockForm::Magnet) return;
-            if (bDemagnetized) return;
+            if (CurrentForm != EBlockForm::Magnet || bDemagnetized) return;
 
-            FQuat ActorQuat = GetActorRotation().Quaternion();
-            FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
-            FTransform SpawnTransform((ActorQuat * OffsetQuat).Rotator(), GetActorLocation());
+            const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
+            FTransform T((GetActorQuat() * OffQ).Rotator(), GetActorLocation());
 
             AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
-                ArrowEffectClass, SpawnTransform, this, nullptr,
+                ArrowEffectClass, T, this, nullptr,
                 ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+            if (!Arrow) return;
 
-            if (Arrow)
+            // 프로퍼티 세팅 (Power, X, Y)
+            auto SetFloat = [Arrow](const TCHAR* Name, float Val)
             {
-                FProperty* PowerProp = Arrow->GetClass()->FindPropertyByName(TEXT("Power"));
-                FProperty* XProp     = Arrow->GetClass()->FindPropertyByName(TEXT("X"));
-                FProperty* YProp     = Arrow->GetClass()->FindPropertyByName(TEXT("Y"));
-
-                if (PowerProp)
+                if (FProperty* P = Arrow->GetClass()->FindPropertyByName(Name))
                 {
-                    if (FDoubleProperty* D = CastField<FDoubleProperty>(PowerProp))
-                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowPower);
-                    else if (FFloatProperty* F = CastField<FFloatProperty>(PowerProp))
-                        F->SetPropertyValue_InContainer(Arrow, ArrowPower);
+                    if (FDoubleProperty* D = CastField<FDoubleProperty>(P))
+                        D->SetPropertyValue_InContainer(Arrow, (double)Val);
+                    else if (FFloatProperty* F = CastField<FFloatProperty>(P))
+                        F->SetPropertyValue_InContainer(Arrow, Val);
                 }
-                if (XProp)
-                {
-                    if (FDoubleProperty* D = CastField<FDoubleProperty>(XProp))
-                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowX);
-                    else if (FFloatProperty* F = CastField<FFloatProperty>(XProp))
-                        F->SetPropertyValue_InContainer(Arrow, ArrowX);
-                }
-                if (YProp)
-                {
-                    if (FDoubleProperty* D = CastField<FDoubleProperty>(YProp))
-                        D->SetPropertyValue_InContainer(Arrow, (double)ArrowY);
-                    else if (FFloatProperty* F = CastField<FFloatProperty>(YProp))
-                        F->SetPropertyValue_InContainer(Arrow, ArrowY);
-                }
+            };
+            SetFloat(TEXT("Power"), ArrowPower);
+            SetFloat(TEXT("X"), ArrowX);
+            SetFloat(TEXT("Y"), ArrowY);
 
-                UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
+            UGameplayStatics::FinishSpawningActor(Arrow, T);
 
-                TArray<USceneComponent*> AllComps;
-                Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
-                AllComps.Add(Arrow->GetRootComponent());
-                for (USceneComponent* Comp : AllComps)
-                {
-                    Comp->SetMobility(EComponentMobility::Movable);
-                }
+            TArray<USceneComponent*> AllComps;
+            Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
+            AllComps.Add(Arrow->GetRootComponent());
+            for (USceneComponent* C : AllComps) C->SetMobility(EComponentMobility::Movable);
 
-                SpawnedArrowEffect = Arrow;
-                SpawnedArrowEffect->SetActorHiddenInGame(true);
-            }
+            SpawnedArrowEffect = Arrow;
+            SpawnedArrowEffect->SetActorHiddenInGame(true);
         }, 1.0f, false);
     }
 }
@@ -1251,33 +955,18 @@ void ATransformation_actor::ExitMagnetMode()
     BaseMagnetStrength = 0.f;
     TimeSinceLastMagnetRefresh = 0.f;
     FormTemperatureC = 20.f;
-
     OverlappingMetals.Empty();
     MagnetContactedWires.Empty();
     PreviousOverlappingMetals.Empty();
 
-    if (SpawnedArrowEffect)
-    {
-        SpawnedArrowEffect->Destroy();
-        SpawnedArrowEffect = nullptr;
-    }
-
-    // 스텐실 리셋
-    if (MeshComp)
-    {
-        MeshComp->SetRenderCustomDepth(false);
-        MeshComp->SetCustomDepthStencilValue(0);
-    }
+    if (SpawnedArrowEffect) { SpawnedArrowEffect->Destroy(); SpawnedArrowEffect = nullptr; }
+    SetStencilSafe(0, false);
 }
 
-void ATransformation_actor::OnMagnetHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-    return;
-}
+void ATransformation_actor::OnMagnetHit(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, FVector, const FHitResult&) {}
 
 // ============================================================================
-//  UpdateMagnetism — 누락 기능 모두 통합
+//  [최적화] UpdateMagnetism — 정리+힘 적용 루프 통합
 // ============================================================================
 void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 {
@@ -1288,298 +977,179 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
     if (TimeSinceLastMagnetRefresh >= MagnetRefreshInterval)
     {
         TimeSinceLastMagnetRefresh = 0.f;
-
-        // 전자석 부스트 (UpdateFormHeat가 소자 체크를 담당)
         UpdateMagnetElectroBoost();
-
         RefreshOverlappingMetals();
     }
 
-#if ENABLE_DRAW_DEBUG
-    if (bDebugDraw)
-    {
-        if (bElectroActive)
-        {
-            DrawDebugSphere(GetWorld(), GetActorLocation(), WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
-            const float BoostRatio = (BaseMagnetStrength > 0.f) ? (MagnetStrength / BaseMagnetStrength) : 1.f;
-            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                FString::Printf(TEXT("[전자석 활성]\n연결 전선: %d개\n기본 자력: %.0f\n현재 자력: %.0f\n부스트: x%.2f"),
-                    MagnetContactedWires.Num(), BaseMagnetStrength, MagnetStrength, BoostRatio),
-                nullptr, FColor::Cyan, 0.0f, true);
-        }
-        else
-        {
-            DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                FString::Printf(TEXT("[자석 모드]\n자력: %.0f"), MagnetStrength),
-                nullptr, FColor::White, 0.0f, true);
-        }
-    }
-#endif
-
     if (OverlappingMetals.Num() == 0) return;
 
-    // ── [추가] InitialImpulse: 새로 범위에 들어온 금속에 초기 임펄스 ──
+    // InitialImpulse
     if (bApplyInitialImpulse)
     {
         for (UPrimitiveComponent* Comp : OverlappingMetals)
         {
             if (!IsValid(Comp) || !Comp->IsSimulatingPhysics()) continue;
-
             AActor* OwnerActor = Comp->GetOwner();
             if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) continue;
-
-            // 이전 프레임에 없었으면 새로 진입
             if (!PreviousOverlappingMetals.Contains(Comp))
             {
-                const FVector ToMagnet =
-                    (GetActorLocation() - Comp->GetComponentLocation()).GetSafeNormal();
-                Comp->AddImpulse(ToMagnet * InitialImpulseStrength * Comp->GetMass());
+                const FVector Dir = (GetActorLocation() - Comp->GetComponentLocation()).GetSafeNormal();
+                Comp->AddImpulse(Dir * InitialImpulseStrength * Comp->GetMass());
             }
         }
     }
-    // 현재 목록을 저장해두고 다음 프레임과 비교
     PreviousOverlappingMetals = OverlappingMetals;
 
     const FVector MagnetLoc = GetActorLocation();
     const FVector MyNorth = GetNorthPoleWorldDir();
-    const FVector MagnetForward = MeshComp->GetForwardVector();
-    const bool bMagnetSimulating = MeshComp->IsSimulatingPhysics();
-    const float StrengthTimesMultiplier = MagnetStrength * ForceMultiplier;
+    const FVector MagnetFwd = MeshComp->GetForwardVector();
+    const bool bMagSim = MeshComp->IsSimulatingPhysics();
+    const float StrMul = MagnetStrength * ForceMultiplier;
 
-    // 유효하지 않은 항목 제거
+    // 정리 + 힘 적용을 단일 루프로 통합
     for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
     {
-        UPrimitiveComponent* Comp = It->Get();
-        if (!IsValid(Comp))
-        {
-            It.RemoveCurrent();
-            continue;
-        }
-        AActor* OwnerActor = Comp->GetOwner();
-        if (!OwnerActor)
-        {
-            It.RemoveCurrent();
-            continue;
-        }
-        if (!OwnerActor->ActorHasTag(MetalTag) && !OwnerActor->ActorHasTag(MagnetTag))
-        {
-            It.RemoveCurrent();
-            continue;
-        }
-    }
-
-    if (OverlappingMetals.Num() == 0) return;
-
-    for (UPrimitiveComponent* TargetComp : OverlappingMetals)
-    {
-        if (!IsValid(TargetComp)) continue;
+        UPrimitiveComponent* TargetComp = It->Get();
+        if (!IsValid(TargetComp)) { It.RemoveCurrent(); continue; }
 
         AActor* OtherActor = TargetComp->GetOwner();
-        if (!OtherActor) continue;
+        if (!OtherActor) { It.RemoveCurrent(); continue; }
+
+        const bool bIsMetal = OtherActor->ActorHasTag(MetalTag);
+        const bool bIsMagnet = OtherActor->ActorHasTag(MagnetTag);
+        if (!bIsMetal && !bIsMagnet) { It.RemoveCurrent(); continue; }
 
         const FVector OtherLoc = OtherActor->GetActorLocation();
         const FVector ToOther = OtherLoc - MagnetLoc;
         const float Distance = ToOther.Size();
-
         if (Distance > MaxDistance || Distance < 1.f) continue;
 
         const FVector DirToOther = ToOther / Distance;
         const float SafeDist = FMath::Max(Distance, MinDistance);
 
-        ATransformation_actor* OtherMagnetActor = nullptr;
-        if (OtherActor->ActorHasTag(MagnetTag))
+        // ── 자석-자석 ──
+        ATransformation_actor* OtherMag = bIsMagnet ? Cast<ATransformation_actor>(OtherActor) : nullptr;
+        if (OtherMag)
         {
-            OtherMagnetActor = Cast<ATransformation_actor>(OtherActor);
-        }
+            if (bMagnetSnapped || OtherMag->bMagnetSnapped) continue;
+            if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag)) continue;
+            if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics()) continue;
 
-        // ── 자석-자석 상호작용 (기존 로직 유지) ──
-        if (OtherMagnetActor)
-        {
-            if (bMagnetSnapped || OtherMagnetActor->bMagnetSnapped) continue;
+            const float MyPole = FVector::DotProduct(MyNorth, DirToOther);
+            const float OtherPole = FVector::DotProduct(OtherMag->GetNorthPoleWorldDir(), -DirToOther);
+            const float Polarity = -(MyPole * OtherPole);
 
-            if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMagnetActor))
-                continue;
-
-            if (!OtherMagnetActor->MeshComp || !OtherMagnetActor->MeshComp->IsSimulatingPhysics())
-                continue;
-
-            const FVector OtherNorth = OtherMagnetActor->GetNorthPoleWorldDir();
-
-            const float MyPoleToward = FVector::DotProduct(MyNorth, DirToOther);
-            const float OtherPoleToward = FVector::DotProduct(OtherNorth, -DirToOther);
-            const float PolarityFactor = -(MyPoleToward * OtherPoleToward);
-
-            float SpeedScale = (ReferenceDistance / FMath::Max(SafeDist, 1.f));
-            SpeedScale = FMath::Clamp(SpeedScale, 0.1f, 5.f);
-
-            float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(PolarityFactor);
-
-            FVector MoveDir = DirToOther * FMath::Sign(PolarityFactor);
+            float SpeedScale = FMath::Clamp(ReferenceDistance / FMath::Max(SafeDist, 1.f), 0.1f, 5.f);
+            float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(Polarity);
+            FVector MoveDir = DirToOther * FMath::Sign(Polarity);
 
             const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
-            const float OtherMass = FMath::Max(OtherMagnetActor->MeshComp->GetMass(), 0.1f);
-            const float TotalMass = MyMass + OtherMass;
+            const float OtMass = FMath::Max(OtherMag->MeshComp->GetMass(), 0.1f);
+            const float TotMass = MyMass + OtMass;
 
-            const float MySpeed = Speed * (OtherMass / TotalMass);
-            const float OtherSpeed = Speed * (MyMass / TotalMass);
+            FVector MyVel = MoveDir * Speed * (OtMass / TotMass);
+            MyVel.Z = MeshComp->GetPhysicsLinearVelocity().Z;
+            MeshComp->SetPhysicsLinearVelocity(MyVel);
 
-            const FVector MyCurrentVel = MeshComp->GetPhysicsLinearVelocity();
-            FVector MyNewVel = MoveDir * MySpeed;
-            MyNewVel.Z = MyCurrentVel.Z;
-            MeshComp->SetPhysicsLinearVelocity(MyNewVel);
+            FVector OtVel = -MoveDir * Speed * (MyMass / TotMass);
+            OtVel.Z = OtherMag->MeshComp->GetPhysicsLinearVelocity().Z;
+            OtherMag->MeshComp->SetPhysicsLinearVelocity(OtVel);
 
-            const FVector OtherCurrentVel = OtherMagnetActor->MeshComp->GetPhysicsLinearVelocity();
-            FVector OtherNewVel = -MoveDir * OtherSpeed;
-            OtherNewVel.Z = OtherCurrentVel.Z;
-            OtherMagnetActor->MeshComp->SetPhysicsLinearVelocity(OtherNewVel);
-
-            if (PolarityFactor > 0.f && Distance <= MagnetSnapDistance)
+            if (Polarity > 0.f && Distance <= MagnetSnapDistance)
             {
                 bMagnetSnapped = true;
-                OtherMagnetActor->bMagnetSnapped = true;
-
+                OtherMag->bMagnetSnapped = true;
                 MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
-                OtherMagnetActor->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                OtherMag->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
             }
-
-            if (bDebugDraw)
-            {
-                FColor DebugColor = (PolarityFactor > 0) ? FColor::Green : FColor::Red;
-                DrawDebugLine(GetWorld(), MagnetLoc, OtherLoc, DebugColor, false, 0.1f, 0, 2.f);
-                DrawDebugString(GetWorld(), MagnetLoc + FVector(0, 0, 50),
-                    FString::Printf(TEXT("P=%.2f D=%.0f MyM=%.1f OtM=%.1f"),
-                        PolarityFactor, Distance, MyMass, OtherMass),
-                    nullptr, FColor::White, 0.1f);
-            }
+            continue;
         }
-        // ── 자석-금속 상호작용 (누락 기능 모두 추가) ──
-        else
+
+        // ── 자석-금속 ──
+        if (!TargetComp->IsSimulatingPhysics()) continue;
+
+        const FVector MetalLoc = TargetComp->GetComponentLocation();
+        const FVector ToMagnet = MagnetLoc - MetalLoc;
+        const float Dist = ToMagnet.Size();
+        if (Dist < MinDistance || Dist > MaxDistance) continue;
+
+        const FVector Dir = ToMagnet / Dist;
+        const float DirDot = FVector::DotProduct(Dir, MagnetFwd);
+        const float DirFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
+
+        float ForceMag = (StrMul * DirFactor) / FMath::Pow(FMath::Max(Dist, MinDistance), MagneticDecayExponent);
+        ForceMag *= FMath::Clamp(TargetComp->GetMass() / 5.0f, 0.6f, 2.5f);
+
+        const FVector CurVel = TargetComp->GetPhysicsLinearVelocity();
+        const float VelToward = FVector::DotProduct(CurVel, Dir);
+        float VelDamp = 1.0f;
+        if (VelToward > MaxAttractVelocity * 0.7f)
+            VelDamp = FMath::Clamp(1.0f - (VelToward / MaxAttractVelocity), 0.4f, 1.0f);
+
+        FVector Force = (Dir * ForceMag * VelDamp)
+                      + (-CurVel * VelocityDampingFactor * TargetComp->GetMass());
+        Force = Force.GetClampedToMaxSize(MaxForceClamp);
+
+        TargetComp->AddForce(Force, NAME_None, false);
+
+        if (bUseTorque)
         {
-            if (!TargetComp->IsSimulatingPhysics()) continue;
-
-            const FVector MetalLoc = TargetComp->GetComponentLocation();
-            const FVector ToMagnet = MagnetLoc - MetalLoc;
-            const float Dist = ToMagnet.Size();
-
-            if (Dist < MinDistance || Dist > MaxDistance) continue;
-
-            const FVector Dir = ToMagnet / Dist;
-
-            // [추가] DirectionFactor — 자석 전방 방향 보정
-            const float DirDot = FVector::DotProduct(Dir, MagnetForward);
-            const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
-
-            const float MetalSafeDist = FMath::Max(Dist, MinDistance);
-            float ForceMag = (StrengthTimesMultiplier * DirectionFactor)
-                           / FMath::Pow(MetalSafeDist, MagneticDecayExponent);
-
-            const float MetalMass = TargetComp->GetMass();
-            ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
-
-            // [추가] VelocityDamping — 접근 속도 제한
-            const FVector CurrentVel = TargetComp->GetPhysicsLinearVelocity();
-            const float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
-
-            float VelocityDamping = 1.0f;
-            if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
-            {
-                VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
-            }
-
-            const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
-            FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
-            FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
-
-            TargetComp->AddForce(FinalForce, NAME_None, false);
-
-            // [추가] Torque — 금속을 자석 쪽으로 회전
-            if (bUseTorque)
-            {
-                const FVector CrossProduct = FVector::CrossProduct(TargetComp->GetForwardVector(), Dir);
-                const float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
-
-                if (TorqueMagnitude > 0.01f)
-                {
-                    TargetComp->AddTorqueInRadians(CrossProduct.GetSafeNormal() * TorqueMagnitude, NAME_None, false);
-                }
-            }
-
-            // [추가] 반작용력 — 자석 자체에도 반대 힘
-            if (bMagnetSimulating)
-            {
-                MeshComp->AddForce(-FinalForce * 0.2f, NAME_None, false);
-            }
-
-#if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
-            {
-                const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
-                DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
-                DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
-                DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
-                    FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
-            }
-#endif
+            const FVector Cross = FVector::CrossProduct(TargetComp->GetForwardVector(), Dir);
+            const float TorqueMag = Cross.Size() * ForceMag * 0.3f;
+            if (TorqueMag > 0.01f)
+                TargetComp->AddTorqueInRadians(Cross.GetSafeNormal() * TorqueMag, NAME_None, false);
         }
-    } // for 끝
 
-    // [추가] 유도 자기
-    if (bEnableInduction)
-    {
-        ApplyInducedMagnetism();
+        if (bMagSim)
+            MeshComp->AddForce(-Force * 0.2f, NAME_None, false);
     }
 
-    // ── 화살표 위치 동기화 ──
+    if (bEnableInduction)
+        ApplyInducedMagnetism();
+
+    // 화살표 위치 동기화
     if (SpawnedArrowEffect)
     {
-        const FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
-        const FQuat DesiredQuat = GetActorQuat() * OffsetQuat;
-        const FVector DesiredLoc = GetActorLocation();
-
-        if (!SpawnedArrowEffect->GetActorQuat().Equals(DesiredQuat, 0.01f) ||
-            !SpawnedArrowEffect->GetActorLocation().Equals(DesiredLoc, 1.f))
+        const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
+        const FQuat DesQ = GetActorQuat() * OffQ;
+        const FVector DesLoc = GetActorLocation();
+        if (!SpawnedArrowEffect->GetActorQuat().Equals(DesQ, 0.01f) ||
+            !SpawnedArrowEffect->GetActorLocation().Equals(DesLoc, 1.f))
         {
-            SpawnedArrowEffect->SetActorLocationAndRotation(DesiredLoc, DesiredQuat);
+            SpawnedArrowEffect->SetActorLocationAndRotation(DesLoc, DesQ);
         }
     }
 }
 
+// ============================================================================
+//  RefreshOverlappingMetals
+// ============================================================================
 void ATransformation_actor::RefreshOverlappingMetals()
 {
-    if (!MeshComp) return;
-
     OverlappingMetals.Empty();
+    if (!MeshComp) return;
 
     UWorld* World = GetWorld();
     if (!World) return;
 
-    const FVector Center = GetActorLocation();
-    FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MagnetSense), false);
     Q.AddIgnoredActor(this);
 
     TArray<FOverlapResult> Hits;
-    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj,
+    World->OverlapMultiByObjectType(Hits, GetActorLocation(), FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
         FCollisionShape::MakeSphere(MaxDistance), Q);
 
     for (const FOverlapResult& H : Hits)
     {
         UPrimitiveComponent* Comp = H.GetComponent();
         if (!Comp) continue;
-
         AActor* CompOwner = Comp->GetOwner();
         if (!CompOwner || CompOwner == this) continue;
 
-        bool bIsMetal = CompOwner->ActorHasTag(MetalTag);
-        bool bIsMagnet = CompOwner->ActorHasTag(MagnetTag);
-
-        if (bIsMetal && Comp->IsSimulatingPhysics())
-        {
+        if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
             OverlappingMetals.Add(Comp);
-        }
-        else if (bIsMagnet)
-        {
+        else if (CompOwner->ActorHasTag(MagnetTag))
             OverlappingMetals.Add(Comp);
-        }
     }
 }
