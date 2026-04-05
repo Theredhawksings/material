@@ -156,7 +156,7 @@ AmaterialCharacter::AmaterialCharacter()
     	PickupTags = { TEXT("Metal"), TEXT("Rubber"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
 
 	static ConstructorHelpers::FObjectFinder<UMaterial> PlayerMat(
-    	TEXT("/Script/Engine.Material'/Game/modeling/Character/Player_Re/M_Character.M_Character'"));
+   		TEXT("/Script/Engine.Material'/Game/modeling/Character/M_Character.M_Character'"));
 	if (PlayerMat.Succeeded()) GetMesh()->SetMaterial(0, PlayerMat.Object);
 
 	static ConstructorHelpers::FObjectFinder<UMaterialParameterCollection> HeatMPCAsset(
