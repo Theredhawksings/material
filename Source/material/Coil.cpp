@@ -3,6 +3,8 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Wire.h"
+
 #include "Engine/OverlapResult.h"
 
 ACoil::ACoil()
@@ -94,6 +96,7 @@ void ACoil::Tick(float DeltaTime)
 	UpdateFieldRadius();
 	ApplyMagneticForce();
 	DebugVisualize();
+	UpdateCircuit();
 }
 
 void ACoil::ToggleCoil()
@@ -253,4 +256,35 @@ void ACoil::DebugVisualize()
 		}
 	}
 #endif
+}
+
+void ACoil::UpdateCircuit()
+{
+    for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+    {
+        if (AWire* W = Cast<AWire>(WirePtr.Get()))
+            W->SetPowered(false);
+    }
+    ConnectedWires.Empty();
+
+    if (!bCoilActive || CurrentEMF <= 0.f) return;
+
+    FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilCircuit), false);
+    QParams.AddIgnoredActor(this);
+
+    TArray<FOverlapResult> Hits;
+    GetWorld()->OverlapMultiByObjectType(
+        Hits, BaseCoilLocation, FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
+        FCollisionShape::MakeSphere(WireDetectRadius), QParams);
+
+    for (const FOverlapResult& H : Hits)
+    {
+        AWire* Wire = Cast<AWire>(H.GetActor());
+        if (!Wire) continue;
+
+        Wire->SetPowered(true);
+        Wire->SetBatteryVoltage(CurrentEMF);
+        ConnectedWires.Add(Wire);
+    }
 }

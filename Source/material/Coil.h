@@ -92,7 +92,13 @@ private:
 
 	FVector BaseCoilLocation;
 	float OscillationTime = 0.f;
+	UPROPERTY(EditAnywhere, Category = "Coil|Circuit")
+	float WireDetectRadius = 200.f;
 
+	UPROPERTY()
+	TArray<TWeakObjectPtr<AActor>> ConnectedWires;
+
+	void UpdateCircuit();
 	void DetectMagnets();
 	void ApplyOscillation(float DeltaTime);
 	void ApplyMagneticForce();
