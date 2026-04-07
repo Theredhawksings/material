@@ -72,6 +72,18 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
 	float SpeedPerExtraMagnet = 1.5f;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Coil|EMF", meta = (AllowPrivateAccess = "true"))
+	float CurrentEMF = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	int32 CoilWindings = 25;
+
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	float MagnetFieldStrengthTesla = 0.4f;
+
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	float CoilInnerDiameterCM = 140.f;
+
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
 	bool bDebugDraw = true;
 

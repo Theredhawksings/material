@@ -65,28 +65,29 @@ void ACoil::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	if (!bCoilActive)
-{
-    for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
-    {
-        if (AActor* Magnet = MagnetPtr.Get())
-        {
-            if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Magnet->GetRootComponent()))
-            {
-                if (Root->IsSimulatingPhysics())
-                {
-                    Root->SetPhysicsLinearVelocity(FVector::ZeroVector);
-                    Root->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-                }
-            }
-        }
-    }
+	{
+		for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
+		{
+			if (AActor* Magnet = MagnetPtr.Get())
+			{
+				if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Magnet->GetRootComponent()))
+				{
+					if (Root->IsSimulatingPhysics())
+					{
+						Root->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						Root->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+					}
+				}
+			}
+		}
 
-    DetectedMagnets.Empty();
-    OscillationTime = 0.f;
-    SetActorLocation(BaseCoilLocation, false);
-    DebugVisualize();
-    return;
-}
+		DetectedMagnets.Empty();
+		CurrentEMF = 0.f;
+		OscillationTime = 0.f;
+		SetActorLocation(BaseCoilLocation, false);
+		DebugVisualize();
+		return;
+	}
 
 	DetectMagnets();
 	ApplyOscillation(DeltaTime);
@@ -134,6 +135,20 @@ void ACoil::DetectMagnets()
 		{
 			DetectedMagnets.Add(HitActor);
 		}
+	}
+
+	CurrentEMF = 0.f;
+	if (bCoilActive && HasMagnetInside())
+	{
+		const int32 Count = DetectedMagnets.Num();
+		const float ScaledSpeed = OscillationSpeed + (Count - 1) * SpeedPerExtraMagnet;
+		float TotalB = MagnetFieldStrengthTesla * Count;
+		float VelocityFactor = FMath::Abs(FMath::Cos(OscillationTime * ScaledSpeed));
+
+		float RadiusMeters = (CoilInnerDiameterCM / 100.f) / 2.f;
+		float Area = PI * RadiusMeters * RadiusMeters;
+
+		CurrentEMF = CoilWindings * TotalB * Area * ScaledSpeed * VelocityFactor;
 	}
 }
 
@@ -185,7 +200,7 @@ void ACoil::ApplyMagneticForce()
 		const float Distance = Direction.Size();
 		if (Distance < 1.f) continue;
 
-		const float ForceMag = MagneticForceStrength / FMath::Max(Distance * Distance, 100.f);
+		const float ForceMag = MagneticForceStrength / (DetectedMagnets.Num() * FMath::Max(Distance * Distance, 100.f));
 		const FVector Force = Direction.GetSafeNormal() * ForceMag;
 
 		MagnetRoot->AddForce(Force, NAME_None, true);
@@ -223,8 +238,8 @@ void ACoil::DebugVisualize()
 	if (bActive)
 	{
 		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
-			FString::Printf(TEXT("Magnets: %d | Radius: %.0f | Field ON"),
-				DetectedMagnets.Num(), CurrentRadius),
+			FString::Printf(TEXT("Magnets: %d | EMF: %.2f V | N: %d"),
+				DetectedMagnets.Num(), CurrentEMF, CoilWindings),
 			nullptr, FColor::Green, 0.f, true);
 	}
 
