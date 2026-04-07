@@ -32,6 +32,13 @@ ACoil::ACoil()
 	MagneticFieldSphere->SetGenerateOverlapEvents(true);
 	MagneticFieldSphere->SetHiddenInGame(false);
 	MagneticFieldSphere->ShapeColor = FColor::Blue;
+
+	BottomBlocker = CreateDefaultSubobject<UBoxComponent>(TEXT("BottomBlocker"));
+	BottomBlocker->SetupAttachment(RootComponent);
+	BottomBlocker->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	BottomBlocker->SetCollisionResponseToAllChannels(ECR_Block);
+	BottomBlocker->SetHiddenInGame(false);
+	BottomBlocker->ShapeColor = FColor::Red;
 }
 
 void ACoil::BeginPlay()
@@ -41,10 +48,8 @@ void ACoil::BeginPlay()
 	DetectionZone->SetBoxExtent(DetectionBoxExtent);
 	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
 	BaseCoilLocation = GetActorLocation();
-
 	CoilMesh->SetSimulatePhysics(false);
 
-	// ── F키 바인딩 ──
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 	{
 		EnableInput(PC);
@@ -60,13 +65,28 @@ void ACoil::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	if (!bCoilActive)
-	{
-		DetectedMagnets.Empty();
-		OscillationTime = 0.f;
-		SetActorLocation(BaseCoilLocation, false);
-		DebugVisualize();
-		return;
-	}
+{
+    for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
+    {
+        if (AActor* Magnet = MagnetPtr.Get())
+        {
+            if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Magnet->GetRootComponent()))
+            {
+                if (Root->IsSimulatingPhysics())
+                {
+                    Root->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                    Root->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                }
+            }
+        }
+    }
+
+    DetectedMagnets.Empty();
+    OscillationTime = 0.f;
+    SetActorLocation(BaseCoilLocation, false);
+    DebugVisualize();
+    return;
+}
 
 	DetectMagnets();
 	ApplyOscillation(DeltaTime);
@@ -78,15 +98,12 @@ void ACoil::Tick(float DeltaTime)
 void ACoil::ToggleCoil()
 {
 	bCoilActive = !bCoilActive;
-
-	UE_LOG(LogTemp, Log, TEXT("Coil [%s] → %s"),
-		*GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
+	UE_LOG(LogTemp, Log, TEXT("Coil [%s] -> %s"), *GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
 }
 
 void ACoil::DetectMagnets()
 {
 	DetectedMagnets.Empty();
-
 	if (!DetectionZone) return;
 
 	TArray<FOverlapResult> Hits;
@@ -95,7 +112,7 @@ void ACoil::DetectMagnets()
 
 	GetWorld()->OverlapMultiByObjectType(
 		Hits,
-		DetectionZone->GetComponentLocation(),
+		BaseCoilLocation,
 		DetectionZone->GetComponentQuat(),
 		FCollisionObjectQueryParams::AllObjects,
 		FCollisionShape::MakeBox(DetectionBoxExtent),
@@ -184,28 +201,28 @@ void ACoil::DebugVisualize()
 
 	if (!bCoilActive)
 	{
-		DrawDebugBox(GetWorld(), DetectionZone->GetComponentLocation(),
+		DrawDebugBox(GetWorld(), BaseCoilLocation,
 			DetectionBoxExtent, DetectionZone->GetComponentQuat(),
 			FColor(40, 40, 40), false, 0.f, 0, 2.f);
 
-		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 60.f),
+		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
 			TEXT("Coil OFF (Press F)"), nullptr, FColor::Silver, 0.f, true);
 		return;
 	}
 
 	const FColor BoxColor = bActive ? FColor::Green : FColor::Red;
-	DrawDebugBox(GetWorld(), DetectionZone->GetComponentLocation(),
+	DrawDebugBox(GetWorld(), BaseCoilLocation,
 		DetectionBoxExtent, DetectionZone->GetComponentQuat(),
 		BoxColor, false, 0.f, 0, 2.f);
 
 	const float CurrentRadius = MagneticFieldSphere->GetScaledSphereRadius();
 	const FColor SphereColor = bActive ? FColor::Blue : FColor(80, 80, 80);
-	DrawDebugSphere(GetWorld(), MagneticFieldSphere->GetComponentLocation(),
+	DrawDebugSphere(GetWorld(), BaseCoilLocation,
 		CurrentRadius, 24, SphereColor, false, 0.f, 0, 1.f);
 
 	if (bActive)
 	{
-		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 60.f),
+		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
 			FString::Printf(TEXT("Magnets: %d | Radius: %.0f | Field ON"),
 				DetectedMagnets.Num(), CurrentRadius),
 			nullptr, FColor::Green, 0.f, true);

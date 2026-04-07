@@ -33,7 +33,6 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 private:
-	// ── 컴포넌트 ──
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> CoilMesh;
 
@@ -43,18 +42,18 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USphereComponent> MagneticFieldSphere;
 
-	// ── ON/OFF ──
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UBoxComponent> BottomBlocker;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	bool bCoilActive = true;
 
-	// ── 감지 설정 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FVector DetectionBoxExtent = FVector(60.f, 30.f, 30.f);
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FName MagnetTag = TEXT("Magnet");
 
-	// ── 자기장 설정 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
 	float MagneticFieldRadius = 100.f;
 
@@ -64,7 +63,6 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
 	float MagneticForceStrength = 500000.f;
 
-	// ── 코일 진동 설정 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
 	float OscillationSpeed = 3.f;
 
@@ -74,18 +72,15 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
 	float SpeedPerExtraMagnet = 1.5f;
 
-	// ── 디버그 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
 	bool bDebugDraw = true;
 
-	// ── 내부 상태 ──
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> DetectedMagnets;
 
 	FVector BaseCoilLocation;
 	float OscillationTime = 0.f;
 
-	// ── 내부 함수 ──
 	void DetectMagnets();
 	void ApplyOscillation(float DeltaTime);
 	void ApplyMagneticForce();
