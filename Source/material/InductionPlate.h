@@ -16,6 +16,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "InductionPlate")
 	float GetTemperature() const { return TemperatureC; }
+	void ReceiveInductionHeat(float EnergyJ);
 
 protected:
 	virtual void BeginPlay() override;

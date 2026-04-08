@@ -32,3 +32,9 @@ void AInductionPlate::Tick(float DeltaTime)
 	}
 #endif
 }
+
+void AInductionPlate::ReceiveInductionHeat(float EnergyJ)
+{
+	if (EnergyJ <= 0.f) return;
+	TemperatureC += EnergyJ;
+}

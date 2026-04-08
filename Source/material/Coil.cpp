@@ -4,6 +4,7 @@
 #include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Wire.h"
+#include "InductionPlate.h"
 
 #include "Engine/OverlapResult.h"
 
@@ -97,6 +98,7 @@ void ACoil::Tick(float DeltaTime)
 	ApplyMagneticForce();
 	DebugVisualize();
 	UpdateCircuit();
+	ApplyInductionHeating(DeltaTime);
 }
 
 void ACoil::ToggleCoil()
@@ -287,4 +289,32 @@ void ACoil::UpdateCircuit()
         Wire->SetBatteryVoltage(CurrentEMF);
         ConnectedWires.Add(Wire);
     }
+}
+
+void ACoil::ApplyInductionHeating(float DeltaTime)
+{
+	if (!bCoilActive || CurrentEMF <= 0.f) return;
+
+	FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilInduction), false);
+	QParams.AddIgnoredActor(this);
+
+	TArray<FOverlapResult> Hits;
+	float Radius = MagneticFieldSphere->GetScaledSphereRadius();
+
+	GetWorld()->OverlapMultiByObjectType(
+		Hits, BaseCoilLocation, FQuat::Identity,
+		FCollisionObjectQueryParams::AllObjects,
+		FCollisionShape::MakeSphere(Radius), QParams);
+
+	for (const FOverlapResult& H : Hits)
+	{
+		AInductionPlate* Plate = Cast<AInductionPlate>(H.GetActor());
+		if (!Plate) continue;
+
+		float Distance = FVector::Dist(BaseCoilLocation, Plate->GetActorLocation());
+		float DistFactor = 1.f - FMath::Clamp(Distance / Radius, 0.f, 1.f);
+		float Energy = CurrentEMF * InductionHeatingRate * DistFactor * DeltaTime;
+
+		Plate->ReceiveInductionHeat(Energy);
+	}
 }
