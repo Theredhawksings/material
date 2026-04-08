@@ -17,11 +17,21 @@ void AInductionPlate::BeginPlay()
 {
 	Super::BeginPlay();
 	TemperatureC = 20.f;
+
+	
 }
 
 void AInductionPlate::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (PlateMesh)
+	{
+		float TempRatio = FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f);
+		int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
+		PlateMesh->SetRenderCustomDepth(StencilVal > 0);
+		PlateMesh->SetCustomDepthStencilValue(StencilVal);
+	}
 
 #if ENABLE_DRAW_DEBUG
 	if (bDebugDraw)
