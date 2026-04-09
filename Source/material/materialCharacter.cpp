@@ -220,9 +220,9 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 
 if (BackpackUIComp)
 {
-    BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.5f, 0.2f));
+    BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, 0.42f));
     BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
-    BackpackUIComp->SetRelativeScale3D(FVector(0.015f));  // 큰 스케일로 시작
+    BackpackUIComp->SetRelativeScale3D(FVector(0.016f, 0.016f, 0.020f));  // Y가 세로  // 큰 스케일로 시작
 }
 
 
@@ -884,6 +884,9 @@ if (BackpackUIComp)
 
 	void AmaterialCharacter::DecreaseGaugeForMaterial(const FName& MaterialTag)
 	{
+
+		UE_LOG(LogTemp, Warning, TEXT("★ DecreaseGauge: %s"), *MaterialTag.ToString());
+		
 		if (MaterialTag == TEXT("Joker"))
 			return;
 			
