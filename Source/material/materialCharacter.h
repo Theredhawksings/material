@@ -5,6 +5,8 @@
 #include "InputActionValue.h"
 #include "TestUI.h"
 #include "Materials/MaterialParameterCollection.h"
+#include "Components/WidgetComponent.h"
+
 #include "materialCharacter.generated.h"
 
 class USpringArmComponent;
@@ -260,5 +262,8 @@ private:
 	void OnWarpStage1();
 	void OnWarpStage2();
 	void OnWarpStage3();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UWidgetComponent> BackpackUIComp;
 	
 };
