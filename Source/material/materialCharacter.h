@@ -58,8 +58,8 @@ public:
 	float GetWoodGauge() const { return WoodGauge; }
 	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-	float GetJokerGauge() const { return JokerGauge; }
-	
+	float GetMagnetGauge() const { return MagnetGauge; }
+
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetRubberGaugePercent() const { return RubberGauge / 100.f; }
 	
@@ -73,7 +73,7 @@ public:
 	float GetWoodGaugePercent() const { return WoodGauge / 100.f; }
 	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-	float GetJokerGaugePercent() const { return JokerGauge / 100.f; }
+	float GetMagnetGaugePercent() const { return MagnetGauge / 100.f; }
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
     TSubclassOf<UTestUI> RadialMenuClass;
@@ -161,7 +161,7 @@ private:
 	float WoodGauge = 100.f;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	float JokerGauge = 100.f;
+	float MagnetGauge = 100.f;
 
 	UPROPERTY(EditAnywhere, Category = "Material Gauge")
 	float GaugeDecreaseAmount = 10.f;
