@@ -92,7 +92,7 @@
 
 
 BackpackUIComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("BackpackUIComp"));
-BackpackUIComp->SetupAttachment(RootComponent);
+BackpackUIComp->SetupAttachment(BackpackComp); 
 BackpackUIComp->SetWidgetSpace(EWidgetSpace::World);
 BackpackUIComp->SetTwoSided(true);
 BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
@@ -220,9 +220,9 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 
 if (BackpackUIComp)
 {
-    BackpackUIComp->SetRelativeLocation(FVector(0.f, 0.f, 300.f));
-    BackpackUIComp->SetRelativeRotation(FRotator(0.f, 180.f, 0.f));
-    BackpackUIComp->SetRelativeScale3D(FVector(5.0f));  // 큰 스케일로 시작
+    BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.5f, 0.2f));
+    BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
+    BackpackUIComp->SetRelativeScale3D(FVector(0.015f));  // 큰 스케일로 시작
 }
 
 
