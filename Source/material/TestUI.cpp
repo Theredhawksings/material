@@ -95,5 +95,22 @@ void UTestUI::ConfirmSelection()
     if (PreviousIndex < 0 || PreviousIndex > 4) return;
     if (!TargetActor) return;
 
-    TargetActor->SetForm(IndexToForm(PreviousIndex));
+    EBlockForm NewForm = IndexToForm(PreviousIndex);
+    TargetActor->SetForm(NewForm);
+
+    AmaterialCharacter* Player = Cast<AmaterialCharacter>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
+    if (Player)
+    {
+        FName Tag;
+        switch (NewForm)
+        {
+        case EBlockForm::Rubber: Tag = TEXT("Rubber"); break;
+        case EBlockForm::Metal:  Tag = TEXT("Metal");  break;
+        case EBlockForm::Ice:    Tag = TEXT("Ice");     break;
+        case EBlockForm::Wood:   Tag = TEXT("Wood");    break;
+        case EBlockForm::Magnet: Tag = TEXT("Magnet");  break;
+        default: return;
+        }
+        Player->DecreaseGaugeForMaterial(Tag);
+    }
 }
