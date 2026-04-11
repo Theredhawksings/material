@@ -220,6 +220,8 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 
 if (BackpackUIComp)
 {
+	    BackpackUIComp->SetBackgroundColor(FLinearColor::Transparent);
+    BackpackUIComp->SetBlendMode(EWidgetBlendMode::Transparent);
     BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, 0.42f));
     BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
     BackpackUIComp->SetRelativeScale3D(FVector(0.016f, 0.016f, 0.020f));  // Y가 세로  // 큰 스케일로 시작
