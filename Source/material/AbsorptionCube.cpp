@@ -1,27 +1,23 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "AbsorptionCube.h"
+#include "Components/StaticMeshComponent.h"
 
-// Sets default values
 AAbsorptionCube::AAbsorptionCube()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = false;
 
+    MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
+    RootComponent = MeshComp;
+
+    Tags.Add(TEXT("Absorption"));
 }
 
-// Called when the game starts or when spawned
 void AAbsorptionCube::BeginPlay()
 {
-	Super::BeginPlay();
-	
+    Super::BeginPlay();
 }
 
-// Called every frame
-void AAbsorptionCube::Tick(float DeltaTime)
+void AAbsorptionCube::ChargeAllGauges()
 {
-	Super::Tick(DeltaTime);
-
+    // TODO: 캐릭터 게이지 충전 로직 추가
+    Destroy();
 }
-
