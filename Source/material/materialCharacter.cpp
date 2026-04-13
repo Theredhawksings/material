@@ -715,6 +715,8 @@
 			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0.f, 100.f);
 		else if (MaterialTag == TEXT("Magnet"))
 			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0.f, 100.f);
+		else if (MaterialTag == TEXT("Copper"))
+    		CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0.f, 100.f);
 	}
 
 	void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
