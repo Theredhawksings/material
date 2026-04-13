@@ -1,4 +1,4 @@
-	#include "materialCharacter.h"
+#include "materialCharacter.h"
 	#include "Camera/CameraComponent.h"
 	#include "GameFramework/SpringArmComponent.h"
 	#include "GameFramework/CharacterMovementComponent.h"
@@ -11,8 +11,6 @@
 	#include "InputAction.h"
 	#include "Animation/AnimSequence.h"
 	#include "UObject/ConstructorHelpers.h"
-	#include "Materials/MaterialParameterCollection.h"
-	#include "Materials/MaterialParameterCollectionInstance.h"
 	#include "Transformation_actor.h"
 	#include "TimerManager.h"
 	#include "Framework/Application/SlateApplication.h"
@@ -90,18 +88,17 @@
 		if (BackpackMeshAsset.Succeeded())
 			BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
 
-
-BackpackUIComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("BackpackUIComp"));
-BackpackUIComp->SetupAttachment(BackpackComp); 
-BackpackUIComp->SetWidgetSpace(EWidgetSpace::World);
-BackpackUIComp->SetTwoSided(true);
-BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
+		BackpackUIComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("BackpackUIComp"));
+		BackpackUIComp->SetupAttachment(BackpackComp); 
+		BackpackUIComp->SetWidgetSpace(EWidgetSpace::World);
+		BackpackUIComp->SetTwoSided(true);
+		BackpackUIComp->SetDrawAtDesiredSize(true);
 
 		static ConstructorHelpers::FClassFinder<UUserWidget> BackpackUIBP(
     		TEXT("/Game/modeling/Character/backPack/WBP_BackpackUI"));
 		if (BackpackUIBP.Succeeded())
 		{
-    	BackpackUIComp->SetWidgetClass(BackpackUIBP.Class);
+    		BackpackUIComp->SetWidgetClass(BackpackUIBP.Class);
 		}
 		
 		ArmComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmComp"));
@@ -112,7 +109,7 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 		TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Right_Arm/Right_Arm.Right_Arm'"));
 		if (ArmMeshAsset.Succeeded())
 		{	
-		ArmComp->SetStaticMesh(ArmMeshAsset.Object);
+			ArmComp->SetStaticMesh(ArmMeshAsset.Object);
 		}
 		
 		ArmComp2 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmComp2"));
@@ -123,9 +120,8 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 		TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Left_Arm/Arm.Arm'"));
 		if (ArmMeshAsset2.Succeeded())
 		{
-		ArmComp2->SetStaticMesh(ArmMeshAsset2.Object);
+			ArmComp2->SetStaticMesh(ArmMeshAsset2.Object);
 		}
-
 
 		struct FAnimLoader { const TCHAR* Path; TObjectPtr<UAnimSequence>* Target; };
 		const FAnimLoader AnimAssets[] = {
@@ -134,8 +130,8 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 			{ TEXT("AnimSequence'/Game/modeling/Animation/bring.bring'"),             &PickupAnim }, 
 			{ TEXT("AnimSequence'/Game/modeling/Animation/idle_bring2.idle_bring2'"), &IdleBringAnim },
 			{ TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim },
-			{ TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"),           &UseEAnim },
-			{ TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"),     &UseLeftAnim },
+			{ TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"),             &UseEAnim },
+			{ TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"),       &UseLeftAnim },
 		};
 
 		for (const FAnimLoader& Loader : AnimAssets)
@@ -168,15 +164,11 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 		}
 
 		if (PickupTags.Num() == 0)
-			PickupTags = { TEXT("Metal"), TEXT("Rubber"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
+			PickupTags = { TEXT("Metal"), TEXT("Copper"), TEXT("Rubber"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
 
 		static ConstructorHelpers::FObjectFinder<UMaterial> PlayerMat(
 			TEXT("/Script/Engine.Material'/Game/modeling/Character/M_Character.M_Character'"));
 		if (PlayerMat.Succeeded()) GetMesh()->SetMaterial(0, PlayerMat.Object);
-
-		static ConstructorHelpers::FObjectFinder<UMaterialParameterCollection> HeatMPCAsset(
-			TEXT("/Script/Engine.MaterialParameterCollection'/Game/MPC_HeatSources.MPC_HeatSources'"));
-		if (HeatMPCAsset.Succeeded()) HeatMPC = HeatMPCAsset.Object;
 	}
 
 	void AmaterialCharacter::BeginPlay()
@@ -218,48 +210,36 @@ BackpackUIComp->SetDrawAtDesiredSize(true);  // ★ 위젯 자체 크기 사용
 			BackpackComp->SetRelativeScale3D(BackpackRelativeScale);
 		}
 
-if (BackpackUIComp)
-{
-	    BackpackUIComp->SetBackgroundColor(FLinearColor::Transparent);
-    BackpackUIComp->SetBlendMode(EWidgetBlendMode::Transparent);
-    BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, 0.42f));
-    BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
-    BackpackUIComp->SetRelativeScale3D(FVector(0.016f, 0.016f, 0.020f));  // Y가 세로  // 큰 스케일로 시작
-}
-
+		if (BackpackUIComp)
+		{
+			BackpackUIComp->SetBackgroundColor(FLinearColor::Transparent);
+			BackpackUIComp->SetBlendMode(EWidgetBlendMode::Transparent);
+			BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, 0.42f));
+			BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
+			BackpackUIComp->SetRelativeScale3D(FVector(0.016f, 0.016f, 0.020f));
+		}
 
 		if (ArmComp)
 		{
 			ArmComp->AttachToComponent(MeshComp,
 				FAttachmentTransformRules::SnapToTargetNotIncludingScale,
 				TEXT("hand_RSocket_0"));
-				
-		ArmComp->SetRelativeLocation(FVector(0.039308f, 0.063895f, -0.000174f));
-		ArmComp->SetRelativeRotation(FRotator::MakeFromEuler(FVector(-170.00052f, 0.000013f, -89.999984f)));
-		ArmComp->SetRelativeScale3D(FVector(0.1f, 0.14f, 0.14f));
+			ArmComp->SetRelativeLocation(FVector(0.039308f, 0.063895f, -0.000174f));
+			ArmComp->SetRelativeRotation(FRotator::MakeFromEuler(FVector(-170.00052f, 0.000013f, -89.999984f)));
+			ArmComp->SetRelativeScale3D(FVector(0.1f, 0.14f, 0.14f));
 		}
 
 		if (ArmComp2)
 		{
-		ArmComp2->AttachToComponent(
-			GetMesh(),
-			FAttachmentTransformRules::KeepRelativeTransform,
-			ArmSocketName2
-		);
-	\
-		ArmComp2->SetRelativeLocation(FVector(-0.031129f, 0.025846f, 0.032451f));
-		ArmComp2->SetRelativeRotation(FRotator(0.701087f, 90.0f, 103.319739f));
-		ArmComp2->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
+			ArmComp2->AttachToComponent(
+				GetMesh(),
+				FAttachmentTransformRules::KeepRelativeTransform,
+				ArmSocketName2
+			);
+			ArmComp2->SetRelativeLocation(FVector(-0.031129f, 0.025846f, 0.032451f));
+			ArmComp2->SetRelativeRotation(FRotator(0.701087f, 90.0f, 103.319739f));
+			ArmComp2->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
 		}
-
-		HeatPool.SetNum(7);
-		for (FHeatSlot& Slot : HeatPool)
-			Slot.bActive = false;
-
-		GetWorld()->GetTimerManager().SetTimer(
-			HeatSpawnTimer, this,
-			&AmaterialCharacter::SpawnHeatSlot,
-			HeatSpawnInterval, true);
 
 		FSlateApplication::Get().OnApplicationActivationStateChanged().AddUObject(
 			this, &AmaterialCharacter::OnWindowFocusChanged);
@@ -269,177 +249,15 @@ if (BackpackUIComp)
 	{
 		Super::Tick(DeltaTime);
 
-		// 애니메이션 중에는 HoldPivot 조정, 끝나면 앞에 떠있게
 		if (HeldActor)
 		{
 			if (bIsPickingUp)
-				UpdateHoldPivotTransform();  // 애니메이션 중
+				UpdateHoldPivotTransform();
 			else
-				UpdateHeldActorPosition();   // 애니메이션 끝남
+				UpdateHeldActorPosition();
 		}
 		
 		UpdateAnimation();
-
-		if (HeatMPC)
-		{
-			UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-			if (MPCInst)
-			{
-				if (IsMoving() && !bIsPickingUp)
-					HeatPos1CurrentRadius = FMath::Clamp(
-						HeatPos1CurrentRadius + HeatPos1GrowRate * DeltaTime, 0.f, 300.f);
-				else
-					HeatPos1CurrentRadius = FMath::Clamp(
-						HeatPos1CurrentRadius - HeatPos1ShrinkRate * DeltaTime, 0.f, 300.f);
-
-				FVector Pos = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-				MPCInst->SetVectorParameterValue(FName("HeatPos1"),
-					FLinearColor(Pos.X, Pos.Y, Pos.Z, HeatPos1CurrentRadius));
-			}
-		}
-
-		UpdateHeatSlots(DeltaTime);
-	}
-
-	void AmaterialCharacter::SpawnHeatSlot()
-	{
-		if (!IsMoving() || bIsPickingUp) return;
-
-		for (FHeatSlot& Slot : HeatPool)
-		{
-			if (!Slot.bActive)
-			{
-				Slot.Position    = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-				Slot.Temperature = 1.0f;
-				Slot.Radius      = HeatInitialRadius;
-				Slot.bActive     = true;
-				return;
-			}
-		}
-
-		int32 OldestIdx = 0;
-		float MinTemp   = HeatPool[0].Temperature;
-		for (int32 i = 1; i < HeatPool.Num(); i++)
-		{
-			if (HeatPool[i].Temperature < MinTemp)
-			{
-				MinTemp   = HeatPool[i].Temperature;
-				OldestIdx = i;
-			}
-		}
-		HeatPool[OldestIdx].Position    = GetActorLocation() + FVector(0.f, 0.f, -90.f);
-		HeatPool[OldestIdx].Temperature = 1.0f;
-		HeatPool[OldestIdx].Radius      = HeatInitialRadius;
-		HeatPool[OldestIdx].bActive     = true;
-	}
-
-	void AmaterialCharacter::UpdateHeatSlots(float DeltaTime)
-	{
-		if (!HeatMPC) return;
-		UMaterialParameterCollectionInstance* MPCInst = GetWorld()->GetParameterCollectionInstance(HeatMPC);
-		if (!MPCInst) return;
-
-		TSet<AActor*> HeatedActors;
-
-		for (int32 i = 0; i < HeatPool.Num(); i++)
-		{
-			FHeatSlot& Slot     = HeatPool[i];
-			FName      ParamName = FName(*FString::Printf(TEXT("HeatPos%d"), i + 2));
-
-			if (!Slot.bActive)
-			{
-				MPCInst->SetVectorParameterValue(ParamName,
-					FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
-				continue;
-			}
-
-			Slot.Temperature -= HeatCoolRate    * DeltaTime;
-			Slot.Radius      -= HeatRadiusDecay * DeltaTime;
-
-			if (Slot.Temperature < 0.05f || Slot.Radius < 10.f)
-			{
-				Slot.bActive = false;
-				MPCInst->SetVectorParameterValue(ParamName,
-					FLinearColor(-999999.f, -999999.f, -999999.f, 0.f));
-				continue;
-			}
-
-			MPCInst->SetVectorParameterValue(ParamName,
-				FLinearColor(Slot.Position.X, Slot.Position.Y, Slot.Position.Z,
-					Slot.Radius * Slot.Temperature));
-
-			float CollisionRadius = Slot.Radius * FMath::Pow(Slot.Temperature, 3.0f);
-			//DrawDebugSphere(GetWorld(), Slot.Position, CollisionRadius, 16, FColor::Red, false, 0.0f);
-
-			TArray<FOverlapResult> Overlaps;
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(HeatOverlap), false, this);
-			GetWorld()->OverlapMultiByChannel(
-				Overlaps, Slot.Position, FQuat::Identity,
-				ECC_Visibility, FCollisionShape::MakeSphere(CollisionRadius), Params);
-
-			for (FOverlapResult& Overlap : Overlaps)
-			{
-				AActor* HitActor = Overlap.GetActor();
-				if (!HitActor || HitActor == this) continue;
-
-				if (!HitActor->ActorHasTag(TEXT("Metal")) && !HitActor->ActorHasTag(TEXT("Rubber"))) continue;
-
-				HeatedActors.Add(HitActor);
-
-				float& Heat = ActorHeatMap.FindOrAdd(HitActor, -1.f);
-				if (Heat < 0.f) 
-				{
-					Heat = 0.f;
-					TArray<UPrimitiveComponent*> PrimComps;
-					HitActor->GetComponents<UPrimitiveComponent>(PrimComps);
-					if (PrimComps.Num() > 0)
-					{
-						ActorBaseStencilMap.Add(HitActor, PrimComps[0]->CustomDepthStencilValue);
-						for (UPrimitiveComponent* PC : PrimComps)
-							if (PC) PC->SetRenderCustomDepth(true);
-					}
-				}
-				Heat = FMath::Clamp(Heat + ActorHeatIncreaseRate * DeltaTime, 0.f, 1.f);
-			}
-		}
-
-		for (auto It = ActorHeatMap.CreateIterator(); It; ++It)
-		{
-			AActor* Actor = It.Key();
-			float&  Heat  = It.Value();
-
-			if (!HeatedActors.Contains(Actor))
-				Heat = FMath::Clamp(Heat - ActorHeatDecayRate * DeltaTime, 0.f, 1.f);
-
-			TArray<UPrimitiveComponent*> PrimComps;
-			Actor->GetComponents<UPrimitiveComponent>(PrimComps);
-
-			int32 BaseStencil = ActorBaseStencilMap.FindRef(Actor);
-			int32 HeatAdd     = FMath::RoundToInt(Heat * (float)HotStencilValue);
-			int32 FinalStencil = FMath::Clamp(BaseStencil + HeatAdd, 0, 255);
-
-			for (UPrimitiveComponent* PC : PrimComps)
-				if (PC) PC->SetCustomDepthStencilValue(FinalStencil);
-
-			/*DrawDebugString(
-				GetWorld(),
-				Actor->GetActorLocation() + FVector(0.f, 0.f, 100.f),
-				FString::Printf(TEXT("Stencil: %d"), FinalStencil),
-				nullptr, FColor::Yellow, 0.0f, true
-			);*/
-
-			if (Heat <= 0.f)
-			{
-				for (UPrimitiveComponent* PC : PrimComps)
-					if (PC)
-					{
-						PC->SetCustomDepthStencilValue(BaseStencil);
-						PC->SetRenderCustomDepth(false);
-					}
-				ActorBaseStencilMap.Remove(Actor);
-				It.RemoveCurrent();
-			}
-		}
 	}
 
 	void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -449,13 +267,12 @@ if (BackpackUIComp)
 		PlayerInputComponent->BindAction("ChangeForm",  IE_Pressed, this, &AmaterialCharacter::ChangeForm);
 		PlayerInputComponent->BindAction("Hold",        IE_Pressed, this, &AmaterialCharacter::HoldPressed);
 		PlayerInputComponent->BindAction("Checkweight", IE_Pressed, this, &AmaterialCharacter::CheckWeight);
-		PlayerInputComponent->BindAction("laboratory", IE_Pressed, this, &AmaterialCharacter::OnWarpLaboratory);
-		PlayerInputComponent->BindAction("Stage1", IE_Pressed, this, &AmaterialCharacter::OnWarpStage1);
-		PlayerInputComponent->BindAction("Stage2", IE_Pressed, this, &AmaterialCharacter::OnWarpStage2);
-		PlayerInputComponent->BindAction("Stage3", IE_Pressed, this, &AmaterialCharacter::OnWarpStage3);	
+		PlayerInputComponent->BindAction("laboratory",  IE_Pressed, this, &AmaterialCharacter::OnWarpLaboratory);
+		PlayerInputComponent->BindAction("Stage1",      IE_Pressed, this, &AmaterialCharacter::OnWarpStage1);
+		PlayerInputComponent->BindAction("Stage2",      IE_Pressed, this, &AmaterialCharacter::OnWarpStage2);
+		PlayerInputComponent->BindAction("Stage3",      IE_Pressed, this, &AmaterialCharacter::OnWarpStage3);	
 
 		UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
-
 		if (!EIC) return;
 
 		if (IA_Move)      EIC->BindAction(IA_Move,      ETriggerEvent::Triggered, this, &AmaterialCharacter::Move);
@@ -469,7 +286,7 @@ if (BackpackUIComp)
 		}
 		
 		if (IA_LeftClick) EIC->BindAction(IA_LeftClick, ETriggerEvent::Started, this, &AmaterialCharacter::OnLeftClick);
-		if (IA_Escape) EIC->BindAction(IA_Escape, ETriggerEvent::Started, this, &AmaterialCharacter::OnEscapePressed);
+		if (IA_Escape)    EIC->BindAction(IA_Escape,    ETriggerEvent::Started, this, &AmaterialCharacter::OnEscapePressed);
 	}
 
 	void AmaterialCharacter::Move(const FInputActionValue& Value)
@@ -539,7 +356,6 @@ if (BackpackUIComp)
 
 	void AmaterialCharacter::OnLeftClick()
 	{
-		
 		if(bRadialMenuOpen)
 		{
 			CloseRadialMenu(true);
@@ -612,8 +428,6 @@ if (BackpackUIComp)
 		if (!PendingPickupActor || !HoldPivot) return;
 		CaptureHeldLocalExtent(PendingPickupActor);
 
-		// HeldRelativeQuat는 TryPickup()에서 이미 저장됨 — 여기서 다시 계산하지 않음
-
 		HeldActor = PendingPickupActor;
 		PendingPickupActor = nullptr;
 		
@@ -632,11 +446,10 @@ if (BackpackUIComp)
 	{
 		bIsPickingUp = false;
 		
-		// 애니메이션 끝나면 HoldPivot에서 분리
 		if (HeldActor)
 		{
 			HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-			SetPrimitiveComponentsPhysics(HeldActor, false); // 물리는 여전히 꺼둠
+			SetPrimitiveComponentsPhysics(HeldActor, false);
 		}
 		
 		GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
@@ -651,7 +464,6 @@ if (BackpackUIComp)
 	{
 		if (!HeldActor) return;
 
-		// ★ 물체 크기 비율로 거리 조정 (기준: 50 = 1.0 스케일 큐브의 extent)
 		float SizeRatio = FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.3f, 1.2f);
 		float DistanceScale = FMath::Lerp(0.6f, 1.05f, SizeRatio);
 		float AdjustedDistance = HoldDistance * DistanceScale;
@@ -743,25 +555,25 @@ if (BackpackUIComp)
 
 		float ObjectScale = 0.4f;
 
-	if (HeldActor)
-	{
-		if (UStaticMeshComponent* MeshComp = HeldActor->FindComponentByClass<UStaticMeshComponent>())
+		if (HeldActor)
 		{
-			ObjectScale = MeshComp->GetComponentScale().GetMax();
+			if (UStaticMeshComponent* MeshComp = HeldActor->FindComponentByClass<UStaticMeshComponent>())
+			{
+				ObjectScale = MeshComp->GetComponentScale().GetMax();
+			}
+			else
+			{
+				ObjectScale = HeldActor->GetActorScale3D().GetMax();
+			}
 		}
-		else
-		{
-			ObjectScale = HeldActor->GetActorScale3D().GetMax();
-		}
-	}
 
-	UE_LOG(LogTemp, Warning, TEXT("ObjectScale = %f"), ObjectScale);
+		UE_LOG(LogTemp, Warning, TEXT("ObjectScale = %f"), ObjectScale);
 
-	float AdjustedY = FMath::GetMappedRangeValueClamped(
-		FVector2D(-0.1f, 1.0f),
-		FVector2D(-0.25f, -0.40f),
-		ObjectScale
-	);
+		float AdjustedY = FMath::GetMappedRangeValueClamped(
+			FVector2D(-0.1f, 1.0f),
+			FVector2D(-0.25f, -0.40f),
+			ObjectScale
+		);
 
 		FVector FinalLoc(-0.20f, AdjustedY, 0.10f);
 
@@ -886,7 +698,6 @@ if (BackpackUIComp)
 
 	void AmaterialCharacter::DecreaseGaugeForMaterial(const FName& MaterialTag)
 	{
-
 		UE_LOG(LogTemp, Warning, TEXT("★ DecreaseGauge: %s"), *MaterialTag.ToString());
 		
 		if (MaterialTag == TEXT("Joker"))
@@ -896,6 +707,8 @@ if (BackpackUIComp)
 			RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0.f, 100.f);
 		else if (MaterialTag == TEXT("Metal"))
 			MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0.f, 100.f);
+		else if (MaterialTag == TEXT("Copper"))
+			CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0.f, 100.f);
 		else if (MaterialTag == TEXT("Ice"))
 			IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0.f, 100.f);
 		else if (MaterialTag == TEXT("Wood"))
@@ -980,7 +793,6 @@ if (BackpackUIComp)
 		bRadialMenuOpen = false;
 		UpdateAnimation();
 	}
-	
 
 	void AmaterialCharacter::OnUseEAnimFinished()
 	{
@@ -1003,7 +815,6 @@ if (BackpackUIComp)
 		bIsPlayingWalk = false;
 		UpdateAnimation();
 	}
-
 
 	void AmaterialCharacter::WarpToLevel(const FString& LevelPath)
 	{

@@ -4,7 +4,6 @@
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
 #include "TestUI.h"
-#include "Materials/MaterialParameterCollection.h"
 #include "Components/WidgetComponent.h"
 
 #include "materialCharacter.generated.h"
@@ -17,21 +16,6 @@ class UAnimSequence;
 class UStaticMeshComponent;
 class USceneComponent;
 class ATransformation_actor;
-
-struct FHeatSlot
-{
-	FVector Position;
-	float   Temperature;
-	float   Radius;
-	bool    bActive;
-
-	FHeatSlot()
-		: Position(FVector::ZeroVector)
-		, Temperature(0.f)
-		, Radius(0.f)
-		, bActive(false)
-	{}
-};
 
 UCLASS()
 class MATERIAL_API AmaterialCharacter : public ACharacter
@@ -49,33 +33,29 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetRubberGauge() const { return RubberGauge; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetMetalGauge() const { return MetalGauge; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetIceGauge() const { return IceGauge; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetWoodGauge() const { return WoodGauge; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetMagnetGauge() const { return MagnetGauge; }
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetCopperGauge() const { return CopperGauge; }
 
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetRubberGaugePercent() const { return RubberGauge / 100.f; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetMetalGaugePercent() const { return MetalGauge / 100.f; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetIceGaugePercent() const { return IceGauge / 100.f; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetWoodGaugePercent() const { return WoodGauge / 100.f; }
-	
 	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 	float GetMagnetGaugePercent() const { return MagnetGauge / 100.f; }
+	UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+	float GetCopperGaugePercent() const { return CopperGauge / 100.f; }
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
     TSubclassOf<UTestUI> RadialMenuClass;
@@ -102,10 +82,8 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> BackpackComp;
-	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> ArmComp;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> ArmComp2;
 
@@ -148,22 +126,19 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Interaction") float InteractRange = 2000.f;
 	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 0;
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") TObjectPtr<UMaterialParameterCollection> HeatMPC;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	float RubberGauge = 100.f;
-	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	float MetalGauge = 100.f;
-	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	float IceGauge = 100.f;
-	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	float WoodGauge = 100.f;
-	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	float MagnetGauge = 100.f;
+	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
+	float CopperGauge = 100.f;
 
 	UPROPERTY(EditAnywhere, Category = "Material Gauge")
 	float GaugeDecreaseAmount = 10.f;
@@ -175,31 +150,9 @@ private:
 	uint8 bWasHolding    : 1;
 	uint8 bIsPickingUp   : 1;
 
-	TArray<FHeatSlot> HeatPool;
-	FTimerHandle      HeatSpawnTimer;
-
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatSpawnInterval    = 0.3f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatInitialRadius    = 300.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1ShrinkRate  = 80.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatPos1GrowRate    = 400.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatCoolRate        = 0.3f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float HeatRadiusDecay     = 20.f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float ActorHeatIncreaseRate = 2.0f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") float ActorHeatDecayRate    = 0.5f;
-	UPROPERTY(EditAnywhere, Category = "Thermal") int32 ColdStencilValue      = 1;
-	UPROPERTY(EditAnywhere, Category = "Thermal") int32 HotStencilValue        = 5;
-
-	float HeatPos1CurrentRadius = 300.f;
-
-	TMap<AActor*, float> ActorHeatMap;
-	TMap<AActor*, int32> ActorBaseStencilMap;
-
 	bool bMouseCaptured = false;
 	bool bHadFocusBefore = false;
 	bool bGamePaused = false;
-
-	void SpawnHeatSlot();
-	void UpdateHeatSlots(float DeltaTime);
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -265,5 +218,4 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> BackpackUIComp;
-	
 };
