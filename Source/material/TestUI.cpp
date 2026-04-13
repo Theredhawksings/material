@@ -37,7 +37,7 @@ void UTestUI::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
         float Distance = Direction.Size();
 
         float Deadzone = 50.0f;
-        int32 Segments = 5;
+        int32 Segments = 6;
 
         if (Distance > Deadzone)
         {
@@ -86,13 +86,14 @@ EBlockForm UTestUI::IndexToForm(int32 Index) const
     case 2: return EBlockForm::Metal;
     case 3: return EBlockForm::Wood;
     case 4: return EBlockForm::Magnet;
+    case 5: return EBlockForm::Copper;
     default: return EBlockForm::Ice;
     }
 }
 
 void UTestUI::ConfirmSelection()
 {
-    if (PreviousIndex < 0 || PreviousIndex > 4) return;
+    if (PreviousIndex < 0 || PreviousIndex > 5) return;
     if (!TargetActor) return;
 
     EBlockForm NewForm = IndexToForm(PreviousIndex);
@@ -109,6 +110,7 @@ void UTestUI::ConfirmSelection()
         case EBlockForm::Ice:    Tag = TEXT("Ice");     break;
         case EBlockForm::Wood:   Tag = TEXT("Wood");    break;
         case EBlockForm::Magnet: Tag = TEXT("Magnet");  break;
+        case EBlockForm::Copper: Tag = TEXT("Copper");  break;
         default: return;
         }
         Player->DecreaseGaugeForMaterial(Tag);

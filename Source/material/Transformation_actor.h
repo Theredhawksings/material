@@ -20,6 +20,7 @@ enum class EBlockForm : uint8
     Ice,
     Rubber,
     Metal,
+    Copper,     // ★ 신규: 반자성 + 고전도율
     Wood,
     Magnet
 };
@@ -68,6 +69,9 @@ public:
     void SetPowered(bool bNewPowered);
     bool IsElectrified() const { return bElectrified; }
 
+    // ★ 전기 전도 가능 폼인지 (Metal 또는 Copper)
+    bool IsConductive() const { return CurrentForm == EBlockForm::Metal || CurrentForm == EBlockForm::Copper; }
+
     UPROPERTY()
     TObjectPtr<AActor> SpawnedArrowEffect;
 
@@ -86,8 +90,16 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Form")
     TArray<FBlockFormSpec> FormSpecs;
 
+    // ★ Copper 추가
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Form")
-    TArray<EBlockForm> CycleOrder = { EBlockForm::Metal, EBlockForm::Ice, EBlockForm::Rubber, EBlockForm::Wood, EBlockForm::Magnet };
+    TArray<EBlockForm> CycleOrder = {
+        EBlockForm::Metal,
+        EBlockForm::Copper,
+        EBlockForm::Ice,
+        EBlockForm::Rubber,
+        EBlockForm::Wood,
+        EBlockForm::Magnet
+    };
 
     UFUNCTION(BlueprintCallable, Category="Form")
     void SetForm(EBlockForm NewForm);
@@ -110,9 +122,26 @@ public:
     EBlockForm GetCurrentForm() const { return CurrentForm; }
     const FBlockFormSpec* FindSpec(EBlockForm Form) const;
 
-    // ── 재질별 에디터 프로퍼티 ──
+    // ── Metal 전기 프로퍼티 (기존 그대로) ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Metal|Electric") float WireSenseExtraRadius = 8.f;
 
+    // ★ ── Copper 전용 프로퍼티 ──
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Copper|Electric")
+    float CopperConductivityMultiplier = 6.0f;      // Metal 대비 전도율 배수
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Copper|Electric")
+    float CopperWireSenseExtraRadius = 12.f;         // 더 넓은 와이어 감지
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Copper|Diamagnetic")
+    float DiamagneticRepulsionForce = 800.f;         // 반자성 척력 세기
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Copper|Diamagnetic")
+    float DiamagneticMaxRange = 200.f;               // 반자성 최대 작용 거리
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Copper|Diamagnetic")
+    float DiamagneticDecayExponent = 2.0f;           // 거리 감쇠 지수
+
+    // ── Ice 프로퍼티 (기존 그대로) ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")    UMaterialInterface* IceMeltMaterial = nullptr;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Visual")    FName MeltParamName = TEXT("MeltAlpha");
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ice|Melt")      float MinScaleRatio = 0.01f;
@@ -185,9 +214,11 @@ public:
     UPROPERTY(EditAnywhere, Category="Form|Heat") float FormMassKg = 5.f;
     UPROPERTY(EditAnywhere, Category="Form|Heat") float FormSpecificHeatJPerKgK = 500.f;
 
+    // ── 태그 ──
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") bool  bAutoUpdateTags = true;
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName IceTag = "Ice";
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName MetalTag = "Metal";
+    UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName CopperTag = "Copper";   // ★ 신규
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName WoodTag = "Wood";
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName RubberTag = "Rubber";
     UPROPERTY(EditAnywhere, Category="Transformation|Tags") FName MagnetTag = "Magnet";
@@ -196,7 +227,7 @@ public:
     FVector GetSouthPoleWorldDir() const;
 
 private:
-    // ── 전기 ──
+    // ── 전기 (Metal + Copper 공용) ──
     void RefreshConnectedWires();
     void SetElectrified(bool bNewElectrified);
     void EnergizeWiresIfElectrified();
@@ -232,13 +263,12 @@ private:
     void ApplyInducedMagnetism();
     float CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrengthVal) const;
 
-    // ── [최적화] 공용 유틸리티 ──
-
-    /** 열원→자신 거리(cm)로부터 수신 전력(W) 계산. Ice/Wood/FormHeat 공용 */
+    // ── 공용 유틸리티 ──
     float CalcReceivedPower(float DistCm) const;
-
-    /** 스텐실 값이 바뀔 때만 실제 Set 호출 (렌더 스레드 부하 감소) */
     void SetStencilSafe(int32 NewValue, bool bDepthOn);
+
+    // ★ 전도체 와이어 감지 반경 (Metal/Copper에 따라 다름)
+    float GetWireSenseRadius() const;
 
 private:
     UPROPERTY(Transient) UMaterialInstanceDynamic* IceMID = nullptr;
@@ -268,6 +298,7 @@ private:
     FTimerHandle RefreshTimerHandle;
 
     UPROPERTY(Transient) TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
+    UPROPERTY(Transient) TSet<TObjectPtr<UPrimitiveComponent>> OverlappingCoppers;
     UPROPERTY(Transient) TArray<TObjectPtr<AWire>> MagnetContactedWires;
 
     float TimeSinceLastMagnetRefresh = 0.f;
