@@ -39,8 +39,7 @@ ATransformation_actor::ATransformation_actor()
 }
 
 // ============================================================================
-//  [최적화] CalcReceivedPower — 열 유속 공용 계산
-//  Ice Tick, Wood Tick, UpdateFormHeat 에서 동일 코드 3번 반복 → 1곳으로 통합
+//  공용 유틸리티
 // ============================================================================
 float ATransformation_actor::CalcReceivedPower(float DistCm) const
 {
@@ -60,9 +59,6 @@ float ATransformation_actor::CalcReceivedPower(float DistCm) const
     return ReceivedW;
 }
 
-// ============================================================================
-//  [최적화] SetStencilSafe — 값 변경 시에만 렌더 커맨드 전송
-// ============================================================================
 void ATransformation_actor::SetStencilSafe(int32 NewValue, bool bDepthOn)
 {
     if (!MeshComp) return;
@@ -79,6 +75,14 @@ void ATransformation_actor::SetStencilSafe(int32 NewValue, bool bDepthOn)
     }
 }
 
+// ★ Metal/Copper에 따라 와이어 감지 반경이 다름
+float ATransformation_actor::GetWireSenseRadius() const
+{
+    if (CurrentForm == EBlockForm::Copper)
+        return FMath::Max(MeshComp->Bounds.SphereRadius + CopperWireSenseExtraRadius, 5.f);
+    return FMath::Max(MeshComp->Bounds.SphereRadius + WireSenseExtraRadius, 5.f);
+}
+
 // ============================================================================
 //  BeginPlay
 // ============================================================================
@@ -90,6 +94,9 @@ void ATransformation_actor::BeginPlay()
 
     if (!CycleOrder.Contains(EBlockForm::Magnet))
         CycleOrder.Add(EBlockForm::Magnet);
+    // ★ Copper도 사이클에 포함 보장
+    if (!CycleOrder.Contains(EBlockForm::Copper))
+        CycleOrder.Add(EBlockForm::Copper);
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
         ApplySpec(*Spec);
@@ -111,6 +118,7 @@ void ATransformation_actor::BeginPlay()
     {
         EnterMagnetMode();
     }
+    // ★ Copper/Metal은 특별한 Enter 없음 (전기는 타이머가 처리)
 
     GetWorld()->GetTimerManager().SetTimer(
         RefreshTimerHandle, this,
@@ -140,18 +148,20 @@ void ATransformation_actor::OnConstruction(const FTransform& Transform)
 }
 
 // ============================================================================
-//  Metal 전기
+//  전기 시스템 — Metal + Copper 공용 (IsConductive)
 // ============================================================================
 void ATransformation_actor::SetPowered(bool bNewPowered)
 {
-    if (CurrentForm != EBlockForm::Metal || bElectrified == bNewPowered) return;
+    // ★ Metal 또는 Copper일 때 전기 전도
+    if (!IsConductive() || bElectrified == bNewPowered) return;
     SetElectrified(bNewPowered);
     EnergizeWiresIfElectrified();
 }
 
 void ATransformation_actor::RefreshConnectedWires()
 {
-    if (CurrentForm != EBlockForm::Metal || !MeshComp)
+    // ★ Metal 또는 Copper가 아니면 전기 끊기
+    if (!IsConductive() || !MeshComp)
     {
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
             if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
@@ -165,7 +175,8 @@ void ATransformation_actor::RefreshConnectedWires()
     if (!World) { ConnectedWires.Empty(); SetElectrified(false); return; }
 
     const FVector Center = MeshComp->Bounds.Origin;
-    const float Radius = FMath::Max(MeshComp->Bounds.SphereRadius + WireSenseExtraRadius, 5.f);
+    // ★ Copper는 더 넓은 감지 반경
+    const float Radius = GetWireSenseRadius();
 
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MetalWireSense), false);
     Q.AddIgnoredActor(this);
@@ -229,7 +240,7 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
 }
 
 // ============================================================================
-//  Tick — Ice/Wood는 CalcReceivedPower 사용으로 간결화
+//  Tick
 // ============================================================================
 void ATransformation_actor::Tick(float DeltaTime)
 {
@@ -296,10 +307,11 @@ void ATransformation_actor::Tick(float DeltaTime)
         }
     }
 
-    // ── Metal / Rubber / Magnet 공용 열 ──
+    // ── Metal / Rubber / Magnet / ★Copper 공용 열 ──
     if (CurrentForm == EBlockForm::Metal
      || CurrentForm == EBlockForm::Rubber
-     || CurrentForm == EBlockForm::Magnet)
+     || CurrentForm == EBlockForm::Magnet
+     || CurrentForm == EBlockForm::Copper)   // ★ Copper도 열 시스템 참여
     {
         UpdateFormHeat(DeltaTime);
     }
@@ -342,6 +354,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     case EBlockForm::Wood:   ExitWoodMode();   break;
     case EBlockForm::Magnet: ExitMagnetMode(); break;
     case EBlockForm::Metal:
+    case EBlockForm::Copper:   // ★ Copper도 Metal과 같은 전기 정리
         SetElectrified(false);
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
             if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
@@ -387,6 +400,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     case EBlockForm::Magnet:
         EnterMagnetMode();
         break;
+    // ★ Copper/Metal: 특별한 Enter 불필요, 타이머 RefreshConnectedWires가 처리
     default: break;
     }
 }
@@ -401,7 +415,11 @@ void ATransformation_actor::DecreaseGaugeForCurrentTag()
     AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn());
     if (!PlayerChar) return;
 
-    static const FName TagNames[] = { TEXT("Rubber"), TEXT("Metal"), TEXT("Ice"), TEXT("Wood"), TEXT("Magnet") };
+    // ★ Copper 추가
+    static const FName TagNames[] = {
+        TEXT("Rubber"), TEXT("Metal"), TEXT("Copper"),
+        TEXT("Ice"), TEXT("Wood"), TEXT("Magnet")
+    };
     for (const FName& Tag : TagNames)
     {
         if (ActorHasTag(Tag)) { PlayerChar->DecreaseGaugeForMaterial(Tag); return; }
@@ -427,6 +445,7 @@ void ATransformation_actor::UpdateTagsForForm(EBlockForm Form)
     {
     case EBlockForm::Ice:    Tags.AddUnique(IceTag);    break;
     case EBlockForm::Metal:  Tags.AddUnique(MetalTag);  break;
+    case EBlockForm::Copper: Tags.AddUnique(CopperTag); break;  // ★
     case EBlockForm::Wood:   Tags.AddUnique(WoodTag);   break;
     case EBlockForm::Rubber: Tags.AddUnique(RubberTag); break;
     case EBlockForm::Magnet: Tags.AddUnique(MagnetTag); break;
@@ -438,6 +457,7 @@ void ATransformation_actor::ClearAllFormTags()
 {
     Tags.Remove(IceTag);
     Tags.Remove(MetalTag);
+    Tags.Remove(CopperTag);    // ★
     Tags.Remove(WoodTag);
     Tags.Remove(RubberTag);
     Tags.Remove(MagnetTag);
@@ -474,7 +494,7 @@ void ATransformation_actor::StopHeating()
         if (CurrentForm == EBlockForm::Wood && bIsBurning) return;
         if (CurrentForm == EBlockForm::Ice || CurrentForm == EBlockForm::Wood)
             SetStencilSafe(0, false);
-        // Metal, Rubber, Magnet: UpdateFormHeat가 냉각 처리
+        // Metal, Rubber, Magnet, ★Copper: UpdateFormHeat가 냉각 처리
     }
 }
 
@@ -619,7 +639,7 @@ FVector ATransformation_actor::GetNorthPoleWorldDir() const
 FVector ATransformation_actor::GetSouthPoleWorldDir() const { return -GetNorthPoleWorldDir(); }
 
 // ============================================================================
-//  UpdateFormHeat
+//  UpdateFormHeat — ★ Copper도 참여 (Metal과 동일 로직)
 // ============================================================================
 void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 {
@@ -631,6 +651,8 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
     case EBlockForm::Metal:  MaxTempC = MetalMaxHeatTempC;  MaxStencil = MetalMaxStencilValue;  break;
     case EBlockForm::Rubber: MaxTempC = RubberMaxHeatTempC; MaxStencil = RubberMaxStencilValue; break;
     case EBlockForm::Magnet: MaxTempC = MagnetCurieTempC;   MaxStencil = MagnetMaxStencilValue; break;
+    // ★ Copper: Metal과 같은 열 파라미터 사용 (나중에 분리 가능)
+    case EBlockForm::Copper: MaxTempC = MetalMaxHeatTempC;  MaxStencil = MetalMaxStencilValue;  break;
     default: return;
     }
 
@@ -641,7 +663,9 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
         const float ReceivedW = CalcReceivedPower(DistCm);
         if (ReceivedW > 0.f)
         {
-            FormTemperatureC += (ReceivedW * DeltaTime * FormHeatSimTimeScale)
+            // ★ Copper는 열전도율이 높으므로 더 빠르게 가열
+            const float ConductivityMul = (CurrentForm == EBlockForm::Copper) ? CopperConductivityMultiplier : 1.0f;
+            FormTemperatureC += (ReceivedW * DeltaTime * FormHeatSimTimeScale * ConductivityMul)
                               / (FormMassKg * FormSpecificHeatJPerKgK);
         }
     }
@@ -652,7 +676,6 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 
     FormTemperatureC = FMath::Min(FormTemperatureC, MaxTempC);
 
-    // 열원 없고 상온이면 아래 연산 전부 스킵 (매 프레임 절약)
     const bool bAtRoomTemp = (FormTemperatureC <= 20.f + KINDA_SMALL_NUMBER);
 
     const float HeatRatio = bAtRoomTemp ? 0.f
@@ -660,9 +683,8 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 
     const int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
 
-    // 스텐실 적용
     if (CurrentForm == EBlockForm::Magnet)
-        SetStencilSafe(StencilValue, true);    // 자석: 항상 ON
+        SetStencilSafe(StencilValue, true);
     else
         SetStencilSafe(StencilValue, StencilValue > 0);
 
@@ -685,6 +707,7 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
             BaseMagnetStrength = 0.f;
             TimeSinceLastMagnetRefresh = 0.f;
             OverlappingMetals.Empty();
+            OverlappingCoppers.Empty();    // ★
             MagnetContactedWires.Empty();
             PreviousOverlappingMetals.Empty();
 
@@ -744,9 +767,7 @@ void ATransformation_actor::UpdateMagnetArrowPower(float PowerRatio)
 }
 
 // ============================================================================
-//  [최적화] UpdateMagnetElectroBoost
-//  GetAllActorsOfClass(AWire) → 공간 쿼리(OverlapMulti)로 교체
-//  월드 전체 순회 → WireContactRadius 범위만 검색
+//  UpdateMagnetElectroBoost
 // ============================================================================
 void ATransformation_actor::UpdateMagnetElectroBoost()
 {
@@ -756,7 +777,6 @@ void ATransformation_actor::UpdateMagnetElectroBoost()
 
     const FVector MyLoc = GetActorLocation();
 
-    // 공간 쿼리로 반경 내 와이어만 검색 (GetAllActorsOfClass 대비 훨씬 빠름)
     FCollisionQueryParams Q(SCENE_QUERY_STAT(ElectroBoost), false);
     Q.AddIgnoredActor(this);
 
@@ -770,7 +790,6 @@ void ATransformation_actor::UpdateMagnetElectroBoost()
         AWire* Wire = Cast<AWire>(H.GetActor());
         if (!Wire || !Wire->IsPowered()) continue;
 
-        // 이미 처리한 와이어 스킵
         if (MagnetContactedWires.Contains(Wire)) continue;
 
         bool bClose = false;
@@ -817,7 +836,7 @@ void ATransformation_actor::ApplyInducedMagnetism()
     const FVector MagnetLoc = GetActorLocation();
     const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
     const int32 Num = MetalArray.Num();
-    if (Num < 2) return;  // 최소 2개 이상이어야 유도 자기 의미 있음
+    if (Num < 2) return;
 
     for (int32 i = 0; i < Num; ++i)
     {
@@ -887,6 +906,7 @@ void ATransformation_actor::EnterMagnetMode()
     bElectroActive = false;
     TimeSinceLastMagnetRefresh = 0.f;
     OverlappingMetals.Empty();
+    OverlappingCoppers.Empty();    // ★
     MagnetContactedWires.Empty();
     PreviousOverlappingMetals.Empty();
 
@@ -897,7 +917,7 @@ void ATransformation_actor::EnterMagnetMode()
 
     FormTemperatureC = 20.f;
     BaseArrowPower = ArrowPower;
-    SetStencilSafe(0, true);  // 자석: 패스 항상 ON, 값 0
+    SetStencilSafe(0, true);
 
     RefreshOverlappingMetals();
 
@@ -917,7 +937,6 @@ void ATransformation_actor::EnterMagnetMode()
                 ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
             if (!Arrow) return;
 
-            // 프로퍼티 세팅 (Power, X, Y)
             auto SetFloat = [Arrow](const TCHAR* Name, float Val)
             {
                 if (FProperty* P = Arrow->GetClass()->FindPropertyByName(Name))
@@ -956,6 +975,7 @@ void ATransformation_actor::ExitMagnetMode()
     TimeSinceLastMagnetRefresh = 0.f;
     FormTemperatureC = 20.f;
     OverlappingMetals.Empty();
+    OverlappingCoppers.Empty();    // ★
     MagnetContactedWires.Empty();
     PreviousOverlappingMetals.Empty();
 
@@ -966,12 +986,19 @@ void ATransformation_actor::ExitMagnetMode()
 void ATransformation_actor::OnMagnetHit(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, FVector, const FHitResult&) {}
 
 // ============================================================================
-//  [최적화] UpdateMagnetism — 정리+힘 적용 루프 통합
+//  ★ UpdateMagnetism — Copper 반자성 척력 추가
 // ============================================================================
 void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 {
     if (bDemagnetized || !MeshComp) return;
     if (MeshComp->GetCollisionEnabled() == ECollisionEnabled::NoCollision) return;
+
+    if (bMagnetSnapped)
+    {
+        if (MeshComp->IsSimulatingPhysics())
+            MeshComp->SetSimulatePhysics(false);
+        return;
+    }
 
     TimeSinceLastMagnetRefresh += DeltaTime;
     if (TimeSinceLastMagnetRefresh >= MagnetRefreshInterval)
@@ -981,132 +1008,187 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
         RefreshOverlappingMetals();
     }
 
-    if (OverlappingMetals.Num() == 0) return;
-
-    // InitialImpulse
-    if (bApplyInitialImpulse)
+    // ────────────────────────────────────────────────
+    //  ★ Copper 반자성 척력 (자석이 구리를 약하게 밀어냄)
+    //  실제 반자성: 자기장 변화에 반대 방향으로 약한 힘 발생
+    // ────────────────────────────────────────────────
+    if (OverlappingCoppers.Num() > 0)
     {
-        for (UPrimitiveComponent* Comp : OverlappingMetals)
+        const FVector MagnetLoc = GetActorLocation();
+
+        for (auto It = OverlappingCoppers.CreateIterator(); It; ++It)
         {
-            if (!IsValid(Comp) || !Comp->IsSimulatingPhysics()) continue;
-            AActor* OwnerActor = Comp->GetOwner();
-            if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) continue;
-            if (!PreviousOverlappingMetals.Contains(Comp))
+            UPrimitiveComponent* CopperComp = It->Get();
+            if (!IsValid(CopperComp)) { It.RemoveCurrent(); continue; }
+            if (!CopperComp->IsSimulatingPhysics()) continue;
+
+            AActor* CopperOwner = CopperComp->GetOwner();
+            if (!CopperOwner) { It.RemoveCurrent(); continue; }
+
+            const FVector CopperLoc = CopperComp->GetComponentLocation();
+            const FVector ToCopper = CopperLoc - MagnetLoc;
+            const float Dist = ToCopper.Size();
+
+            if (Dist < 1.f || Dist > DiamagneticMaxRange) continue;
+
+            // 반자성 척력: 거리 감쇠 + 밀어내는 방향
+            const FVector RepelDir = ToCopper / Dist;
+            const float SafeDist = FMath::Max(Dist, MinDistance);
+
+            float RepelMag = DiamagneticRepulsionForce
+                           / FMath::Pow(SafeDist, DiamagneticDecayExponent);
+            RepelMag *= FMath::Clamp(CopperComp->GetMass() / 5.0f, 0.5f, 2.0f);
+
+            // 속도 댐핑 — 이미 빠르게 밀려나고 있으면 힘 줄임
+            const FVector CurVel = CopperComp->GetPhysicsLinearVelocity();
+            const float VelAway = FVector::DotProduct(CurVel, RepelDir);
+            if (VelAway > MaxAttractVelocity * 0.5f)
+                RepelMag *= FMath::Clamp(1.0f - (VelAway / MaxAttractVelocity), 0.2f, 1.0f);
+
+            const FVector RepelForce = (RepelDir * RepelMag).GetClampedToMaxSize(MaxForceClamp * 0.1f);
+
+            CopperComp->AddForce(RepelForce, NAME_None, false);
+
+            // 반작용: 자석도 약간 밀림
+            if (MeshComp->IsSimulatingPhysics())
+                MeshComp->AddForce(-RepelForce * 0.1f, NAME_None, false);
+
+            if (bDebugDraw)
             {
-                const FVector Dir = (GetActorLocation() - Comp->GetComponentLocation()).GetSafeNormal();
-                Comp->AddImpulse(Dir * InitialImpulseStrength * Comp->GetMass());
+                DrawDebugLine(GetWorld(), MagnetLoc, CopperLoc,
+                    FColor::Orange, false, 0.f, 0, 2.f);
             }
         }
     }
-    PreviousOverlappingMetals = OverlappingMetals;
 
-    const FVector MagnetLoc = GetActorLocation();
-    const FVector MyNorth = GetNorthPoleWorldDir();
-    const FVector MagnetFwd = MeshComp->GetForwardVector();
-    const bool bMagSim = MeshComp->IsSimulatingPhysics();
-    const float StrMul = MagnetStrength * ForceMultiplier;
+    if (OverlappingMetals.Num() == 0) goto ArrowSync;
 
-    // 정리 + 힘 적용을 단일 루프로 통합
-    for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
     {
-        UPrimitiveComponent* TargetComp = It->Get();
-        if (!IsValid(TargetComp)) { It.RemoveCurrent(); continue; }
-
-        AActor* OtherActor = TargetComp->GetOwner();
-        if (!OtherActor) { It.RemoveCurrent(); continue; }
-
-        const bool bIsMetal = OtherActor->ActorHasTag(MetalTag);
-        const bool bIsMagnet = OtherActor->ActorHasTag(MagnetTag);
-        if (!bIsMetal && !bIsMagnet) { It.RemoveCurrent(); continue; }
-
-        const FVector OtherLoc = OtherActor->GetActorLocation();
-        const FVector ToOther = OtherLoc - MagnetLoc;
-        const float Distance = ToOther.Size();
-        if (Distance > MaxDistance || Distance < 1.f) continue;
-
-        const FVector DirToOther = ToOther / Distance;
-        const float SafeDist = FMath::Max(Distance, MinDistance);
-
-        // ── 자석-자석 ──
-        ATransformation_actor* OtherMag = bIsMagnet ? Cast<ATransformation_actor>(OtherActor) : nullptr;
-        if (OtherMag)
+        // InitialImpulse
+        if (bApplyInitialImpulse)
         {
-            if (bMagnetSnapped || OtherMag->bMagnetSnapped) continue;
-            if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag)) continue;
-            if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics()) continue;
-
-            const float MyPole = FVector::DotProduct(MyNorth, DirToOther);
-            const float OtherPole = FVector::DotProduct(OtherMag->GetNorthPoleWorldDir(), -DirToOther);
-            const float Polarity = -(MyPole * OtherPole);
-
-            float SpeedScale = FMath::Clamp(ReferenceDistance / FMath::Max(SafeDist, 1.f), 0.1f, 5.f);
-            float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(Polarity);
-            FVector MoveDir = DirToOther * FMath::Sign(Polarity);
-
-            const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
-            const float OtMass = FMath::Max(OtherMag->MeshComp->GetMass(), 0.1f);
-            const float TotMass = MyMass + OtMass;
-
-            FVector MyVel = MoveDir * Speed * (OtMass / TotMass);
-            MyVel.Z = MeshComp->GetPhysicsLinearVelocity().Z;
-            MeshComp->SetPhysicsLinearVelocity(MyVel);
-
-            FVector OtVel = -MoveDir * Speed * (MyMass / TotMass);
-            OtVel.Z = OtherMag->MeshComp->GetPhysicsLinearVelocity().Z;
-            OtherMag->MeshComp->SetPhysicsLinearVelocity(OtVel);
-
-            if (Polarity > 0.f && Distance <= MagnetSnapDistance)
+            for (UPrimitiveComponent* Comp : OverlappingMetals)
             {
-                bMagnetSnapped = true;
-                OtherMag->bMagnetSnapped = true;
-                MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
-                OtherMag->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                if (!IsValid(Comp) || !Comp->IsSimulatingPhysics()) continue;
+                AActor* OwnerActor = Comp->GetOwner();
+                if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) continue;
+                if (!PreviousOverlappingMetals.Contains(Comp))
+                {
+                    const FVector Dir = (GetActorLocation() - Comp->GetComponentLocation()).GetSafeNormal();
+                    Comp->AddImpulse(Dir * InitialImpulseStrength * Comp->GetMass());
+                }
             }
-            continue;
         }
+        PreviousOverlappingMetals = OverlappingMetals;
 
-        // ── 자석-금속 ──
-        if (!TargetComp->IsSimulatingPhysics()) continue;
+        const FVector MagnetLoc = GetActorLocation();
+        const FVector MyNorth = GetNorthPoleWorldDir();
+        const FVector MagnetFwd = MeshComp->GetForwardVector();
+        const bool bMagSim = MeshComp->IsSimulatingPhysics();
+        const float StrMul = MagnetStrength * ForceMultiplier;
 
-        const FVector MetalLoc = TargetComp->GetComponentLocation();
-        const FVector ToMagnet = MagnetLoc - MetalLoc;
-        const float Dist = ToMagnet.Size();
-        if (Dist < MinDistance || Dist > MaxDistance) continue;
-
-        const FVector Dir = ToMagnet / Dist;
-        const float DirDot = FVector::DotProduct(Dir, MagnetFwd);
-        const float DirFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
-
-        float ForceMag = (StrMul * DirFactor) / FMath::Pow(FMath::Max(Dist, MinDistance), MagneticDecayExponent);
-        ForceMag *= FMath::Clamp(TargetComp->GetMass() / 5.0f, 0.6f, 2.5f);
-
-        const FVector CurVel = TargetComp->GetPhysicsLinearVelocity();
-        const float VelToward = FVector::DotProduct(CurVel, Dir);
-        float VelDamp = 1.0f;
-        if (VelToward > MaxAttractVelocity * 0.7f)
-            VelDamp = FMath::Clamp(1.0f - (VelToward / MaxAttractVelocity), 0.4f, 1.0f);
-
-        FVector Force = (Dir * ForceMag * VelDamp)
-                      + (-CurVel * VelocityDampingFactor * TargetComp->GetMass());
-        Force = Force.GetClampedToMaxSize(MaxForceClamp);
-
-        TargetComp->AddForce(Force, NAME_None, false);
-
-        if (bUseTorque)
+        for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
         {
-            const FVector Cross = FVector::CrossProduct(TargetComp->GetForwardVector(), Dir);
-            const float TorqueMag = Cross.Size() * ForceMag * 0.3f;
-            if (TorqueMag > 0.01f)
-                TargetComp->AddTorqueInRadians(Cross.GetSafeNormal() * TorqueMag, NAME_None, false);
+            UPrimitiveComponent* TargetComp = It->Get();
+            if (!IsValid(TargetComp)) { It.RemoveCurrent(); continue; }
+
+            AActor* OtherActor = TargetComp->GetOwner();
+            if (!OtherActor) { It.RemoveCurrent(); continue; }
+
+            const bool bIsMetal = OtherActor->ActorHasTag(MetalTag);
+            const bool bIsMagnet = OtherActor->ActorHasTag(MagnetTag);
+            // ★ Copper는 여기서 제외됨 (OverlappingMetals에 안 들어감)
+            if (!bIsMetal && !bIsMagnet) { It.RemoveCurrent(); continue; }
+
+            const FVector OtherLoc = OtherActor->GetActorLocation();
+            const FVector ToOther = OtherLoc - MagnetLoc;
+            const float Distance = ToOther.Size();
+            if (Distance > MaxDistance || Distance < 1.f) continue;
+
+            const FVector DirToOther = ToOther / Distance;
+            const float SafeDist = FMath::Max(Distance, MinDistance);
+
+            ATransformation_actor* OtherMag = bIsMagnet ? Cast<ATransformation_actor>(OtherActor) : nullptr;
+            if (OtherMag)
+            {
+                if (bMagnetSnapped || OtherMag->bMagnetSnapped) continue;
+                if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag)) continue;
+                if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics()) continue;
+
+                const float MyPole = FVector::DotProduct(MyNorth, DirToOther);
+                const float OtherPole = FVector::DotProduct(OtherMag->GetNorthPoleWorldDir(), -DirToOther);
+                const float Polarity = -(MyPole * OtherPole);
+
+                float SpeedScale = FMath::Clamp(ReferenceDistance / FMath::Max(SafeDist, 1.f), 0.1f, 5.f);
+                float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(Polarity);
+                FVector MoveDir = DirToOther * FMath::Sign(Polarity);
+
+                const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
+                const float OtMass = FMath::Max(OtherMag->MeshComp->GetMass(), 0.1f);
+                const float TotMass = MyMass + OtMass;
+
+                FVector MyVel = MoveDir * Speed * (OtMass / TotMass);
+                MyVel.Z = MeshComp->GetPhysicsLinearVelocity().Z;
+                MeshComp->SetPhysicsLinearVelocity(MyVel);
+
+                FVector OtVel = -MoveDir * Speed * (MyMass / TotMass);
+                OtVel.Z = OtherMag->MeshComp->GetPhysicsLinearVelocity().Z;
+                OtherMag->MeshComp->SetPhysicsLinearVelocity(OtVel);
+
+                if (Polarity > 0.f && Distance <= MagnetSnapDistance)
+                {
+                    bMagnetSnapped = true;
+                    OtherMag->bMagnetSnapped = true;
+                    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                    OtherMag->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                }
+                continue;
+            }
+
+            // ── 자석-금속 (Metal만, Copper는 여기 안 옴) ──
+            if (!TargetComp->IsSimulatingPhysics()) continue;
+
+            const FVector MetalLoc = TargetComp->GetComponentLocation();
+            const FVector ToMagnet = MagnetLoc - MetalLoc;
+            const float Dist = ToMagnet.Size();
+            if (Dist < MinDistance || Dist > MaxDistance) continue;
+
+            const FVector Dir = ToMagnet / Dist;
+            const float DirDot = FVector::DotProduct(Dir, MagnetFwd);
+            const float DirFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
+
+            float ForceMag = (StrMul * DirFactor) / FMath::Pow(FMath::Max(Dist, MinDistance), MagneticDecayExponent);
+            ForceMag *= FMath::Clamp(TargetComp->GetMass() / 5.0f, 0.6f, 2.5f);
+
+            const FVector CurVel = TargetComp->GetPhysicsLinearVelocity();
+            const float VelToward = FVector::DotProduct(CurVel, Dir);
+            float VelDamp = 1.0f;
+            if (VelToward > MaxAttractVelocity * 0.7f)
+                VelDamp = FMath::Clamp(1.0f - (VelToward / MaxAttractVelocity), 0.4f, 1.0f);
+
+            FVector Force = (Dir * ForceMag * VelDamp)
+                          + (-CurVel * VelocityDampingFactor * TargetComp->GetMass());
+            Force = Force.GetClampedToMaxSize(MaxForceClamp);
+
+            TargetComp->AddForce(Force, NAME_None, false);
+
+            if (bUseTorque)
+            {
+                const FVector Cross = FVector::CrossProduct(TargetComp->GetForwardVector(), Dir);
+                const float TorqueMag = Cross.Size() * ForceMag * 0.3f;
+                if (TorqueMag > 0.01f)
+                    TargetComp->AddTorqueInRadians(Cross.GetSafeNormal() * TorqueMag, NAME_None, false);
+            }
+
+            if (bMagSim)
+                MeshComp->AddForce(-Force * 0.2f, NAME_None, false);
         }
 
-        if (bMagSim)
-            MeshComp->AddForce(-Force * 0.2f, NAME_None, false);
+        if (bEnableInduction)
+            ApplyInducedMagnetism();
     }
 
-    if (bEnableInduction)
-        ApplyInducedMagnetism();
-
+ArrowSync:
     // 화살표 위치 동기화
     if (SpawnedArrowEffect)
     {
@@ -1122,11 +1204,12 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 }
 
 // ============================================================================
-//  RefreshOverlappingMetals
+//  ★ RefreshOverlappingMetals — Copper를 별도 세트로 분류
 // ============================================================================
 void ATransformation_actor::RefreshOverlappingMetals()
 {
     OverlappingMetals.Empty();
+    OverlappingCoppers.Empty();    // ★
     if (!MeshComp) return;
 
     UWorld* World = GetWorld();
@@ -1151,5 +1234,8 @@ void ATransformation_actor::RefreshOverlappingMetals()
             OverlappingMetals.Add(Comp);
         else if (CompOwner->ActorHasTag(MagnetTag))
             OverlappingMetals.Add(Comp);
+        // ★ Copper: 별도 세트에 추가 (반자성 척력 대상)
+        else if (CompOwner->ActorHasTag(CopperTag) && Comp->IsSimulatingPhysics())
+            OverlappingCoppers.Add(Comp);
     }
 }
