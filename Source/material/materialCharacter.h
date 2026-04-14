@@ -1,4 +1,4 @@
-	#pragma once
+#pragma once
 
 	#include "CoreMinimal.h"
 	#include "GameFramework/Character.h"
@@ -185,7 +185,7 @@
 		static constexpr float CameraLagSpeed       = 6.0f;
 		static constexpr float CameraRotLagSpeed    = 12.0f;
 		static constexpr float JumpVelocity         = 600.f;
-		static constexpr float AirControl           = 0.2f;
+		static constexpr float AirControl            = 0.2f;
 		static constexpr float RotationRate         = 540.f;
 		static constexpr float MeshOffsetZ          = -90.f;
 		static constexpr float MeshRotationYaw      = 90.f;
@@ -203,12 +203,9 @@
 		void OpenRadialMenu(ATransformation_actor* Target);
 		void CloseRadialMenu(bool bConfirm);
 
-		UPROPERTY() ATransformation_actor* PendingRadialTarget = nullptr;
 		FTimerHandle RadialMenuAnimTimer;
 		void OnUseEAnimFinished();
 		void OnUseLeftAnimFinished();
-
-		FTimerHandle MagnetSettleTimerHandle;
 
 		void WarpToLevel(const FString& LevelPath);
 		void OnWarpLaboratory();

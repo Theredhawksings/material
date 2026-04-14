@@ -70,10 +70,10 @@
 		}
 
 		static ConstructorHelpers::FClassFinder<UTestUI> RadialMenuBP(
-		TEXT("/Game/modeling/UI/Matarial_Change/WBP_RadialMenu"));
+			TEXT("/Game/modeling/UI/Matarial_Change/WBP_RadialMenu"));
 		if (RadialMenuBP.Succeeded())
 		{
-		RadialMenuClass = RadialMenuBP.Class;
+			RadialMenuClass = RadialMenuBP.Class;
 		}
 
 		HoldPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPivot"));
@@ -95,10 +95,10 @@
 		BackpackUIComp->SetDrawAtDesiredSize(true);
 
 		static ConstructorHelpers::FClassFinder<UUserWidget> BackpackUIBP(
-    		TEXT("/Game/modeling/Character/backPack/WBP_BackpackUI"));
+			TEXT("/Game/modeling/Character/backPack/WBP_BackpackUI"));
 		if (BackpackUIBP.Succeeded())
 		{
-    		BackpackUIComp->SetWidgetClass(BackpackUIBP.Class);
+			BackpackUIComp->SetWidgetClass(BackpackUIBP.Class);
 		}
 		
 		ArmComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmComp"));
@@ -106,7 +106,7 @@
 		ArmComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 		static ConstructorHelpers::FObjectFinder<UStaticMesh> ArmMeshAsset(
-		TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Right_Arm/Right_Arm.Right_Arm'"));
+			TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Right_Arm/Right_Arm.Right_Arm'"));
 		if (ArmMeshAsset.Succeeded())
 		{	
 			ArmComp->SetStaticMesh(ArmMeshAsset.Object);
@@ -117,7 +117,7 @@
 		ArmComp2->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 		static ConstructorHelpers::FObjectFinder<UStaticMesh> ArmMeshAsset2(
-		TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Left_Arm/Arm.Arm'"));
+			TEXT("/Script/Engine.StaticMesh'/Game/modeling/Character/Left_Arm/Arm.Arm'"));
 		if (ArmMeshAsset2.Succeeded())
 		{
 			ArmComp2->SetStaticMesh(ArmMeshAsset2.Object);
@@ -311,6 +311,8 @@
 
 	void AmaterialCharacter::ChangeForm()
 	{
+		if (bIsPickingUp) return;
+
 		if (bRadialMenuOpen)
 		{
 			CloseRadialMenu(false);
@@ -350,6 +352,8 @@
 
 	void AmaterialCharacter::HoldPressed()
 	{
+		if (bIsPickingUp) return;
+
 		if (HeldActor) DropHeld();
 		else TryPickup();
 	}
@@ -464,13 +468,13 @@
 	{
 		if (!HeldActor) return;
 
-		float SizeRatio = FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.3f, 1.2f);
-		float DistanceScale = FMath::Lerp(0.6f, 1.05f, SizeRatio);
-		float AdjustedDistance = HoldDistance * DistanceScale;
+		const float SizeRatio = FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.3f, 1.2f);
+		const float DistanceScale = FMath::Lerp(0.6f, 1.05f, SizeRatio);
+		const float AdjustedDistance = HoldDistance * DistanceScale;
 
-		FVector ForwardOffset = GetActorForwardVector() * AdjustedDistance;
-		FVector HeightOffset  = FVector(0.f, 0.f, HoldHeight);
-		FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
+		const FVector ForwardOffset = GetActorForwardVector() * AdjustedDistance;
+		const FVector HeightOffset  = FVector(0.f, 0.f, HoldHeight);
+		const FVector TargetLocation = GetActorLocation() + ForwardOffset + HeightOffset;
 		
 		HeldActor->SetActorLocation(TargetLocation);
 		HeldActor->SetActorRotation((GetActorQuat() * HeldRelativeQuat).Rotator());
@@ -504,7 +508,6 @@
 				GetActorForwardVector() * DropForwardOffset);
 
 			SetPrimitiveComponentsPhysics(HeldActor, true);
-			ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
 			RestoreWalkSpeed();
 			HeldActor = nullptr;
 		}, DropDetachTime, false);
@@ -557,9 +560,9 @@
 
 		if (HeldActor)
 		{
-			if (UStaticMeshComponent* MeshComp = HeldActor->FindComponentByClass<UStaticMeshComponent>())
+			if (UStaticMeshComponent* SMC = HeldActor->FindComponentByClass<UStaticMeshComponent>())
 			{
-				ObjectScale = MeshComp->GetComponentScale().GetMax();
+				ObjectScale = SMC->GetComponentScale().GetMax();
 			}
 			else
 			{
@@ -567,9 +570,7 @@
 			}
 		}
 
-		UE_LOG(LogTemp, Warning, TEXT("ObjectScale = %f"), ObjectScale);
-
-		float AdjustedY = FMath::GetMappedRangeValueClamped(
+		const float AdjustedY = FMath::GetMappedRangeValueClamped(
 			FVector2D(-0.1f, 1.0f),
 			FVector2D(-0.25f, -0.40f),
 			ObjectScale
@@ -698,7 +699,7 @@
 
 	void AmaterialCharacter::DecreaseGaugeForMaterial(const FName& MaterialTag)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("★ DecreaseGauge: %s"), *MaterialTag.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("DecreaseGauge: %s"), *MaterialTag.ToString());
 		
 		if (MaterialTag == TEXT("Joker"))
 			return;
@@ -715,8 +716,6 @@
 			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0.f, 100.f);
 		else if (MaterialTag == TEXT("Magnet"))
 			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0.f, 100.f);
-		else if (MaterialTag == TEXT("Copper"))
-    		CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0.f, 100.f);
 	}
 
 	void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
