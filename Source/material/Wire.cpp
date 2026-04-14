@@ -66,7 +66,16 @@ void AWire::Tick(float DeltaTime)
 
     if (WireTemperatureC > HeatEmitThresholdC)
     {
-        EmitHeatToNearby(DeltaTime);
+        HeatEmitAccumulator += DeltaTime;
+        if (HeatEmitAccumulator >= HeatEmitInterval)
+        {
+            EmitHeatToNearby(HeatEmitAccumulator);
+            HeatEmitAccumulator = 0.f;
+        }
+    }
+    else
+    {
+        HeatEmitAccumulator = 0.f;
     }
 }
 
@@ -168,6 +177,8 @@ void AWire::EmitHeatToNearby(float DeltaTime)
     FCollisionQueryParams QParams(SCENE_QUERY_STAT(WireHeatOverlap), false);
     QParams.AddIgnoredActor(this);
 
+    CachedHeatTargets.Reset();
+
     auto HeatAt = [&](const FVector& Center, float Radius, float Multiplier)
     {
         TArray<FOverlapResult> Hits;
@@ -178,7 +189,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
         for (const FOverlapResult& H : Hits)
         {
             ATransformation_actor* Ice = Cast<ATransformation_actor>(H.GetActor());
-            if (!Ice) continue;
+            if (!Ice || CachedHeatTargets.Contains(Ice)) continue;
 
             const float DistCm = FVector::Dist(Center, Ice->GetActorLocation());
             const float DistM = FMath::Max(DistCm / 100.f, 0.05f);
@@ -189,6 +200,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
             if (EnergyJ > 0.f)
             {
                 Ice->ReceiveHeatEnergy(EnergyJ, WireTemperatureC);
+                CachedHeatTargets.Add(Ice);
             }
         }
     };
@@ -228,37 +240,52 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    SegmentMIDs.Empty();
-
-    for (USplineMeshComponent* Mesh : SegmentMeshes)
+    if (bPoweredFinal && OnMaterial)
     {
-        if (!IsValid(Mesh)) continue;
+        if (SegmentMIDs.Num() == SegmentMeshes.Num() && bLastAppliedPowerState)
+            return;
 
-        if (bPoweredFinal && OnMaterial)
+        SegmentMIDs.Empty();
+        for (USplineMeshComponent* Mesh : SegmentMeshes)
         {
+            if (!IsValid(Mesh)) continue;
             UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
             Mesh->SetMaterial(0, MID);
             SegmentMIDs.Add(MID);
         }
-        else if (OffMaterial)
+    }
+    else
+    {
+        SegmentMIDs.Empty();
+        for (USplineMeshComponent* Mesh : SegmentMeshes)
         {
+            if (!IsValid(Mesh) || !OffMaterial) continue;
             const int32 NumMaterials = Mesh->GetNumMaterials();
             for (int32 i = 0; i < NumMaterials; ++i)
                 Mesh->SetMaterial(i, OffMaterial);
         }
     }
+
+    bLastAppliedPowerState = bPoweredFinal;
 }
 
 void AWire::UpdateWireVisual()
 {
     const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
-    for (UMaterialInstanceDynamic* MID : SegmentMIDs)
-        if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
 
     const float TempRatio = FMath::Clamp(
         (WireTemperatureC - AmbientTemperatureC) / (MaxWireTemperatureC - AmbientTemperatureC),
         0.f, 1.f);
     const int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
+
+    if (StencilVal == CachedWireStencilValue && FMath::Abs(Alpha - CachedWireHeatAlpha) < 0.001f)
+        return;
+
+    CachedWireHeatAlpha = Alpha;
+    CachedWireStencilValue = StencilVal;
+
+    for (UMaterialInstanceDynamic* MID : SegmentMIDs)
+        if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
 
     for (USplineMeshComponent* Mesh : SegmentMeshes)
         if (Mesh) Mesh->SetCustomDepthStencilValue(StencilVal);
@@ -377,17 +404,17 @@ void AWire::RefreshConnectedActors()
         for (AActor* A : OverlappingActors)
         {
             if (!A || A == this) continue;
-            
-            if (A->ActorHasTag(FName("Metal")))
+
+            if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
                 const FVector SegMidWorld = Segment->GetComponentLocation();
                 const float Dist = FVector::Dist(SegMidWorld, A->GetActorLocation());
-                if (Dist > OverlapRadius * 3.f) continue; // 실제로 멀어졌으면 무시
+                if (Dist > OverlapRadius * 3.f) continue;
 
-                if (ATransformation_actor* Metal = Cast<ATransformation_actor>(A))
+                if (ATransformation_actor* Conductor = Cast<ATransformation_actor>(A))
                 {
-                    ConnectedActors.AddUnique(Metal);
-                    if (Metal->IsElectrified()) bFoundPower = true;
+                    ConnectedActors.AddUnique(Conductor);
+                    if (Conductor->IsElectrified()) bFoundPower = true;
                 }
             }
         }
@@ -399,6 +426,6 @@ void AWire::RefreshConnectedActors()
 void AWire::PropagatePowerToConnected()
 {
     for (AActor* Target : ConnectedActors)
-        if (ATransformation_actor* Metal = Cast<ATransformation_actor>(Target))
-            Metal->SetPowered(bPoweredFinal);
+        if (ATransformation_actor* Conductor = Cast<ATransformation_actor>(Target))
+            Conductor->SetPowered(bPoweredFinal);
 }

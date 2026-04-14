@@ -115,6 +115,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|HeatEmit")
     float WireSurfaceAreaM2 = 0.1f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|HeatEmit")
+    float HeatEmitInterval = 0.1f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
     FName WireHeatParamName = TEXT("HeatAlpha");
 
@@ -174,8 +177,14 @@ private:
 
     bool bPoweredBySource = false;
     bool bPoweredByMetal = false;
+    bool bLastAppliedPowerState = false;
 
     float CurrentAmps = 0.f;
+    float HeatEmitAccumulator = 0.f;
+    int32 CachedWireStencilValue = -1;
+    float CachedWireHeatAlpha = -1.f;
+
+    TSet<ATransformation_actor*> CachedHeatTargets;
 
     static constexpr float StefanBoltzmannSigma = 5.67e-8f;
 };
