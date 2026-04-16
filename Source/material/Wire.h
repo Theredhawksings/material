@@ -33,6 +33,8 @@ public:
     void ApplyPower();
     void RebuildSplineMeshes();
 
+    const TArray<TObjectPtr<AActor>>& GetConnectedActors() const { return ConnectedActors; }
+    
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

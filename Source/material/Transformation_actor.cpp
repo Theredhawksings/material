@@ -158,9 +158,41 @@ void ATransformation_actor::SetPowered(bool bNewPowered)
     EnergizeWiresIfElectrified();
 }
 
+// cpp
+bool ATransformation_actor::HasSourcePoweredWireRecursive(TSet<const ATransformation_actor*>& Visited) const
+{
+    if (Visited.Contains(this)) return false;
+    Visited.Add(this);
+
+    for (const TObjectPtr<AWire>& W : ConnectedWires)
+    {
+        if (!W) continue;
+        if (W->IsSourcePowered()) return true;
+
+        // 이 전선에 붙은 다른 금속들도 타고 들어감
+        if (W->IsPowered())
+        {
+            for (AActor* Other : W->GetConnectedActors())
+            {
+                const ATransformation_actor* OtherBlock = Cast<ATransformation_actor>(Other);
+                if (!OtherBlock || OtherBlock == this) continue;
+                if (OtherBlock->HasSourcePoweredWireRecursive(Visited))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+bool ATransformation_actor::HasSourcePoweredWire() const
+{
+    TSet<const ATransformation_actor*> Visited;
+    return HasSourcePoweredWireRecursive(Visited);
+}
+
 void ATransformation_actor::RefreshConnectedWires()
 {
-    // ★ Metal 또는 Copper가 아니면 전기 끊기
     if (!IsConductive() || !MeshComp)
     {
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
@@ -175,7 +207,6 @@ void ATransformation_actor::RefreshConnectedWires()
     if (!World) { ConnectedWires.Empty(); SetElectrified(false); return; }
 
     const FVector Center = MeshComp->Bounds.Origin;
-    // ★ Copper는 더 넓은 감지 반경
     const float Radius = GetWireSenseRadius();
 
     FCollisionQueryParams Q(SCENE_QUERY_STAT(MetalWireSense), false);
@@ -194,21 +225,56 @@ void ATransformation_actor::RefreshConnectedWires()
         if (AWire* Wire = Cast<AWire>(H.GetActor()))
         {
             ConnectedWires.AddUnique(Wire);
-            if (Wire->IsSourcePowered()) bAnyPowerFound = true;
+            if (Wire->IsSourcePowered()) { bAnyPowerFound = true; continue; }
+
+            if (Wire->IsPowered())
+            {
+                for (AActor* Other : Wire->GetConnectedActors())
+                {
+                    if (ATransformation_actor* OtherBlock = Cast<ATransformation_actor>(Other))
+                    {
+                        if (OtherBlock == this) continue;
+                        if (OtherBlock->IsElectrified() && OtherBlock->HasSourcePoweredWire())
+                        { bAnyPowerFound = true; break; }
+                    }
+                }
+            }
         }
     }
 
-    if (bElectrified != bAnyPowerFound)
+    const bool bStateChanged = (bElectrified != bAnyPowerFound);
+    if (bStateChanged)
     {
         SetElectrified(bAnyPowerFound);
-        if (bElectrified)
-            EnergizeWiresIfElectrified();
-        else
+    }
+
+    // ★ 핵심 수정: 전기 상태든 아니든, 전기가 있으면 매번 "현재 연결된 전선 집합"을 동기화
+    if (bElectrified)
+    {
+        // 이번 프레임에 연결된 전선들에 전기 전달 (이미 켜진 건 SetPoweredByMetal 내부에서 early return)
+        TSet<TWeakObjectPtr<AWire>> Current;
+        for (AWire* Wire : ConnectedWires)
         {
-            for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-                if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
-            WiresEnergizedByMetal.Empty();
+            if (!Wire || Wire->IsSourcePowered()) continue;
+            Wire->SetPoweredByMetal(true);
+            Current.Add(Wire);
         }
+
+        // 이전에 켰었지만 지금은 연결 끊긴 전선은 꺼주기
+        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
+        {
+            AWire* W = It->Get();
+            if (W && !Current.Contains(W))
+                W->SetPoweredByMetal(false);
+        }
+
+        WiresEnergizedByMetal = MoveTemp(Current);
+    }
+    else
+    {
+        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
+            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
+        WiresEnergizedByMetal.Empty();
     }
 }
 
