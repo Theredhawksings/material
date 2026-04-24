@@ -311,7 +311,7 @@
 
 	void AmaterialCharacter::ChangeForm()
 	{
-		if (bIsPickingUp) return;
+		if (bIsPickingUp || HeldActor) return;
 
 		if (bRadialMenuOpen)
 		{
@@ -352,7 +352,7 @@
 
 	void AmaterialCharacter::HoldPressed()
 	{
-		if (bIsPickingUp) return;
+		if (bIsPickingUp || bRadialMenuOpen) return;
 
 		if (HeldActor) DropHeld();
 		else TryPickup();
@@ -508,6 +508,7 @@
 				GetActorForwardVector() * DropForwardOffset);
 
 			SetPrimitiveComponentsPhysics(HeldActor, true);
+			ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
 			RestoreWalkSpeed();
 			HeldActor = nullptr;
 		}, DropDetachTime, false);
