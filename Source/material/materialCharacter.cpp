@@ -706,17 +706,17 @@
 			return;
 			
 		if (MaterialTag == TEXT("Rubber"))
-			RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0, 100);
 		else if (MaterialTag == TEXT("Metal"))
-			MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0, 100);
 		else if (MaterialTag == TEXT("Copper"))
-			CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0, 100);
 		else if (MaterialTag == TEXT("Ice"))
-			IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0, 100);
 		else if (MaterialTag == TEXT("Wood"))
-			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0, 100);
 		else if (MaterialTag == TEXT("Magnet"))
-			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0.f, 100.f);
+			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0, 100);
 	}
 
 	void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)

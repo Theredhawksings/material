@@ -32,17 +32,17 @@
 		void DecreaseGaugeForMaterial(const FName& MaterialTag);
 		
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetRubberGauge() const { return RubberGauge; }
+		int32 GetRubberGauge() const { return RubberGauge; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetMetalGauge() const { return MetalGauge; }
+		int32 GetMetalGauge() const { return MetalGauge; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetIceGauge() const { return IceGauge; }
+		int32 GetIceGauge() const { return IceGauge; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetWoodGauge() const { return WoodGauge; }
+		int32 GetWoodGauge() const { return WoodGauge; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetMagnetGauge() const { return MagnetGauge; }
+		int32 GetMagnetGauge() const { return MagnetGauge; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetCopperGauge() const { return CopperGauge; }
+		int32 GetCopperGauge() const { return CopperGauge; }
 
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 		float GetRubberGaugePercent() const { return RubberGauge / 100.f; }
@@ -128,20 +128,20 @@
 		UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 		
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float RubberGauge = 100.f;
+		int32 RubberGauge = 100;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float MetalGauge = 100.f;
+		int32 MetalGauge = 100;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float IceGauge = 100.f;
+		int32 IceGauge = 100;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float WoodGauge = 100.f;
+		int32 WoodGauge = 100;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float MagnetGauge = 100.f;
+		int32 MagnetGauge = 100;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		float CopperGauge = 100.f;
+		int32 CopperGauge = 100;
 
 		UPROPERTY(EditAnywhere, Category = "Material Gauge")
-		float GaugeDecreaseAmount = 10.f;
+		int32 GaugeDecreaseAmount = 10;
 
 		FTimerHandle AttachmentTimerHandle;
 		FTimerHandle PickupEndTimerHandle;
