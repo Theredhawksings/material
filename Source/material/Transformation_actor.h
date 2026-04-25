@@ -22,7 +22,8 @@ enum class EBlockForm : uint8
     Metal,
     Copper, // ★ 신규: 반자성 + 고전도율
     Wood,
-    Magnet
+    Magnet,
+    None 
 };
 
 USTRUCT(BlueprintType)
@@ -88,7 +89,7 @@ public:
     UStaticMeshComponent *MeshComp;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Form")
-    EBlockForm CurrentForm = EBlockForm::Ice;
+    EBlockForm CurrentForm = EBlockForm::None;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Form")
     TArray<FBlockFormSpec> FormSpecs;
