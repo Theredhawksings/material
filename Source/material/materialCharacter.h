@@ -30,6 +30,9 @@
 		void OnLeftClick();
 		void OnEscapePressed();
 		void DecreaseGaugeForMaterial(const FName& MaterialTag);
+
+		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
+		int32 GetGaugeByTag(const FName& MaterialTag) const;
 		
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 		int32 GetRubberGauge() const { return RubberGauge; }
@@ -45,17 +48,17 @@
 		int32 GetCopperGauge() const { return CopperGauge; }
 
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetRubberGaugePercent() const { return RubberGauge / 100.f; }
+		float GetRubberGaugePercent() const { return RubberGauge / 10.f; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetMetalGaugePercent() const { return MetalGauge / 100.f; }
+		float GetMetalGaugePercent() const { return MetalGauge / 10.f; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetIceGaugePercent() const { return IceGauge / 100.f; }
+		float GetIceGaugePercent() const { return IceGauge / 10.f; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetWoodGaugePercent() const { return WoodGauge / 100.f; }
+		float GetWoodGaugePercent() const { return WoodGauge / 10.f; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetMagnetGaugePercent() const { return MagnetGauge / 100.f; }
+		float GetMagnetGaugePercent() const { return MagnetGauge / 10.f; }
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
-		float GetCopperGaugePercent() const { return CopperGauge / 100.f; }
+		float GetCopperGaugePercent() const { return CopperGauge / 10.f; }
 
 		UPROPERTY(EditDefaultsOnly, Category = "UI")
 		TSubclassOf<UTestUI> RadialMenuClass;
@@ -128,20 +131,22 @@
 		UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 		
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 RubberGauge = 100;
+		int32 RubberGauge = 10;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 MetalGauge = 100;
+		int32 MetalGauge = 10;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 IceGauge = 100;
+		int32 IceGauge = 10;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 WoodGauge = 100;
+		int32 WoodGauge = 10;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 MagnetGauge = 100;
+		int32 MagnetGauge = 10;
 		UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-		int32 CopperGauge = 100;
+		int32 CopperGauge = 10;
 
 		UPROPERTY(EditAnywhere, Category = "Material Gauge")
-		int32 GaugeDecreaseAmount = 10;
+		int32 GaugeDecreaseAmount = 1;
+
+		static constexpr int32 MaxGauge = 10;
 
 		FTimerHandle AttachmentTimerHandle;
 		FTimerHandle PickupEndTimerHandle;

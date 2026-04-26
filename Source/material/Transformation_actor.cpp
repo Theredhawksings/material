@@ -577,9 +577,16 @@ const FBlockFormSpec* ATransformation_actor::FindSpec(EBlockForm Form) const
 void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
 {
     if (!MeshComp) return;
-    if (Spec.Mesh) MeshComp->SetStaticMesh(Spec.Mesh);
+ 
+    if (Spec.Mesh && MeshComp->GetStaticMesh() != Spec.Mesh)
+        MeshComp->SetStaticMesh(Spec.Mesh);
+ 
     for (int32 i = 0; i < Spec.Materials.Num(); ++i)
-        if (Spec.Materials[i]) MeshComp->SetMaterial(i, Spec.Materials[i]);
+    {
+        if (Spec.Materials[i] && MeshComp->GetMaterial(i) != Spec.Materials[i])
+            MeshComp->SetMaterial(i, Spec.Materials[i]);
+    }
+ 
     MeshComp->SetSimulatePhysics(Spec.bSimulatePhysics);
     MeshComp->SetLinearDamping(Spec.LinearDamping);
     MeshComp->SetAngularDamping(Spec.AngularDamping);
@@ -595,14 +602,18 @@ void ATransformation_actor::EnterIceMode()
     if (!MeshComp) return;
     if (MeltAlpha == 0.0f) EnergyAccumJ = 0.0f;
     RecalcIceMassAndEnergy();
-    IceMID = nullptr;
-
-    UMaterialInterface* SrcMat = IceMeltMaterial ? IceMeltMaterial : MeshComp->GetMaterial(0);
-    if (SrcMat)
+ 
+    if (!IceMID)
     {
-        IceMID = UMaterialInstanceDynamic::Create(SrcMat, this);
-        if (IceMID) MeshComp->SetMaterial(0, IceMID);
+        UMaterialInterface* SrcMat = IceMeltMaterial ? IceMeltMaterial : MeshComp->GetMaterial(0);
+        if (SrcMat)
+        {
+            IceMID = UMaterialInstanceDynamic::Create(SrcMat, this);
+        }
     }
+ 
+    if (IceMID)
+        MeshComp->SetMaterial(0, IceMID);
 }
 
 void ATransformation_actor::ExitIceMode() { IceMID = nullptr; }
@@ -646,14 +657,19 @@ void ATransformation_actor::EnterWoodMode()
     CurrentWoodMassKg = WoodMassKg;
     BurnAlpha = 0.0f;
     bIsBurning = false;
-    BurnMID = nullptr;
 
-    UMaterialInterface* SrcMat = BurnMaterial ? BurnMaterial : MeshComp->GetMaterial(0);
-    if (SrcMat)
+    if (!BurnMID)
     {
-        BurnMID = UMaterialInstanceDynamic::Create(SrcMat, this);
-        if (BurnMID) MeshComp->SetMaterial(0, BurnMID);
+        UMaterialInterface* SrcMat = BurnMaterial ? BurnMaterial : MeshComp->GetMaterial(0);
+        if (SrcMat)
+        {
+            BurnMID = UMaterialInstanceDynamic::Create(SrcMat, this);
+        }
     }
+ 
+    if (BurnMID)
+        MeshComp->SetMaterial(0, BurnMID);
+ 
     ApplyWoodBurnVisual(0.0f);
 }
 

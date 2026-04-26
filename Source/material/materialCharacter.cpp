@@ -16,6 +16,7 @@
 	#include "Framework/Application/SlateApplication.h"
 	#include "Kismet/GameplayStatics.h"
 	#include "Engine/OverlapResult.h"
+	#include "Blueprint/UserWidget.h"
 
 	AmaterialCharacter::AmaterialCharacter()
 		: HeldActor(nullptr)
@@ -92,10 +93,12 @@
 		BackpackUIComp->SetupAttachment(BackpackComp); 
 		BackpackUIComp->SetWidgetSpace(EWidgetSpace::World);
 		BackpackUIComp->SetTwoSided(true);
-		BackpackUIComp->SetDrawAtDesiredSize(true);
+		BackpackUIComp->SetDrawAtDesiredSize(false);
+		BackpackUIComp->SetDrawSize(FVector2D(66.f, 154.f));
+		BackpackUIComp->SetRedrawTime(0.1f); // 초당 10번만 렌더링
 
 		static ConstructorHelpers::FClassFinder<UUserWidget> BackpackUIBP(
-			TEXT("/Game/modeling/Character/backPack/WBP_BackpackUI"));
+			TEXT("/Game/modeling/Character/backPack/WBP_BackPack_UI"));
 		if (BackpackUIBP.Succeeded())
 		{
 			BackpackUIComp->SetWidgetClass(BackpackUIBP.Class);
@@ -214,9 +217,9 @@
 		{
 			BackpackUIComp->SetBackgroundColor(FLinearColor::Transparent);
 			BackpackUIComp->SetBlendMode(EWidgetBlendMode::Transparent);
-			BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, 0.42f));
+			BackpackUIComp->SetRelativeLocation(FVector(0.f, -0.47f, -0.12f));
 			BackpackUIComp->SetRelativeRotation(FRotator(0.f, 270.f, 0.f));
-			BackpackUIComp->SetRelativeScale3D(FVector(0.016f, 0.016f, 0.020f));
+			BackpackUIComp->SetRelativeScale3D(FVector(0.018f, 0.010f, 0.008f));
 		}
 
 		if (ArmComp)
@@ -706,17 +709,29 @@
 			return;
 			
 		if (MaterialTag == TEXT("Rubber"))
-			RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0, 100);
+			RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0, MaxGauge);
 		else if (MaterialTag == TEXT("Metal"))
-			MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0, 100);
+			MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0, MaxGauge);
 		else if (MaterialTag == TEXT("Copper"))
-			CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0, 100);
+			CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0, MaxGauge);
 		else if (MaterialTag == TEXT("Ice"))
-			IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0, 100);
+			IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0, MaxGauge);
 		else if (MaterialTag == TEXT("Wood"))
-			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0, 100);
+			WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0, MaxGauge);
 		else if (MaterialTag == TEXT("Magnet"))
-			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0, 100);
+			MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0, MaxGauge);
+		// WBP가 타이머로 직접 폴링하므로 여기서 호출 불필요
+	}
+
+	int32 AmaterialCharacter::GetGaugeByTag(const FName& MaterialTag) const
+	{
+		if (MaterialTag == TEXT("Rubber")) return RubberGauge;
+		if (MaterialTag == TEXT("Metal"))  return MetalGauge;
+		if (MaterialTag == TEXT("Copper")) return CopperGauge;
+		if (MaterialTag == TEXT("Ice"))    return IceGauge;
+		if (MaterialTag == TEXT("Wood"))   return WoodGauge;
+		if (MaterialTag == TEXT("Magnet")) return MagnetGauge;
+		return 0;
 	}
 
 	void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
