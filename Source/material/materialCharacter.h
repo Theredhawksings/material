@@ -30,6 +30,7 @@
 		void OnLeftClick();
 		void OnEscapePressed();
 		void DecreaseGaugeForMaterial(const FName& MaterialTag);
+		void ChargeGaugeForMaterial(const FName& MaterialTag, int32 Amount);
 
 		UFUNCTION(BlueprintCallable, Category = "Material Gauge")
 		int32 GetGaugeByTag(const FName& MaterialTag) const;

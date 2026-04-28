@@ -734,6 +734,26 @@
 		return 0;
 	}
 
+	void AmaterialCharacter::ChargeGaugeForMaterial(const FName& MaterialTag, int32 Amount)
+	{
+		if (Amount <= 0) return;
+
+		if (MaterialTag == TEXT("Rubber"))
+			RubberGauge = FMath::Clamp(RubberGauge + Amount, 0, MaxGauge);
+		else if (MaterialTag == TEXT("Metal"))
+			MetalGauge = FMath::Clamp(MetalGauge + Amount, 0, MaxGauge);
+		else if (MaterialTag == TEXT("Copper"))
+			CopperGauge = FMath::Clamp(CopperGauge + Amount, 0, MaxGauge);
+		else if (MaterialTag == TEXT("Ice"))
+			IceGauge = FMath::Clamp(IceGauge + Amount, 0, MaxGauge);
+		else if (MaterialTag == TEXT("Wood"))
+			WoodGauge = FMath::Clamp(WoodGauge + Amount, 0, MaxGauge);
+		else if (MaterialTag == TEXT("Magnet"))
+			MagnetGauge = FMath::Clamp(MagnetGauge + Amount, 0, MaxGauge);
+
+		UE_LOG(LogTemp, Warning, TEXT("ChargeGauge: %s +%d"), *MaterialTag.ToString(), Amount);
+	}
+
 	void AmaterialCharacter::OpenRadialMenu(ATransformation_actor* Target)
 	{
 		APlayerController* PC = Cast<APlayerController>(GetController());
