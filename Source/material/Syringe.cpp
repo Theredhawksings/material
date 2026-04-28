@@ -6,71 +6,70 @@
 
 ASyringe::ASyringe()
 {
-	PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = false;
 
-	MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
-	SetRootComponent(MeshComp);
-	MeshComp->SetMobility(EComponentMobility::Movable);
-	MeshComp->SetCollisionProfileName(TEXT("BlockAll"));
-	MeshComp->SetSimulatePhysics(false);
-	MeshComp->SetEnableGravity(false);
-	MeshComp->SetWorldScale3D(FVector(40.f, 40.f, 40.f));
+    USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+    SetRootComponent(SceneRoot);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> SyringeMesh(
-		TEXT("/Script/Engine.StaticMesh'/Game/modeling/Object/Battery/Battery.Battery'"));
-	if (SyringeMesh.Succeeded())
-		MeshComp->SetStaticMesh(SyringeMesh.Object);
+    MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
+    MeshComp->SetupAttachment(RootComponent);
+    MeshComp->SetMobility(EComponentMobility::Movable);
+    MeshComp->SetCollisionProfileName(TEXT("NoCollision"));
+    MeshComp->SetWorldScale3D(FVector(40.f, 40.f, 40.f));
 
-	static ConstructorHelpers::FObjectFinder<UMaterial> SyringeMat(
-		TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery.M_Battery'"));
-	if (SyringeMat.Succeeded())
-		MeshComp->SetMaterial(0, SyringeMat.Object);
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> SyringeMesh(
+        TEXT("/Script/Engine.StaticMesh'/Game/modeling/Object/Battery/Battery.Battery'"));
+    if (SyringeMesh.Succeeded())
+        MeshComp->SetStaticMesh(SyringeMesh.Object);
 
-	OverlapComp = CreateDefaultSubobject<USphereComponent>(TEXT("OverlapComp"));
-	OverlapComp->SetupAttachment(RootComponent);
-	OverlapComp->SetSphereRadius(OverlapRadius);
-	OverlapComp->SetCollisionProfileName(TEXT("Trigger"));
-	OverlapComp->OnComponentBeginOverlap.AddDynamic(this, &ASyringe::OnOverlapBegin);
+    static ConstructorHelpers::FObjectFinder<UMaterial> SyringeMat(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery.M_Battery'"));
+    if (SyringeMat.Succeeded())
+        MeshComp->SetMaterial(0, SyringeMat.Object);
 
-	FSyringeChargeSpec DefaultSpec;
-	DefaultSpec.MaterialTag = TEXT("Metal");
-	DefaultSpec.ChargeAmount = 3;
-	ChargeSpecs.Add(DefaultSpec);
+    OverlapComp = CreateDefaultSubobject<USphereComponent>(TEXT("OverlapComp"));
+    OverlapComp->SetupAttachment(RootComponent);
+    OverlapComp->SetSphereRadius(150.f);
+    OverlapComp->SetCollisionProfileName(TEXT("Trigger"));
+    OverlapComp->OnComponentBeginOverlap.AddDynamic(this, &ASyringe::OnOverlapBegin);
 }
 
 void ASyringe::BeginPlay()
 {
-	Super::BeginPlay();
-	SetActorEnableCollision(true);
+    Super::BeginPlay();
 }
 
 void ASyringe::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-	bool bFromSweep, const FHitResult& SweepResult)
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+    bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (bIsUsed) return;
+    if (!OtherActor) return;
 
-	AmaterialCharacter* Character = Cast<AmaterialCharacter>(OtherActor);
-	if (!Character) return;
+    AmaterialCharacter* Character = Cast<AmaterialCharacter>(OtherActor);
+    if (!Character) return;
 
-	UseSyringe(Character);
+    UE_LOG(LogTemp, Warning, TEXT("Character Detected: %s"), *OtherActor->GetName());
+
+    AttachToCharacterHand(Character);
 }
 
 void ASyringe::AttachToCharacterHand(AmaterialCharacter* Character)
 {
-	// 제자리 고정이므로 사용 안 함
+    if (!Character) return;
+
+    OverlapComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    MeshComp->SetWorldScale3D(FVector(0.15f, 0.15f, 0.15f));
+
+    FName SocketName = TEXT("hand_L_endSocket");
+    FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
+    AttachToComponent(Character->GetMesh(), AttachRules, SocketName);
+
+    //SetActorRelativeLocation(FVector(10.f, 5.f, -5.f));
+    SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
 }
 
 void ASyringe::UseSyringe(AmaterialCharacter* Character)
 {
-	if (!Character || bIsUsed) return;
-
-	for (const FSyringeChargeSpec& Spec : ChargeSpecs)
-	{
-		if (Spec.MaterialTag.IsNone() || Spec.ChargeAmount <= 0) continue;
-		Character->ChargeGaugeForMaterial(Spec.MaterialTag, Spec.ChargeAmount);
-	}
-
-	bIsUsed = true;
-	Destroy();
+    if (!Character) return;
 }
