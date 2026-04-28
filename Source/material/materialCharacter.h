@@ -67,6 +67,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UTestUI> RadialMenuClass;
 
+	ASyringe* GetAttachedSyringe() const { return AttachedSyringe; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
