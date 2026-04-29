@@ -41,6 +41,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Syringe")
@@ -49,11 +50,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Syringe")
 	void AttachToCharacterHand(AmaterialCharacter* Character);
 
+	void StartRotationAnim();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Syringe")
 	bool bIsAttached = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Syringe")
 	bool bIsUsed = false;
+
+	UPROPERTY(EditAnywhere, Category = "Syringe|Animation")
+	FRotator RotAnimEndRot = FRotator(270.f, 0.f, 180.f);
+
+	UPROPERTY(EditAnywhere, Category = "Syringe|Animation")
+	float RotAnimDuration = 0.65f;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
@@ -70,6 +79,10 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<AmaterialCharacter> AttachedCharacter = nullptr;
+
+	FRotator RotAnimStartCached;
+	float RotAnimTime = 0.f;
+	bool bIsRotating = false;
 
 	static FName MaterialEnumToTag(ESyringeMaterial Material);
 

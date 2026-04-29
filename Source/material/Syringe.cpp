@@ -6,7 +6,7 @@
 
 ASyringe::ASyringe()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true;
 
     USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
     SetRootComponent(SceneRoot);
@@ -44,6 +44,33 @@ void ASyringe::BeginPlay()
     Super::BeginPlay();
 }
 
+void ASyringe::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    if (!bIsRotating) return;
+
+    RotAnimTime += DeltaTime;
+    float Alpha = FMath::Clamp(RotAnimTime / RotAnimDuration, 0.f, 1.f);
+    float SmoothAlpha = FMath::InterpEaseInOut(0.f, 1.f, Alpha, 2.f);
+
+    FQuat StartQuat(RotAnimStartCached);
+    FQuat EndQuat(RotAnimEndRot);
+    FQuat ResultQuat = FQuat::Slerp(StartQuat, EndQuat, SmoothAlpha);
+
+    SetActorRelativeRotation(ResultQuat);
+
+    if (Alpha >= 1.f) bIsRotating = false;
+}
+
+void ASyringe::StartRotationAnim()
+{
+    if (USceneComponent* Root = GetRootComponent())
+        RotAnimStartCached = Root->GetRelativeRotation();
+    RotAnimTime = 0.f;
+    bIsRotating = true;
+}
+
 void ASyringe::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
@@ -71,8 +98,8 @@ void ASyringe::AttachToCharacterHand(AmaterialCharacter* Character)
     FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
     AttachToComponent(Character->GetMesh(), AttachRules, SocketName);
 
-    SetActorRelativeLocation(FVector(0.04f, 0.1f, 0.05f));
-    SetActorRelativeRotation(FRotator(90.f, 90.f, 0.f));
+    SetActorRelativeLocation(FVector(0.04f, -0.02f, 0.0f));
+    SetActorRelativeRotation(FRotator(270.f, 90.f, 0.f));
     
     bIsAttached = true;
     Character->SetAttachedSyringe(this);

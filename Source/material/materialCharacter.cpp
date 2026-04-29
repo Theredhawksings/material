@@ -942,17 +942,19 @@ void AmaterialCharacter::OnWarpStage3()
 
 void AmaterialCharacter::UseSyringePressed()
 {
-	if (!AttachedSyringe || bIsUsingSyringe || bIsPickingUp) return;
+    if (!AttachedSyringe || bIsUsingSyringe || bIsPickingUp) return;
 
-	if (InsertAnim && GetMesh())
-	{
-		GetMesh()->PlayAnimation(InsertAnim, false);
-		bIsUsingSyringe = true;
-		bIsPickingUp = true;
-		
-		GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-			&AmaterialCharacter::OnInsertAnimFinished, InsertAnim->GetPlayLength(), false);
-	}
+    if (InsertAnim && GetMesh())
+    {
+        GetMesh()->PlayAnimation(InsertAnim, false);
+        bIsUsingSyringe = true;
+        bIsPickingUp = true;
+
+        AttachedSyringe->StartRotationAnim();
+
+        GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+            &AmaterialCharacter::OnInsertAnimFinished, InsertAnim->GetPlayLength(), false);
+    }
 }
 
 void AmaterialCharacter::OnInsertAnimFinished()
