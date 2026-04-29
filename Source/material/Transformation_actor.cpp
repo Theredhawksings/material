@@ -89,7 +89,7 @@ float ATransformation_actor::GetWireSenseRadius() const
 void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
-    UE_LOG(LogTemp, Warning, TEXT("SetForm 호출"));
+    UE_LOG(LogTemp, Warning, TEXT("Se22tForm 호출"));
 
     SetStencilSafe(0, false);
 

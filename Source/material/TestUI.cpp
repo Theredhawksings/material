@@ -98,6 +98,8 @@ void UTestUI::ConfirmSelection()
 
     EBlockForm NewForm = IndexToForm(PreviousIndex);
 
+    if (TargetActor->GetCurrentForm() == NewForm) return;
+
     FName Tag;
     switch (NewForm)
     {
@@ -112,12 +114,6 @@ void UTestUI::ConfirmSelection()
 
     AmaterialCharacter* Player = Cast<AmaterialCharacter>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
     if (!Player) return;
-
-    if (Player->GetGaugeByTag(Tag) <= 0)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("ConfirmSelection: %s 게이지가 0이라 변경 불가"), *Tag.ToString());
-        return;
-    }
 
     TargetActor->SetForm(NewForm);
     Player->DecreaseGaugeForMaterial(Tag);
