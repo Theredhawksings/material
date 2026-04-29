@@ -71,7 +71,7 @@ void ASyringe::AttachToCharacterHand(AmaterialCharacter* Character)
     FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, true);
     AttachToComponent(Character->GetMesh(), AttachRules, SocketName);
 
-    SetActorRelativeLocation(FVector(0.04f, 0.f, 0.07f));
+    SetActorRelativeLocation(FVector(0.04f, 0.1f, 0.05f));
     SetActorRelativeRotation(FRotator(90.f, 90.f, 0.f));
     
     bIsAttached = true;
