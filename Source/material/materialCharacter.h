@@ -17,7 +17,6 @@ class UStaticMeshComponent;
 class USceneComponent;
 class ATransformation_actor;
 class ASyringe;
-class ASyringe;
 
 UCLASS()
 class MATERIAL_API AmaterialCharacter : public ACharacter
@@ -139,17 +138,17 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 RubberGauge = 10;
+	int32 RubberGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 MetalGauge = 10;
+	int32 MetalGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 IceGauge = 10;
+	int32 IceGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 WoodGauge = 10;
+	int32 WoodGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 MagnetGauge = 10;
+	int32 MagnetGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 CopperGauge = 10;
+	int32 CopperGauge = 5;
 
 	UPROPERTY(EditAnywhere, Category = "Material Gauge")
 	int32 GaugeDecreaseAmount = 1;

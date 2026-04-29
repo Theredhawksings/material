@@ -34,8 +34,8 @@ ASyringe::ASyringe()
     OverlapComp->OnComponentBeginOverlap.AddDynamic(this, &ASyringe::OnOverlapBegin);
 
     FSyringeChargeSpec DefaultSpec;
-    DefaultSpec.MaterialTag = TEXT("Metal");
-    DefaultSpec.ChargeAmount = 3;
+    DefaultSpec.MaterialType = ESyringeMaterial::Metal;
+    DefaultSpec.ChargeAmount = 1;
     ChargeSpecs.Add(DefaultSpec);
 }
 
@@ -84,9 +84,24 @@ void ASyringe::UseSyringe(AmaterialCharacter* Character)
 
 	for (const FSyringeChargeSpec& Spec : ChargeSpecs)
 	{
-		if (Spec.MaterialTag.IsNone() || Spec.ChargeAmount <= 0) continue;
-		Character->ChargeGaugeForMaterial(Spec.MaterialTag, Spec.ChargeAmount);
+		if (Spec.ChargeAmount <= 0) continue;
+		FName Tag = MaterialEnumToTag(Spec.MaterialType);
+		Character->ChargeGaugeForMaterial(Tag, Spec.ChargeAmount);
 	}
 
 	bIsUsed = true;
+}
+
+FName ASyringe::MaterialEnumToTag(ESyringeMaterial Material)
+{
+	switch (Material)
+	{
+		case ESyringeMaterial::Metal:  return TEXT("Metal");
+		case ESyringeMaterial::Copper: return TEXT("Copper");
+		case ESyringeMaterial::Rubber: return TEXT("Rubber");
+		case ESyringeMaterial::Ice:    return TEXT("Ice");
+		case ESyringeMaterial::Wood:   return TEXT("Wood");
+		case ESyringeMaterial::Magnet: return TEXT("Magnet");
+	}
+	return TEXT("Metal");
 }

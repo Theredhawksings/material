@@ -89,12 +89,13 @@ float ATransformation_actor::GetWireSenseRadius() const
 void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
+    UE_LOG(LogTemp, Warning, TEXT("SetForm 호출"));
 
     SetStencilSafe(0, false);
 
     if (!CycleOrder.Contains(EBlockForm::Magnet))
         CycleOrder.Add(EBlockForm::Magnet);
-    // ★ Copper도 사이클에 포함 보장
+
     if (!CycleOrder.Contains(EBlockForm::Copper))
         CycleOrder.Add(EBlockForm::Copper);
 
@@ -394,6 +395,8 @@ void ATransformation_actor::Tick(float DeltaTime)
 // ============================================================================
 void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
+    UE_LOG(LogTemp, Warning, TEXT("SetForm 호출: %d -> %d"), (int)CurrentForm, (int)NewForm);
+
     if (CurrentForm == NewForm)
     {
         if (NewForm == EBlockForm::Magnet && bDemagnetized)
@@ -420,7 +423,7 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     case EBlockForm::Wood:   ExitWoodMode();   break;
     case EBlockForm::Magnet: ExitMagnetMode(); break;
     case EBlockForm::Metal:
-    case EBlockForm::Copper:   // ★ Copper도 Metal과 같은 전기 정리
+    case EBlockForm::Copper:   
         SetElectrified(false);
         for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
             if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
@@ -445,7 +448,6 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     if (MeshComp && SavedMeltAlpha > 0.0f)
         MeshComp->SetWorldScale3D(SavedCurrentScale);
 
-    // 새 폼 진입
     switch (CurrentForm)
     {
     case EBlockForm::Ice:
@@ -495,9 +497,49 @@ void ATransformation_actor::DecreaseGaugeForCurrentTag()
 void ATransformation_actor::NextForm()
 {
     if (CycleOrder.Num() <= 0) return;
-    int32 Idx = CycleOrder.Find(CurrentForm);
-    Idx = (Idx == INDEX_NONE) ? 0 : (Idx + 1) % CycleOrder.Num();
-    SetForm(CycleOrder[Idx]);
+
+    APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+    AmaterialCharacter* PlayerChar = PC ? Cast<AmaterialCharacter>(PC->GetPawn()) : nullptr;
+
+    int32 StartIdx = CycleOrder.Find(CurrentForm);
+    if (StartIdx == INDEX_NONE) StartIdx = -1;
+
+    int32 NextIdx = INDEX_NONE;
+    for (int32 i = 1; i <= CycleOrder.Num(); ++i)
+    {
+        int32 TryIdx = (StartIdx + i) % CycleOrder.Num();
+        EBlockForm TryForm = CycleOrder[TryIdx];
+
+        if (TryForm == CurrentForm) continue;
+
+        if (PlayerChar)
+        {
+            FName Tag;
+            switch (TryForm)
+            {
+                case EBlockForm::Metal:  Tag = MetalTag;  break;
+                case EBlockForm::Copper: Tag = CopperTag; break;
+                case EBlockForm::Ice:    Tag = IceTag;    break;
+                case EBlockForm::Rubber: Tag = RubberTag; break;
+                case EBlockForm::Wood:   Tag = WoodTag;   break;
+                case EBlockForm::Magnet: Tag = MagnetTag; break;
+                default: continue;
+            }
+
+            if (PlayerChar->GetGaugeByTag(Tag) <= 0) continue;
+        }
+
+        NextIdx = TryIdx;
+        break;
+    }
+
+    if (NextIdx == INDEX_NONE)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("NextForm: 사용 가능한 폼이 없음 (모든 게이지 0)"));
+        return;
+    }
+
+    SetForm(CycleOrder[NextIdx]);
     DecreaseGaugeForCurrentTag();
 }
 

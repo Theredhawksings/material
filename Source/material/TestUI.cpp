@@ -97,22 +97,28 @@ void UTestUI::ConfirmSelection()
     if (!TargetActor) return;
 
     EBlockForm NewForm = IndexToForm(PreviousIndex);
-    TargetActor->SetForm(NewForm);
+
+    FName Tag;
+    switch (NewForm)
+    {
+    case EBlockForm::Rubber: Tag = TEXT("Rubber"); break;
+    case EBlockForm::Metal:  Tag = TEXT("Metal");  break;
+    case EBlockForm::Ice:    Tag = TEXT("Ice");    break;
+    case EBlockForm::Wood:   Tag = TEXT("Wood");   break;
+    case EBlockForm::Magnet: Tag = TEXT("Magnet"); break;
+    case EBlockForm::Copper: Tag = TEXT("Copper"); break;
+    default: return;
+    }
 
     AmaterialCharacter* Player = Cast<AmaterialCharacter>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0));
-    if (Player)
+    if (!Player) return;
+
+    if (Player->GetGaugeByTag(Tag) <= 0)
     {
-        FName Tag;
-        switch (NewForm)
-        {
-        case EBlockForm::Rubber: Tag = TEXT("Rubber"); break;
-        case EBlockForm::Metal:  Tag = TEXT("Metal");  break;
-        case EBlockForm::Ice:    Tag = TEXT("Ice");     break;
-        case EBlockForm::Wood:   Tag = TEXT("Wood");    break;
-        case EBlockForm::Magnet: Tag = TEXT("Magnet");  break;
-        case EBlockForm::Copper: Tag = TEXT("Copper");  break;
-        default: return;
-        }
-        Player->DecreaseGaugeForMaterial(Tag);
+        UE_LOG(LogTemp, Warning, TEXT("ConfirmSelection: %s 게이지가 0이라 변경 불가"), *Tag.ToString());
+        return;
     }
+
+    TargetActor->SetForm(NewForm);
+    Player->DecreaseGaugeForMaterial(Tag);
 }

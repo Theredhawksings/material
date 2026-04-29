@@ -8,13 +8,24 @@ class UStaticMeshComponent;
 class USphereComponent;
 class AmaterialCharacter;
 
+UENUM(BlueprintType)
+enum class ESyringeMaterial : uint8
+{
+	Metal   UMETA(DisplayName = "Metal"),
+	Copper  UMETA(DisplayName = "Copper"),
+	Rubber  UMETA(DisplayName = "Rubber"),
+	Ice     UMETA(DisplayName = "Ice"),
+	Wood    UMETA(DisplayName = "Wood"),
+	Magnet  UMETA(DisplayName = "Magnet")
+};
+
 USTRUCT(BlueprintType)
 struct FSyringeChargeSpec
 {
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName MaterialTag = TEXT("Metal");
+	ESyringeMaterial MaterialType = ESyringeMaterial::Metal;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1", ClampMax = "10"))
 	int32 ChargeAmount = 3;
@@ -60,7 +71,7 @@ private:
 	UPROPERTY()
 	TObjectPtr<AmaterialCharacter> AttachedCharacter = nullptr;
 
-	static constexpr TCHAR LeftHandSocket[] = TEXT("hand_L_endSocket");
+	static FName MaterialEnumToTag(ESyringeMaterial Material);
 
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
