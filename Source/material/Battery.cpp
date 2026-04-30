@@ -20,12 +20,20 @@ ABATTERY::ABATTERY()
     InteractionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     InteractionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     InteractionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+    InteractionBox->bDrawOnlyIfSelected = !bShowDebugShapes;
+    InteractionBox->ShapeColor = FColor::Green;
+    InteractionBox->SetHiddenInGame(!bShowDebugShapes);
+    InteractionBox->SetVisibility(bShowDebugShapes);
 
     ConnectionOutlet = CreateDefaultSubobject<UBoxComponent>(TEXT("ConnectionOutlet"));
     ConnectionOutlet->SetupAttachment(RootComponent);
     ConnectionOutlet->SetBoxExtent(FVector(150.0f));
     ConnectionOutlet->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     ConnectionOutlet->SetCollisionResponseToAllChannels(ECR_Overlap);
+    ConnectionOutlet->bDrawOnlyIfSelected = !bShowDebugShapes;
+    ConnectionOutlet->ShapeColor = FColor::Yellow;
+    ConnectionOutlet->SetHiddenInGame(!bShowDebugShapes);
+    ConnectionOutlet->SetVisibility(bShowDebugShapes);
 }
 
 void ABATTERY::BeginPlay()
@@ -39,6 +47,8 @@ void ABATTERY::BeginPlay()
 
     BatteryMesh->SetRenderCustomDepth(true);
     BatteryMesh->SetCustomDepthStencilValue(0);
+
+    ApplyDebugVisibility();
 
     RefreshConnectedWires();
     GetWorld()->GetTimerManager().SetTimer(RefreshTimerHandle, this,
@@ -152,6 +162,43 @@ void ABATTERY::UpdateWiresPower()
         }
     }
 }
+
+void ABATTERY::ApplyDebugVisibility()
+{
+    // InteractionBox 가시성
+    if (InteractionBox)
+    {
+        InteractionBox->SetHiddenInGame(!bShowDebugShapes);
+        InteractionBox->SetVisibility(bShowDebugShapes);
+        InteractionBox->bDrawOnlyIfSelected = !bShowDebugShapes;
+        InteractionBox->MarkRenderStateDirty();
+    }
+
+    // ConnectionOutlet 가시성
+    if (ConnectionOutlet)
+    {
+        ConnectionOutlet->SetHiddenInGame(!bShowDebugShapes);
+        ConnectionOutlet->SetVisibility(bShowDebugShapes);
+        ConnectionOutlet->bDrawOnlyIfSelected = !bShowDebugShapes;
+        ConnectionOutlet->MarkRenderStateDirty();
+    }
+}
+
+#if WITH_EDITOR
+void ABATTERY::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    const FName PropName = (PropertyChangedEvent.Property != nullptr)
+        ? PropertyChangedEvent.Property->GetFName()
+        : NAME_None;
+
+    if (PropName == GET_MEMBER_NAME_CHECKED(ABATTERY, bShowDebugShapes))
+    {
+        ApplyDebugVisibility();
+    }
+}
+#endif
 
 void ABATTERY::OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,

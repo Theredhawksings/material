@@ -72,10 +72,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heat|Visual", meta = (EditCondition = "bUseStencil"))
 	float MaxStencilTemperature = 2000.0f;
 
+	// 에디터/게임에서 디버그 셰이프(HeatSphere) 보이기 토글
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heat|Debug")
+	bool bShowDebugShapes = true;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void OnConstruction(const FTransform& Transform) override;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
@@ -108,4 +116,5 @@ private:
 	void EnsureOverlappingActorsHeating();
 	void CallFunctionOnActor(AActor* Target, FName FunctionName, void* Params = nullptr) const;
 	void GetFilteredOverlappingActors(TArray<AActor*>& OutActors) const;
+	void ApplyDebugVisibility();
 };

@@ -20,10 +20,10 @@ ATemperature::ATemperature()
 	HeatSphere->SetupAttachment(Root);
 	HeatSphere->SetCollisionProfileName(TEXT("Trigger"));
 	HeatSphere->SetGenerateOverlapEvents(true);
-	HeatSphere->bDrawOnlyIfSelected = false;
+	HeatSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
 	HeatSphere->ShapeColor = FColor::Red;
-	HeatSphere->SetHiddenInGame(true);
-	HeatSphere->SetVisibility(true);
+	HeatSphere->SetHiddenInGame(!bShowDebugShapes);
+	HeatSphere->SetVisibility(bShowDebugShapes);
 }
 
 void ATemperature::OnConstruction(const FTransform& Transform)
@@ -31,6 +31,7 @@ void ATemperature::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 	UpdateSphereRadius(false);
 	UpdateVisuals();
+	ApplyDebugVisibility();
 }
 
 void ATemperature::BeginPlay()
@@ -39,6 +40,7 @@ void ATemperature::BeginPlay()
 
 	UpdateSphereRadius(true);
 	UpdateVisuals();
+	ApplyDebugVisibility();
 
 	if (HeatSphere)
 	{
@@ -207,6 +209,33 @@ void ATemperature::UpdateVisuals()
 		MeshComp->SetCustomDepthStencilValue(StencilValue);
 	}
 }
+
+void ATemperature::ApplyDebugVisibility()
+{
+	if (HeatSphere)
+	{
+		HeatSphere->SetHiddenInGame(!bShowDebugShapes);
+		HeatSphere->SetVisibility(bShowDebugShapes);
+		HeatSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
+		HeatSphere->MarkRenderStateDirty();
+	}
+}
+
+#if WITH_EDITOR
+void ATemperature::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	const FName PropName = (PropertyChangedEvent.Property != nullptr)
+		? PropertyChangedEvent.Property->GetFName()
+		: NAME_None;
+
+	if (PropName == GET_MEMBER_NAME_CHECKED(ATemperature, bShowDebugShapes))
+	{
+		ApplyDebugVisibility();
+	}
+}
+#endif
 
 void ATemperature::EnsureOverlappingActorsHeating()
 {

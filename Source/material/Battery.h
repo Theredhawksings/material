@@ -30,9 +30,17 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery|Electrical")
     float Voltage = 12.0f;
 
+    // 에디터/게임에서 디버그 셰이프(InteractionBox, ConnectionOutlet) 보이기 토글
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery|Debug")
+    bool bShowDebugShapes = true;
+
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "Components")
@@ -59,6 +67,7 @@ private:
     void SetupInputBinding();
     void RemoveInputBinding();
     void UpdateWiresPower();
+    void ApplyDebugVisibility();
 
     void OnHoldPressed();
     void OnHoldReleased();

@@ -32,6 +32,10 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> CoilMesh;
@@ -87,11 +91,15 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
 	bool bDebugDraw = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil|Debug", meta = (AllowPrivateAccess = "true"))
+	bool bShowDebugShapes = true;
+
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> DetectedMagnets;
 
 	FVector BaseCoilLocation;
 	float OscillationTime = 0.f;
+
 	UPROPERTY(EditAnywhere, Category = "Coil|Circuit")
 	float WireDetectRadius = 200.f;
 
@@ -108,4 +116,5 @@ private:
 	void ApplyMagneticForce();
 	void UpdateFieldRadius();
 	void DebugVisualize();
+	void ApplyDebugVisibility();
 };

@@ -24,8 +24,10 @@ ACoil::ACoil()
 	DetectionZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DetectionZone->SetCollisionResponseToAllChannels(ECR_Overlap);
 	DetectionZone->SetGenerateOverlapEvents(true);
-	DetectionZone->SetHiddenInGame(false);
+	DetectionZone->bDrawOnlyIfSelected = !bShowDebugShapes;
 	DetectionZone->ShapeColor = FColor::Cyan;
+	DetectionZone->SetHiddenInGame(!bShowDebugShapes);
+	DetectionZone->SetVisibility(bShowDebugShapes);
 
 	MagneticFieldSphere = CreateDefaultSubobject<USphereComponent>(TEXT("MagneticFieldSphere"));
 	MagneticFieldSphere->SetupAttachment(RootComponent);
@@ -33,15 +35,17 @@ ACoil::ACoil()
 	MagneticFieldSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	MagneticFieldSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
 	MagneticFieldSphere->SetGenerateOverlapEvents(true);
-	MagneticFieldSphere->SetHiddenInGame(false);
+	MagneticFieldSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
 	MagneticFieldSphere->ShapeColor = FColor::Blue;
+	MagneticFieldSphere->SetHiddenInGame(!bShowDebugShapes);
+	MagneticFieldSphere->SetVisibility(bShowDebugShapes);
 
 	BottomBlocker = CreateDefaultSubobject<UBoxComponent>(TEXT("BottomBlocker"));
 	BottomBlocker->SetupAttachment(RootComponent);
 	BottomBlocker->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	BottomBlocker->SetCollisionResponseToAllChannels(ECR_Block);
-	BottomBlocker->SetHiddenInGame(false);
-	BottomBlocker->ShapeColor = FColor::Red;
+	BottomBlocker->SetVisibility(false);  // 와이어프레임 숨김
+	BottomBlocker->SetHiddenInGame(true);  // 인게임에서도 와이어프레임 숨김
 }
 
 void ACoil::BeginPlay()
@@ -52,6 +56,8 @@ void ACoil::BeginPlay()
 	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
 	BaseCoilLocation = GetActorLocation();
 	CoilMesh->SetSimulatePhysics(false);
+
+	ApplyDebugVisibility();
 
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 	{
@@ -259,6 +265,45 @@ void ACoil::DebugVisualize()
 	}
 #endif
 }
+
+void ACoil::ApplyDebugVisibility()
+{
+	// DetectionZone 가시성
+	if (DetectionZone)
+	{
+		DetectionZone->SetHiddenInGame(!bShowDebugShapes);
+		DetectionZone->SetVisibility(bShowDebugShapes);
+		DetectionZone->bDrawOnlyIfSelected = !bShowDebugShapes;
+		DetectionZone->MarkRenderStateDirty();
+	}
+
+	// MagneticFieldSphere 가시성
+	if (MagneticFieldSphere)
+	{
+		MagneticFieldSphere->SetHiddenInGame(!bShowDebugShapes);
+		MagneticFieldSphere->SetVisibility(bShowDebugShapes);
+		MagneticFieldSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
+		MagneticFieldSphere->MarkRenderStateDirty();
+	}
+
+	// BottomBlocker는 항상 보이므로 여기서 제어하지 않음
+}
+
+#if WITH_EDITOR
+void ACoil::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	const FName PropName = (PropertyChangedEvent.Property != nullptr)
+		? PropertyChangedEvent.Property->GetFName()
+		: NAME_None;
+
+	if (PropName == GET_MEMBER_NAME_CHECKED(ACoil, bShowDebugShapes))
+	{
+		ApplyDebugVisibility();
+	}
+}
+#endif
 
 void ACoil::UpdateCircuit()
 {
