@@ -5,6 +5,7 @@
 #include "DrawDebugHelpers.h"
 #include "Wire.h"
 #include "InductionPlate.h"
+#include "UObject/ConstructorHelpers.h"
 
 #include "Engine/OverlapResult.h"
 
@@ -44,8 +45,23 @@ ACoil::ACoil()
 	BottomBlocker->SetupAttachment(RootComponent);
 	BottomBlocker->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	BottomBlocker->SetCollisionResponseToAllChannels(ECR_Block);
-	BottomBlocker->SetVisibility(false);  // 와이어프레임 숨김
-	BottomBlocker->SetHiddenInGame(true);  // 인게임에서도 와이어프레임 숨김
+	BottomBlocker->bDrawOnlyIfSelected = true;   // 에디터에서 선택 안 하면 와이어프레임 안 보임
+	BottomBlocker->ShapeColor = FColor::Red;
+	BottomBlocker->SetVisibility(true);
+	BottomBlocker->SetHiddenInGame(true);        // 인게임에서는 와이어프레임 안 보임 (대신 BottomPlateMesh가 보임)
+
+	// 인게임에서 실제로 보이는 판 메시 (BottomBlocker 위치에 부착)
+	BottomPlateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BottomPlateMesh"));
+	BottomPlateMesh->SetupAttachment(BottomBlocker);
+	BottomPlateMesh->SetRelativeLocation(FVector::ZeroVector);
+	BottomPlateMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌은 BottomBlocker가 담당
+
+	// 기본 큐브 메시 자동 로드
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (CubeMeshFinder.Succeeded())
+	{
+		BottomPlateMesh->SetStaticMesh(CubeMeshFinder.Object);
+	}
 }
 
 void ACoil::BeginPlay()

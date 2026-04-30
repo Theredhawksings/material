@@ -49,6 +49,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UBoxComponent> BottomBlocker;
 
+	// 인게임에서 실제 보이는 판 메시
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> BottomPlateMesh;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	bool bCoilActive = true;
 
@@ -91,6 +95,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
 	bool bDebugDraw = true;
 
+	// 에디터/게임에서 디버그 셰이프(DetectionZone, MagneticFieldSphere, BottomBlocker) 보이기 토글
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil|Debug", meta = (AllowPrivateAccess = "true"))
 	bool bShowDebugShapes = true;
 
