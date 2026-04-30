@@ -36,6 +36,7 @@ void AWire::BeginPlay()
 
     UpdateConnectionPoint();
     ApplyPower();
+    ApplyDebugVisibility();
 
     GetWorldTimerManager().SetTimerForNextTick(this, &AWire::RefreshConnectedActors);
 
@@ -291,6 +292,44 @@ void AWire::UpdateWireVisual()
         if (Mesh) Mesh->SetCustomDepthStencilValue(StencilVal);
 }
 
+void AWire::ApplyDebugVisibility()
+{
+    // IceHeatZone 가시성
+    if (IceHeatZone)
+    {
+        IceHeatZone->SetHiddenInGame(!bShowDebugShapes);
+        IceHeatZone->SetVisibility(bShowDebugShapes);
+        IceHeatZone->bDrawOnlyIfSelected = !bShowDebugShapes;
+        IceHeatZone->MarkRenderStateDirty();
+    }
+
+    // HeatSpheres 가시성
+    for (USphereComponent* Sphere : HeatSpheres)
+    {
+        if (!Sphere) continue;
+        Sphere->SetHiddenInGame(!bShowDebugShapes);
+        Sphere->SetVisibility(bShowDebugShapes);
+        Sphere->bDrawOnlyIfSelected = !bShowDebugShapes;
+        Sphere->MarkRenderStateDirty();
+    }
+}
+
+#if WITH_EDITOR
+void AWire::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    const FName PropName = (PropertyChangedEvent.Property != nullptr)
+        ? PropertyChangedEvent.Property->GetFName()
+        : NAME_None;
+
+    if (PropName == GET_MEMBER_NAME_CHECKED(AWire, bShowDebugShapes))
+    {
+        ApplyDebugVisibility();
+    }
+}
+#endif
+
 void AWire::ClearGeneratedMeshes()
 {
     for (USplineMeshComponent* Comp : SegmentMeshes)
@@ -358,8 +397,9 @@ void AWire::RebuildSplineMeshes()
         HeatSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         HeatSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
         HeatSphere->SetGenerateOverlapEvents(true);
-        HeatSphere->SetHiddenInGame(true);
-        HeatSphere->SetVisibility(false);
+        HeatSphere->SetHiddenInGame(!bShowDebugShapes);
+        HeatSphere->SetVisibility(bShowDebugShapes);
+        HeatSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
         HeatSphere->RegisterComponent();
 
         HeatSpheres.Add(HeatSphere);
@@ -377,9 +417,9 @@ void AWire::RebuildSplineMeshes()
         IceHeatZone->SetSphereRadius(IceHeatZoneRadius);
         IceHeatZone->SetCollisionProfileName(TEXT("Trigger"));
         IceHeatZone->SetGenerateOverlapEvents(true);
-        IceHeatZone->SetHiddenInGame(false);
-        IceHeatZone->SetVisibility(true);
-        IceHeatZone->bDrawOnlyIfSelected = false;
+        IceHeatZone->SetHiddenInGame(!bShowDebugShapes);
+        IceHeatZone->SetVisibility(bShowDebugShapes);
+        IceHeatZone->bDrawOnlyIfSelected = !bShowDebugShapes;
         IceHeatZone->ShapeColor = FColor::Red;
         IceHeatZone->OnComponentBeginOverlap.AddDynamic(this, &AWire::OnIceHeatZoneBeginOverlap);
         IceHeatZone->OnComponentEndOverlap.AddDynamic(this, &AWire::OnIceHeatZoneEndOverlap);
@@ -387,6 +427,7 @@ void AWire::RebuildSplineMeshes()
     }
 
     ApplyPower();
+    ApplyDebugVisibility();
 }
 
 void AWire::RefreshConnectedActors()

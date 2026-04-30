@@ -41,6 +41,10 @@ protected:
     virtual void Tick(float DeltaTime) override;
     virtual void OnConstruction(const FTransform& Transform) override;
 
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 protected:
     UPROPERTY(VisibleAnywhere, Category = "Wire|Components")
     TObjectPtr<USceneComponent> Root;
@@ -72,8 +76,13 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Wire|Connection")
     float RefreshInterval = 0.10f;
 
-    UPROPERTY(EditAnywhere, Category = "Wire|Debug")
+    // 디버그 텍스트(온도/전류) 출력 토글
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Debug")
     bool bDebugWire = true;
+
+    // 에디터/게임에서 디버그 셰이프(IceHeatZone, HeatSpheres) 보이기 토글
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Debug")
+    bool bShowDebugShapes = true;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Electrical")
     float BatteryVoltage = 0.f;
@@ -149,6 +158,7 @@ private:
     void UpdateJouleHeating(float DeltaTime);
     void EmitHeatToNearby(float DeltaTime);
     void UpdateWireVisual();
+    void ApplyDebugVisibility();
 
     UFUNCTION()
     void OnIceHeatZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
