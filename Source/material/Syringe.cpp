@@ -22,10 +22,29 @@ ASyringe::ASyringe()
     if (SyringeMesh.Succeeded())
         MeshComp->SetStaticMesh(SyringeMesh.Object);
 
-    static ConstructorHelpers::FObjectFinder<UMaterial> SyringeMat(
-        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery.M_Battery'"));
-    if (SyringeMat.Succeeded())
-        MeshComp->SetMaterial(0, SyringeMat.Object);
+    static ConstructorHelpers::FObjectFinder<UMaterial> MetalMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Metal.M_Battery_Metal'"));
+    if (MetalMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Metal, MetalMatFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> CopperMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Copper.M_Battery_Copper'"));
+    if (CopperMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Copper, CopperMatFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> RubberMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Rubber.M_Battery_Rubber'"));
+    if (RubberMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Rubber, RubberMatFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> IceMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Ice.M_Battery_Ice'"));
+    if (IceMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Ice, IceMatFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> WoodMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Wood.M_Battery_Wood'"));
+    if (WoodMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Wood, WoodMatFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> MagnetMatFinder(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Battery/M_Battery_Magnet.M_Battery_Magnet'"));
+    if (MagnetMatFinder.Succeeded()) MaterialMap.Add(ESyringeMaterial::Magnet, MagnetMatFinder.Object);
 
     OverlapComp = CreateDefaultSubobject<USphereComponent>(TEXT("OverlapComp"));
     OverlapComp->SetupAttachment(RootComponent);
@@ -42,6 +61,19 @@ ASyringe::ASyringe()
 void ASyringe::BeginPlay()
 {
     Super::BeginPlay();
+    ApplyMaterialByType();
+}
+
+void ASyringe::ApplyMaterialByType()
+{
+    if (!MeshComp || ChargeSpecs.Num() == 0) return;
+
+    ESyringeMaterial Type = ChargeSpecs[0].MaterialType;
+    if (TObjectPtr<UMaterialInterface>* FoundMat = MaterialMap.Find(Type))
+    {
+        if (*FoundMat)
+            MeshComp->SetMaterial(0, *FoundMat);
+    }
 }
 
 void ASyringe::Tick(float DeltaTime)

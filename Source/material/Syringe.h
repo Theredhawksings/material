@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 class USphereComponent;
 class AmaterialCharacter;
+class UMaterialInterface;
 
 UENUM(BlueprintType)
 enum class ESyringeMaterial : uint8
@@ -78,6 +79,9 @@ private:
 	float OverlapRadius = 80.f;
 
 	UPROPERTY()
+    TMap<ESyringeMaterial, TObjectPtr<UMaterialInterface>> MaterialMap;
+
+	UPROPERTY()
 	TObjectPtr<AmaterialCharacter> AttachedCharacter = nullptr;
 
 	FRotator RotAnimStartCached;
@@ -90,4 +94,6 @@ private:
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 		bool bFromSweep, const FHitResult& SweepResult);
+
+	void ApplyMaterialByType();
 };
