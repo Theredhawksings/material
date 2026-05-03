@@ -146,7 +146,7 @@ private:
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	int32 WoodGauge = 5;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 MagnetGauge = 5;
+	int32 MagnetGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	int32 CopperGauge = 5;
 
