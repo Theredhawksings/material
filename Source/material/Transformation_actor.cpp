@@ -89,7 +89,6 @@ float ATransformation_actor::GetWireSenseRadius() const
 void ATransformation_actor::BeginPlay()
 {
     Super::BeginPlay();
-    UE_LOG(LogTemp, Warning, TEXT("Se22tForm 호출"));
 
     SetStencilSafe(0, false);
 
@@ -415,7 +414,33 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     ATemperature* SavedFire = CurrentFire;
     const bool bWasHeating = bHeating;
     const FVector SavedCurrentScale = MeshComp ? MeshComp->GetComponentScale() : FVector(1);
-
+    {
+        APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+        AmaterialCharacter* PlayerChar = PC ? Cast<AmaterialCharacter>(PC->GetPawn()) : nullptr;
+        if (PlayerChar)
+        {
+            FName Tag;
+            switch (NewForm)
+            {
+                case EBlockForm::Metal:  Tag = MetalTag;  break;
+                case EBlockForm::Copper: Tag = CopperTag; break;
+                case EBlockForm::Ice:    Tag = IceTag;    break;
+                case EBlockForm::Rubber: Tag = RubberTag; break;
+                case EBlockForm::Wood:   Tag = WoodTag;   break;
+                case EBlockForm::Magnet: Tag = MagnetTag; break;
+                default: break;
+            }
+            int32 GaugeVal = PlayerChar->GetGaugeByTag(Tag);
+            UE_LOG(LogTemp, Warning, TEXT("SetForm 게이지 검사: %s = %d"), *Tag.ToString(), GaugeVal);
+            
+            if (!Tag.IsNone() && GaugeVal <= 0)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("SetForm: %s 게이지가 0이라 변경 불가"), *Tag.ToString());
+                return;
+            }
+        }
+    }
+    
     // 이전 폼 정리
     switch (CurrentForm)
     {
