@@ -890,12 +890,7 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
             RefreshOverlappingMetals();
 
             if (SpawnedArrowEffect)
-            {
-                if (SpawnedArrowEffect->IsHidden())
-                    SpawnedArrowEffect->SetActorHiddenInGame(false);
                 UpdateMagnetArrowPower(PowerRatio);
-            }
-
         }
         else if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
         {
@@ -1081,7 +1076,7 @@ void ATransformation_actor::EnterMagnetMode()
         GetWorldTimerManager().SetTimer(Timer, [this]()
         {
             if (!IsValid(this) || !ArrowEffectClass) return;
-            if (CurrentForm != EBlockForm::Magnet || bDemagnetized) return;
+            if (CurrentForm != EBlockForm::Magnet) return;
 
             const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
             FTransform T((GetActorQuat() * OffQ).Rotator(), GetActorLocation());
@@ -1113,7 +1108,7 @@ void ATransformation_actor::EnterMagnetMode()
             for (USceneComponent* C : AllComps) C->SetMobility(EComponentMobility::Movable);
 
             SpawnedArrowEffect = Arrow;
-            SpawnedArrowEffect->SetActorHiddenInGame(bDemagnetized);
+            SpawnedArrowEffect->SetActorHiddenInGame(true);
         }, 1.0f, false);
     }
 }
