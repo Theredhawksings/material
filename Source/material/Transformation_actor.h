@@ -166,7 +166,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood|Combustion")
     float CombustionHeatJPerKg = 15000000.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood|Combustion")
-    float BurnRateKgPerSec = 0.1f;
+    float BurnRateKgPerSec = 1.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood|Properties")
     float WoodDensityKgM3 = 600.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood|Properties")

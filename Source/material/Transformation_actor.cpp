@@ -890,7 +890,12 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
             RefreshOverlappingMetals();
 
             if (SpawnedArrowEffect)
+            {
+                if (SpawnedArrowEffect->IsHidden())
+                    SpawnedArrowEffect->SetActorHiddenInGame(false);
                 UpdateMagnetArrowPower(PowerRatio);
+            }
+
         }
         else if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
         {
@@ -1108,7 +1113,7 @@ void ATransformation_actor::EnterMagnetMode()
             for (USceneComponent* C : AllComps) C->SetMobility(EComponentMobility::Movable);
 
             SpawnedArrowEffect = Arrow;
-            SpawnedArrowEffect->SetActorHiddenInGame(true);
+            SpawnedArrowEffect->SetActorHiddenInGame(bDemagnetized);
         }, 1.0f, false);
     }
 }
