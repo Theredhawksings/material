@@ -79,6 +79,8 @@ public:
 
     bool HasSourcePoweredWireRecursive(TSet<const ATransformation_actor *> &Visited) const;
 
+    const TArray<TObjectPtr<AWire>>& GetConnectedWiresList() const { return ConnectedWires; }
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;

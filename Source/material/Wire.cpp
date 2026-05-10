@@ -14,10 +14,6 @@
 #include "CollisionQueryParams.h"
 #include "Engine/EngineTypes.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 생성자
-// ─────────────────────────────────────────────────────────────────────────────
-
 AWire::AWire()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -28,7 +24,6 @@ AWire::AWire()
     Spline = CreateDefaultSubobject<USplineComponent>(TEXT("Spline"));
     Spline->SetupAttachment(Root);
 
-    // 시작점 연결 구체
     ConnectionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("ConnectionSphere"));
     ConnectionSphere->SetupAttachment(Root);
     ConnectionSphere->SetSphereRadius(OverlapRadius);
@@ -36,7 +31,6 @@ AWire::AWire()
     ConnectionSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
     ConnectionSphere->SetCollisionObjectType(ECC_GameTraceChannel2);
 
-    // 끝점 연결 구체
     ConnectionSphereEnd = CreateDefaultSubobject<USphereComponent>(TEXT("ConnectionSphereEnd"));
     ConnectionSphereEnd->SetupAttachment(Root);
     ConnectionSphereEnd->SetSphereRadius(OverlapRadius);
@@ -45,13 +39,12 @@ AWire::AWire()
     ConnectionSphereEnd->SetCollisionObjectType(ECC_GameTraceChannel2);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 라이프사이클
-// ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (WireMaterial == EWireMaterial::Copper)    Resistance = 1.f;
+    else if (WireMaterial == EWireMaterial::Iron) Resistance = 3.f;
 
     UpdateConnectionPoint();
     ApplyPower();
@@ -97,24 +90,126 @@ void AWire::Tick(float DeltaTime)
     {
         HeatEmitAccumulator = 0.f;
     }
+
+#if ENABLE_DRAW_DEBUG
+    if (!GetWorld()) return;
+
+    FVector DebugPos = GetActorLocation() + FVector(0.f, 0.f, 80.f);
+    if (Spline && Spline->GetNumberOfSplinePoints() >= 2)
+    {
+        const int32 MidIdx = (Spline->GetNumberOfSplinePoints() - 1) / 2;
+        DebugPos = Spline->GetLocationAtSplinePoint(MidIdx, ESplineCoordinateSpace::World)
+                 + FVector(0.f, 0.f, 80.f);
+    }
+
+    if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
+    {
+        const FColor TempColor = (WireTemperatureC > 400.f) ? FColor::Red
+                                : (WireTemperatureC > 200.f) ? FColor::Orange
+                                : FColor::Yellow;
+        DrawDebugString(GetWorld(), DebugPos,
+            FString::Printf(TEXT("%.0fC  %.2fA  V:%.2f"),
+                WireTemperatureC, CurrentAmps, EffectiveVoltage),
+            nullptr, TempColor, 0.0f, true);
+    }
+
+    if (bDebugCircuit && !CachedCircuitText.IsEmpty())
+    {
+        DrawDebugString(GetWorld(), DebugPos + FVector(0.f, 0.f, 25.f),
+            CachedCircuitText, nullptr, CachedCircuitColor, 0.0f, true);
+    }
+#endif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 회로 해석 (2패스)
-//
-//  패스 1 - BuildCircuitGraph
-//    전체 네트워크를 DFS 탐색해서
-//    각 전선에 "몇 개의 상위 경로가 들어오는지(IncomingCount)" 기록
-//    → IncomingCount > 1 이면 병렬 합산 지점(다이아몬드 합류점)
-//
-//  패스 2 - PropagateVoltage
-//    소스에서 출발해 전압/전류를 흘림
-//    합류 지점은 모든 경로가 도달해야 비로소 다음 전선으로 전파
-//    → 전류는 합산, 전압은 동일 유지
+// 다음 전선 수집: 직접 연결 + Metal/Copper 블록 통과
+// VoltageMap 에 이미 있는 전선(=이미 방문한 upstream)은 제외
 // ─────────────────────────────────────────────────────────────────────────────
+void AWire::CollectNextWires(TArray<AWire*>& Out, const TMap<AWire*, float>& VoltageMap) const
+{
+    // 직접 연결된 전선
+    for (AWire* W : ConnectedWires)
+        if (W && !VoltageMap.Contains(W))
+            Out.AddUnique(W);
 
-void AWire::BuildCircuitGraph(TMap<AWire*, int32>& IncomingCountMap,
-                               TSet<AWire*>&        Visited)
+    // Metal/Copper 블록을 통해 연결된 전선
+    for (AActor* CA : ConnectedActors)
+    {
+        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+        if (!C || !C->IsConductive()) continue;
+        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        {
+            AWire* W = WPtr.Get();
+            if (W && W != this && !VoltageMap.Contains(W))
+                Out.AddUnique(W);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 직렬 체인 총 저항 계산
+//
+// ★ 핵심: 병렬 분기점을 만나면 합성 저항을 계산해서 포함시킴
+//
+// 예) Wire_A(2Ω) → [Wire_B(6Ω) || Wire_C(12Ω)]
+//   CalcSeriesResistance(Wire_A) = 2 + (6||12) = 2 + 4 = 6Ω
+//
+// 이게 없으면 I = 12/2 = 6A (틀림)
+// 이게 있으면 I = 12/6 = 2A (맞음)
+// ─────────────────────────────────────────────────────────────────────────────
+float AWire::CalcSeriesResistance(TSet<AWire*>& Visited) const
+{
+    float Total = Resistance;
+
+    // 다음 전선 수집 (Visited로 upstream 제외)
+    TArray<AWire*> Next;
+    for (AWire* W : ConnectedWires)
+        if (W && !Visited.Contains(W))
+            Next.AddUnique(W);
+
+    for (AActor* CA : ConnectedActors)
+    {
+        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+        if (!C || !C->IsConductive()) continue;
+        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        {
+            AWire* W = WPtr.Get();
+            if (W && W != this && !Visited.Contains(W))
+                Next.AddUnique(W);
+        }
+    }
+
+    if (Next.Num() == 1)
+    {
+        // 직렬: 다음 전선 저항 그대로 합산
+        Visited.Add(Next[0]);
+        Total += Next[0]->CalcSeriesResistance(Visited);
+    }
+    else if (Next.Num() > 1)
+    {
+        // ★ 병렬: 각 가지 저항 계산 후 합성 저항 포함
+        // 기존 코드는 이 부분이 없어서 병렬 이후 전류가 틀렸음
+        float InvRSum = 0.f;
+        for (AWire* N : Next)
+        {
+            TSet<AWire*> BranchVisited = Visited; // 가지마다 독립 탐색
+            BranchVisited.Add(N);
+            const float BranchR = N->CalcSeriesResistance(BranchVisited);
+            InvRSum += 1.f / FMath::Max(BranchR, 0.01f);
+        }
+        if (InvRSum > 0.f)
+            Total += 1.f / InvRSum; // 병렬 합성 저항 추가
+    }
+    // Next.Num() == 0: 회로 끝, 추가 저항 없음
+
+    return Total;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 회로 해석 패스 1: 각 전선에 몇 개 경로가 들어오는지 카운트
+// (병렬 합류 지점 감지용)
+// ─────────────────────────────────────────────────────────────────────────────
+void AWire::BuildCircuitGraph(TMap<AWire*, int32>& IncomingCountMap, TSet<AWire*>& Visited)
 {
     if (Visited.Contains(this)) return;
     Visited.Add(this);
@@ -122,125 +217,137 @@ void AWire::BuildCircuitGraph(TMap<AWire*, int32>& IncomingCountMap,
     for (AWire* Next : ConnectedWires)
     {
         if (!Next) continue;
-
-        // 이 전선을 가리키는 경로 수 +1
-        int32& Count = IncomingCountMap.FindOrAdd(Next, 0);
-        Count++;
-
+        IncomingCountMap.FindOrAdd(Next, 0)++;
         if (!Visited.Contains(Next))
             Next->BuildCircuitGraph(IncomingCountMap, Visited);
     }
+
+    for (AActor* CA : ConnectedActors)
+    {
+        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+        if (!C || !C->IsConductive()) continue;
+        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        {
+            AWire* Next = WPtr.Get();
+            if (!Next || Next == this) continue;
+            IncomingCountMap.FindOrAdd(Next, 0)++;
+            if (!Visited.Contains(Next))
+                Next->BuildCircuitGraph(IncomingCountMap, Visited);
+        }
+    }
 }
 
-void AWire::PropagateVoltage(float IncomingVoltage,
-                              float IncomingCurrent,
-                              TMap<AWire*, float>&       VoltageMap,
-                              TMap<AWire*, float>&       CurrentAccumMap,
+// ─────────────────────────────────────────────────────────────────────────────
+// 회로 해석 패스 2: 전압/전류 전파
+//
+// 직렬:
+//   TotalR = 내 저항 + downstream 전체 저항 (CalcSeriesResistance로 계산)
+//   I = IncomingVoltage / TotalR
+//   NextV = IncomingVoltage - I * 내 저항
+//
+// 병렬:
+//   ★ 수정: TotalR = 내 저항 + 병렬합성저항  (기존엔 내 저항 빠져서 틀렸음)
+//   I = IncomingVoltage / TotalR
+//   VParallel = IncomingVoltage - I * 내 저항  (기존엔 이 강하가 없었음)
+//   각 가지에 VParallel 전달, 가지전류 = VParallel / 가지저항
+// ─────────────────────────────────────────────────────────────────────────────
+void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
+                              TMap<AWire*, float>& VoltageMap,
+                              TMap<AWire*, float>& CurrentAccumMap,
                               const TMap<AWire*, int32>& IncomingCountMap)
 {
-    // ── 병렬 합산 지점 처리 ──────────────────────────────────
-    // 이 전선에 들어오는 경로가 여러 개라면
-    // 모든 경로가 도달할 때까지 전류를 누적하고 기다림
+    // 병렬 합류 지점: 여러 경로가 들어오는 경우 전류 누적
     const int32* ExpectedCount = IncomingCountMap.Find(this);
     if (ExpectedCount && *ExpectedCount > 1)
     {
-        float& AccumCurrent = CurrentAccumMap.FindOrAdd(this, 0.f);
-        AccumCurrent += IncomingCurrent;
+        float& Accum = CurrentAccumMap.FindOrAdd(this, 0.f);
+        Accum += IncomingCurrent;
 
         if (VoltageMap.Contains(this))
         {
-            // 이미 전압이 설정돼 있음 → 전류만 누적하고 종료
-            // 전파는 첫 방문자가 담당
-            EffectiveCurrent = AccumCurrent;
+            EffectiveCurrent = Accum;
             return;
         }
 
-        // 첫 방문: 전압 설정 후 계속 전파
         VoltageMap.Add(this, IncomingVoltage);
         EffectiveVoltage = IncomingVoltage;
-        EffectiveCurrent = AccumCurrent; // 지금까지 누적된 전류
+        EffectiveCurrent = Accum;
     }
     else
     {
-        // 단일 경로 → 이미 방문했으면 스킵 (무한 루프 방지)
         if (VoltageMap.Contains(this)) return;
-
         VoltageMap.Add(this, IncomingVoltage);
         EffectiveVoltage = IncomingVoltage;
         EffectiveCurrent = IncomingCurrent;
     }
 
-    // ── 이 전선의 발열에 쓸 전류 갱신 ──────────────────────
-    // Joule: P = I²R, 전류는 지금까지 계산된 EffectiveCurrent 사용
-
-    // ── 다음 전선으로 전파 ──────────────────────────────────
+    // 다음 전선 수집
     TArray<AWire*> NextWires;
-    for (AWire* W : ConnectedWires)
-        if (W && !VoltageMap.Contains(W))
-            NextWires.Add(W);
+    CollectNextWires(NextWires, VoltageMap);
 
+    // 회로 끝
     if (NextWires.Num() == 0)
     {
-        // 회로 끝 - 전류는 EffectiveVoltage / R
-        EffectiveCurrent = EffectiveVoltage / FMath::Max(Resistance, 0.01f);
+        EffectiveCurrent   = EffectiveVoltage / FMath::Max(Resistance, 0.01f);
+        CachedCircuitText  = FString::Printf(TEXT("[끝] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::White;
         return;
     }
 
+    // ── 직렬 ─────────────────────────────────────────────────────────────────
     if (NextWires.Num() == 1)
     {
-        // ── 직렬 ──────────────────────────────────────────
-        // 전류 = 전압 / 내 저항
-        // 다음 전선 전압 = 현재 전압 - 내 저항에서의 강하
-        const float I  = EffectiveVoltage / FMath::Max(Resistance, 0.01f);
-        EffectiveCurrent = I;
-        const float Drop = I * Resistance;
-        const float NextV = FMath::Max(EffectiveVoltage - Drop, 0.f);
+        // TotalR = 내 저항 + 다음부터 끝까지 직렬 저항 (병렬 합성 포함)
+        TSet<AWire*> ResVisited;
+        ResVisited.Add(this);
+        const float DownstreamR = NextWires[0]->CalcSeriesResistance(ResVisited);
+        const float TotalR      = Resistance + DownstreamR;
+        const float I           = IncomingVoltage / FMath::Max(TotalR, 0.01f);
+        EffectiveCurrent        = I;
+        const float NextV       = FMath::Max(IncomingVoltage - I * Resistance, 0.f);
 
-#if ENABLE_DRAW_DEBUG
-        if (bDebugCircuit)
-        {
-            DrawDebugString(GetWorld(),
-                GetActorLocation() + FVector(0.f, 0.f, 130.f),
-                FString::Printf(TEXT("[직렬] V: %.1f→%.1f  I: %.2fA  R: %.1fΩ"),
-                    EffectiveVoltage, NextV, I, Resistance),
-                nullptr, FColor::Cyan, 0.f, true);
-        }
-#endif
+        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f->%.2f I:%.2fA R:%.1f"),
+            IncomingVoltage, NextV, I, Resistance);
+        CachedCircuitColor = FColor::Cyan;
 
         NextWires[0]->SetPowered(true);
         NextWires[0]->PropagateVoltage(NextV, I, VoltageMap, CurrentAccumMap, IncomingCountMap);
     }
+    // ── 병렬 분기 ────────────────────────────────────────────────────────────
     else
     {
-        // ── 병렬 분기 ─────────────────────────────────────
-        // 각 가지에 같은 전압, 전류는 저항 반비례로 분배
-
-        // 병렬 합성 저항
+        // 각 가지의 총 저항 계산
         float InvRSum = 0.f;
         for (AWire* Next : NextWires)
-            InvRSum += 1.f / FMath::Max(Next->Resistance, 0.01f);
-        const float ParallelR   = (InvRSum > 0.f) ? (1.f / InvRSum) : 0.01f;
-        const float TotalCurrent = EffectiveVoltage / FMath::Max(ParallelR, 0.01f);
-        EffectiveCurrent = TotalCurrent;
-
-#if ENABLE_DRAW_DEBUG
-        if (bDebugCircuit)
         {
-            DrawDebugString(GetWorld(),
-                GetActorLocation() + FVector(0.f, 0.f, 130.f),
-                FString::Printf(TEXT("[병렬x%d] V: %.1f  I_합: %.2fA  R합성: %.2fΩ"),
-                    NextWires.Num(), EffectiveVoltage, TotalCurrent, ParallelR),
-                nullptr, FColor::Green, 0.f, true);
+            TSet<AWire*> ResV;
+            ResV.Add(this);
+            const float BranchR = Next->CalcSeriesResistance(ResV);
+            InvRSum += 1.f / FMath::Max(BranchR, 0.01f);
         }
-#endif
+        const float ParallelR = (InvRSum > 0.f) ? (1.f / InvRSum) : 0.01f;
+
+        // ★ 수정: 이 전선 자체 저항도 포함해서 전류 계산
+        const float TotalR    = Resistance + ParallelR;
+        const float I_this    = IncomingVoltage / FMath::Max(TotalR, 0.01f);
+        EffectiveCurrent      = I_this;
+
+        // ★ 수정: 이 전선에서 강하된 후 남은 전압을 분기에 전달
+        const float VParallel = FMath::Max(IncomingVoltage - I_this * Resistance, 0.f);
+
+        CachedCircuitText  = FString::Printf(TEXT("[병렬x%d] V:%.2f->%.2f I:%.2fA"),
+            NextWires.Num(), IncomingVoltage, VParallel, I_this);
+        CachedCircuitColor = FColor::Green;
 
         for (AWire* Next : NextWires)
         {
-            // 각 가지 전류 = V / R_가지
-            const float BranchI = EffectiveVoltage / FMath::Max(Next->Resistance, 0.01f);
+            TSet<AWire*> ResV;
+            ResV.Add(this);
+            const float BranchR = Next->CalcSeriesResistance(ResV);
+            const float BranchI = VParallel / FMath::Max(BranchR, 0.01f);
             Next->SetPowered(true);
-            Next->PropagateVoltage(EffectiveVoltage, BranchI,
-                VoltageMap, CurrentAccumMap, IncomingCountMap);
+            // ★ VParallel 전달 (기존엔 EffectiveVoltage=IncomingVoltage 전달해서 틀렸음)
+            Next->PropagateVoltage(VParallel, BranchI, VoltageMap, CurrentAccumMap, IncomingCountMap);
         }
     }
 }
@@ -250,8 +357,9 @@ void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
     if (Visited.Contains(this)) return;
     Visited.Add(this);
 
-    EffectiveVoltage = 0.f;
-    EffectiveCurrent = 0.f;
+    EffectiveVoltage  = 0.f;
+    EffectiveCurrent  = 0.f;
+    CachedCircuitText = TEXT("");
 
     for (AWire* W : ConnectedWires)
         if (W && !Visited.Contains(W))
@@ -259,62 +367,55 @@ void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 소스 탐색 후 2패스 회로 해석 실행
+// 소스 전선에서만 1회 회로 해석 실행
 // ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::TriggerCircuitSolve()
 {
-    // BFS로 소스 전선 탐색
-    AWire* SourceWire = nullptr;
+    if (!bPoweredBySource) return;
 
-    TSet<AWire*> Searched;
-    TQueue<AWire*> Queue;
-    Queue.Enqueue(this);
-    Searched.Add(this);
-
-    while (!Queue.IsEmpty())
-    {
-        AWire* Cur = nullptr;
-        Queue.Dequeue(Cur);
-        if (!Cur) continue;
-
-        if (Cur->bPoweredBySource)
-        {
-            SourceWire = Cur;
-            break;
-        }
-
-        for (AWire* Neighbor : Cur->ConnectedWires)
-            if (Neighbor && !Searched.Contains(Neighbor))
-            {
-                Searched.Add(Neighbor);
-                Queue.Enqueue(Neighbor);
-            }
-    }
-
-    if (!SourceWire) return;
-
-    // 패스 1: 그래프 빌드 (들어오는 경로 수 카운트)
+    // 패스 1: 그래프 빌드
     TMap<AWire*, int32> IncomingCountMap;
     TSet<AWire*> GraphVisited;
-    SourceWire->BuildCircuitGraph(IncomingCountMap, GraphVisited);
+    BuildCircuitGraph(IncomingCountMap, GraphVisited);
 
     // 패스 2: 전압/전류 전파
     TMap<AWire*, float> VoltageMap;
     TMap<AWire*, float> CurrentAccumMap;
 
-    const float SourceV = (SourceWire->BatteryVoltage > 0.f)
-        ? SourceWire->BatteryVoltage
-        : SourceWire->DefaultVoltage;
+    const float SourceV = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
 
-    SourceWire->PropagateVoltage(SourceV, SourceV / FMath::Max(SourceWire->Resistance, 0.01f),
-        VoltageMap, CurrentAccumMap, IncomingCountMap);
+    // 소스 전선의 총 저항 계산 후 시작
+    TSet<AWire*> ResV;
+    ResV.Add(this);
+    TArray<AWire*> FirstNext;
+    CollectNextWires(FirstNext, VoltageMap);
+
+    float TotalR = Resistance;
+    if (FirstNext.Num() == 1)
+    {
+        TSet<AWire*> Rv2;
+        Rv2.Add(this);
+        TotalR = Resistance + FirstNext[0]->CalcSeriesResistance(Rv2);
+    }
+    else if (FirstNext.Num() > 1)
+    {
+        float InvR = 0.f;
+        for (AWire* N : FirstNext)
+        {
+            TSet<AWire*> Rv2;
+            Rv2.Add(this);
+            InvR += 1.f / FMath::Max(N->CalcSeriesResistance(Rv2), 0.01f);
+        }
+        TotalR = Resistance + (InvR > 0.f ? 1.f / InvR : 0.01f);
+    }
+
+    const float SourceI = SourceV / FMath::Max(TotalR, 0.01f);
+    PropagateVoltage(SourceV, SourceI, VoltageMap, CurrentAccumMap, IncomingCountMap);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 전원 상태 관리
+// 전원 관리
 // ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::UpdateFinalPower()
 {
     const bool bNewFinal = (bPoweredBySource || bPoweredByMetal);
@@ -326,9 +427,10 @@ void AWire::UpdateFinalPower()
 
     if (!bPoweredFinal)
     {
-        BatteryVoltage   = 0.f;
-        EffectiveVoltage = 0.f;
-        EffectiveCurrent = 0.f;
+        BatteryVoltage    = 0.f;
+        EffectiveVoltage  = 0.f;
+        EffectiveCurrent  = 0.f;
+        CachedCircuitText = TEXT("");
 
         TSet<AWire*> Visited;
         Visited.Add(this);
@@ -337,10 +439,6 @@ void AWire::UpdateFinalPower()
                 W->ResetVoltageNetwork(Visited);
 
         RefreshConnectedActors();
-    }
-    else
-    {
-        TriggerCircuitSolve();
     }
 }
 
@@ -366,27 +464,21 @@ void AWire::SetBatteryVoltage(float NewVoltage)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 줄 가열 - EffectiveVoltage 기반
+// 줄 가열
 // ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
     if (bPoweredFinal)
     {
         const float R = FMath::Max(Resistance, 0.01f);
-
-        // 회로 계산된 전압 우선, 없으면 폴백
-        float V = 0.f;
-        if      (EffectiveVoltage > 0.f) V = EffectiveVoltage;
-        else if (BatteryVoltage   > 0.f) V = BatteryVoltage;
-        else                             V = DefaultVoltage;
+        const float V = (EffectiveVoltage > 0.f) ? EffectiveVoltage
+                      : (BatteryVoltage   > 0.f) ? BatteryVoltage
+                      : DefaultVoltage;
 
         CurrentAmps = V / R;
 
-        const float JoulePowerW = CurrentAmps * CurrentAmps * R;
-        const float EnergyJ     = JoulePowerW * DeltaTime * FMath::Max(SimTimeScale, 0.f);
-        const float DeltaT      = EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
-        WireTemperatureC += DeltaT;
+        const float EnergyJ = CurrentAmps * CurrentAmps * R * DeltaTime * FMath::Max(SimTimeScale, 0.f);
+        WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
     }
     else
     {
@@ -395,51 +487,32 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 
     if (WireTemperatureC > AmbientTemperatureC)
     {
-        const float TempDiff  = WireTemperatureC - AmbientTemperatureC;
-        const float CoolAmount = CoolingRateKPerSec * (TempDiff / 100.f) * DeltaTime;
-        WireTemperatureC -= CoolAmount;
-        WireTemperatureC  = FMath::Max(WireTemperatureC, AmbientTemperatureC);
+        const float Cool = CoolingRateKPerSec * ((WireTemperatureC - AmbientTemperatureC) / 100.f) * DeltaTime;
+        WireTemperatureC = FMath::Max(WireTemperatureC - Cool, AmbientTemperatureC);
     }
 
     WireTemperatureC = FMath::Clamp(WireTemperatureC, AmbientTemperatureC, MaxWireTemperatureC);
-
     UpdateWireVisual();
-
-#if ENABLE_DRAW_DEBUG
-    if (bDebugWire && WireTemperatureC > AmbientTemperatureC + 1.f)
-    {
-        const FColor TempColor = (WireTemperatureC > 400.f) ? FColor::Red
-                                : (WireTemperatureC > 200.f) ? FColor::Orange
-                                : FColor::Yellow;
-
-        DrawDebugString(GetWorld(),
-            GetActorLocation() + FVector(0.f, 0.f, 80.f),
-            FString::Printf(TEXT("%.0f°C  %.1fA  V:%.1f"),
-                WireTemperatureC, CurrentAmps, EffectiveVoltage),
-            nullptr, TempColor, 0.0f, true);
-    }
-#endif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 연결 액터 갱신 + 전선끼리 연결 감지
+// 연결 감지 - 제공된 코드 그대로 사용
+// (세그먼트 겹침으로 전선↔전선, 블록으로 전선↔Metal/Copper 감지)
 // ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::RefreshConnectedActors()
 {
     ConnectedActors.Empty();
     ConnectedWires.Empty();
     bool bFoundPower = false;
 
-    // ── 세그먼트 오버랩 ──────────────────────────────────────
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
         if (!Segment) continue;
 
-        TArray<AActor*> OverlappingActors;
-        Segment->GetOverlappingActors(OverlappingActors);
+        TArray<AActor*> Overlapping;
+        Segment->GetOverlappingActors(Overlapping);
 
-        for (AActor* A : OverlappingActors)
+        for (AActor* A : Overlapping)
         {
             if (!A || A == this) continue;
 
@@ -452,26 +525,23 @@ void AWire::RefreshConnectedActors()
 
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
-                const FVector SegMidWorld = Segment->GetComponentLocation();
-                const float   Dist        = FVector::Dist(SegMidWorld, A->GetActorLocation());
+                const float Dist = FVector::Dist(Segment->GetComponentLocation(), A->GetActorLocation());
                 if (Dist > OverlapRadius * 3.f) continue;
 
-                if (ATransformation_actor* Conductor = Cast<ATransformation_actor>(A))
+                if (ATransformation_actor* Cond = Cast<ATransformation_actor>(A))
                 {
-                    ConnectedActors.AddUnique(Conductor);
-                    if (Conductor->IsElectrified()) bFoundPower = true;
+                    ConnectedActors.AddUnique(Cond);
+                    if (Cond->IsElectrified()) bFoundPower = true;
                 }
             }
         }
     }
 
-    // ── 끝점 구체 오버랩 (시작점 / 끝점에서 전선 연결 감지) ──
     auto CheckEndpoint = [&](USphereComponent* Sphere)
     {
         if (!Sphere) return;
         TArray<AActor*> Overlapping;
         Sphere->GetOverlappingActors(Overlapping);
-
         for (AActor* A : Overlapping)
         {
             if (!A || A == this) continue;
@@ -483,12 +553,12 @@ void AWire::RefreshConnectedActors()
         }
     };
 
-    CheckEndpoint(ConnectionSphere);     // 시작점
-    CheckEndpoint(ConnectionSphereEnd);  // 끝점
+    CheckEndpoint(ConnectionSphere);
+    CheckEndpoint(ConnectionSphereEnd);
 
     SetPoweredByMetal(bFoundPower);
 
-    // 소스 전선이면 전체 회로 재계산
+    // 소스 전선만 회로 해석 실행
     if (bPoweredBySource && bPoweredFinal)
         TriggerCircuitSolve();
 }
@@ -496,14 +566,13 @@ void AWire::RefreshConnectedActors()
 // ─────────────────────────────────────────────────────────────────────────────
 // 열 방출
 // ─────────────────────────────────────────────────────────────────────────────
-
 void AWire::EmitHeatToNearby(float DeltaTime)
 {
     if (!GetWorld()) return;
 
-    const float T_K       = WireTemperatureC + 273.15f;
+    const float T_K        = WireTemperatureC + 273.15f;
     const float EmitPowerW = WireEmissivity * StefanBoltzmannSigma * WireSurfaceAreaM2
-                            * FMath::Pow(T_K, 4.f);
+                           * FMath::Pow(T_K, 4.f);
     if (EmitPowerW <= 0.f) return;
 
     FCollisionObjectQueryParams ObjParams;
@@ -518,8 +587,7 @@ void AWire::EmitHeatToNearby(float DeltaTime)
     auto HeatAt = [&](const FVector& Center, float Radius, float Multiplier)
     {
         TArray<FOverlapResult> Hits;
-        GetWorld()->OverlapMultiByObjectType(
-            Hits, Center, FQuat::Identity, ObjParams,
+        GetWorld()->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, ObjParams,
             FCollisionShape::MakeSphere(Radius), QParams);
 
         for (const FOverlapResult& H : Hits)
@@ -548,48 +616,34 @@ void AWire::EmitHeatToNearby(float DeltaTime)
         HeatAt(IceHeatZone->GetComponentLocation(), IceHeatZoneRadius, IceHeatMultiplier);
 }
 
-void AWire::OnIceHeatZoneBeginOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*,
-    int32, bool, const FHitResult&) {}
-
-void AWire::OnIceHeatZoneEndOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*,
-    int32) {}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 연결 포인트 업데이트
-// ─────────────────────────────────────────────────────────────────────────────
+void AWire::OnIceHeatZoneBeginOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, int32, bool, const FHitResult&) {}
+void AWire::OnIceHeatZoneEndOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, int32) {}
 
 void AWire::UpdateConnectionPoint()
 {
     if (!Spline) return;
-
     const int32 NumPoints = Spline->GetNumberOfSplinePoints();
     if (NumPoints < 1) return;
 
     if (ConnectionSphere)
     {
-        const FVector StartLocal = Spline->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local);
-        ConnectionSphere->SetRelativeLocation(StartLocal);
+        ConnectionSphere->SetRelativeLocation(
+            Spline->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local));
         ConnectionSphere->SetSphereRadius(OverlapRadius);
     }
-
     if (ConnectionSphereEnd)
     {
-        const FVector EndLocal = Spline->GetLocationAtSplinePoint(NumPoints - 1, ESplineCoordinateSpace::Local);
-        ConnectionSphereEnd->SetRelativeLocation(EndLocal);
+        ConnectionSphereEnd->SetRelativeLocation(
+            Spline->GetLocationAtSplinePoint(NumPoints - 1, ESplineCoordinateSpace::Local));
         ConnectionSphereEnd->SetSphereRadius(OverlapRadius);
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 비주얼
-// ─────────────────────────────────────────────────────────────────────────────
 
 void AWire::ApplyPower()
 {
     if (bPoweredFinal && OnMaterial)
     {
         if (SegmentMIDs.Num() == SegmentMeshes.Num() && bLastAppliedPowerState) return;
-
         SegmentMIDs.Empty();
         for (USplineMeshComponent* Mesh : SegmentMeshes)
         {
@@ -620,16 +674,12 @@ void AWire::UpdateWireVisual()
         0.f, 1.f);
     const int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
 
-    if (StencilVal == CachedWireStencilValue &&
-        FMath::Abs(Alpha - CachedWireHeatAlpha) < 0.001f)
-        return;
-
+    if (StencilVal == CachedWireStencilValue && FMath::Abs(Alpha - CachedWireHeatAlpha) < 0.001f) return;
     CachedWireHeatAlpha    = Alpha;
     CachedWireStencilValue = StencilVal;
 
     for (UMaterialInstanceDynamic* MID : SegmentMIDs)
         if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
-
     for (USplineMeshComponent* Mesh : SegmentMeshes)
         if (Mesh) Mesh->SetCustomDepthStencilValue(StencilVal);
 }
@@ -643,7 +693,6 @@ void AWire::ApplyDebugVisibility()
         IceHeatZone->bDrawOnlyIfSelected = !bShowDebugShapes;
         IceHeatZone->MarkRenderStateDirty();
     }
-
     for (USphereComponent* Sphere : HeatSpheres)
     {
         if (!Sphere) continue;
@@ -654,35 +703,19 @@ void AWire::ApplyDebugVisibility()
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 에디터
-// ─────────────────────────────────────────────────────────────────────────────
-
 #if WITH_EDITOR
 void AWire::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
     Super::PostEditChangeProperty(PropertyChangedEvent);
-
-    const FName PropName = (PropertyChangedEvent.Property != nullptr)
+    const FName PropName = PropertyChangedEvent.Property
         ? PropertyChangedEvent.Property->GetFName() : NAME_None;
 
     if (PropName == GET_MEMBER_NAME_CHECKED(AWire, bShowDebugShapes))
         ApplyDebugVisibility();
-
     if (PropName == GET_MEMBER_NAME_CHECKED(AWire, IceHeatZoneRadius))
-    {
-        if (IceHeatZone)
-        {
-            IceHeatZone->SetSphereRadius(IceHeatZoneRadius);
-            IceHeatZone->MarkRenderStateDirty();
-        }
-    }
+        if (IceHeatZone) { IceHeatZone->SetSphereRadius(IceHeatZoneRadius); IceHeatZone->MarkRenderStateDirty(); }
 }
 #endif
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 메시 빌드
-// ─────────────────────────────────────────────────────────────────────────────
 
 void AWire::ClearGeneratedMeshes()
 {
@@ -695,12 +728,7 @@ void AWire::ClearGeneratedMeshes()
         if (Sphere) { Sphere->UnregisterComponent(); Sphere->DestroyComponent(); }
     HeatSpheres.Empty();
 
-    if (IceHeatZone)
-    {
-        IceHeatZone->UnregisterComponent();
-        IceHeatZone->DestroyComponent();
-        IceHeatZone = nullptr;
-    }
+    if (IceHeatZone) { IceHeatZone->UnregisterComponent(); IceHeatZone->DestroyComponent(); IceHeatZone = nullptr; }
 }
 
 void AWire::RebuildSplineMeshes()
@@ -713,61 +741,57 @@ void AWire::RebuildSplineMeshes()
 
     for (int32 i = 0; i < NumPoints - 1; ++i)
     {
-        USplineMeshComponent* SplineMesh = NewObject<USplineMeshComponent>(this);
-        if (!SplineMesh) continue;
+        USplineMeshComponent* SM = NewObject<USplineMeshComponent>(this);
+        if (!SM) continue;
 
-        SplineMesh->SetMobility(EComponentMobility::Movable);
-        SplineMesh->CreationMethod = EComponentCreationMethod::UserConstructionScript;
-        SplineMesh->SetupAttachment(Spline);
-        SplineMesh->SetStaticMesh(SegmentMesh);
-        SplineMesh->SetForwardAxis(ESplineMeshAxis::Z, false);
-        SplineMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        SplineMesh->SetGenerateOverlapEvents(true);
-        SplineMesh->SetCollisionObjectType(ECC_GameTraceChannel2);
-        SplineMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
-        SplineMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-        SplineMesh->SetRenderCustomDepth(true);
-        SplineMesh->SetCustomDepthStencilValue(0);
-        SplineMesh->RegisterComponent();
+        SM->SetMobility(EComponentMobility::Movable);
+        SM->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+        SM->SetupAttachment(Spline);
+        SM->SetStaticMesh(SegmentMesh);
+        SM->SetForwardAxis(ESplineMeshAxis::Z, false);
+        SM->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        SM->SetGenerateOverlapEvents(true);
+        SM->SetCollisionObjectType(ECC_GameTraceChannel2);
+        SM->SetCollisionResponseToAllChannels(ECR_Overlap);
+        SM->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        SM->SetRenderCustomDepth(true);
+        SM->SetCustomDepthStencilValue(0);
+        SM->RegisterComponent();
+        SegmentMeshes.Add(SM);
 
-        SegmentMeshes.Add(SplineMesh);
+        SM->SetStartAndEnd(
+            Spline->GetLocationAtSplinePoint(i,     ESplineCoordinateSpace::Local),
+            Spline->GetTangentAtSplinePoint(i,      ESplineCoordinateSpace::Local),
+            Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local),
+            Spline->GetTangentAtSplinePoint(i + 1,  ESplineCoordinateSpace::Local), true);
+        SM->SetStartScale(SegmentScale);
+        SM->SetEndScale(SegmentScale);
 
-        const FVector StartPos = Spline->GetLocationAtSplinePoint(i,     ESplineCoordinateSpace::Local);
-        const FVector StartTan = Spline->GetTangentAtSplinePoint(i,      ESplineCoordinateSpace::Local);
-        const FVector EndPos   = Spline->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
-        const FVector EndTan   = Spline->GetTangentAtSplinePoint(i + 1,  ESplineCoordinateSpace::Local);
-
-        SplineMesh->SetStartAndEnd(StartPos, StartTan, EndPos, EndTan, true);
-        SplineMesh->SetStartScale(SegmentScale);
-        SplineMesh->SetEndScale(SegmentScale);
-
-        USphereComponent* HeatSphere = NewObject<USphereComponent>(this);
-        HeatSphere->SetMobility(EComponentMobility::Movable);
-        HeatSphere->CreationMethod = EComponentCreationMethod::UserConstructionScript;
-        HeatSphere->SetupAttachment(SplineMesh);
-        HeatSphere->SetRelativeLocation(FVector::ZeroVector);
-        HeatSphere->SetSphereRadius(HeatEmitRadius);
-        HeatSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        HeatSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
-        HeatSphere->SetGenerateOverlapEvents(true);
-        HeatSphere->SetHiddenInGame(!bShowDebugShapes);
-        HeatSphere->SetVisibility(bShowDebugShapes);
-        HeatSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
-        HeatSphere->RegisterComponent();
-
-        HeatSpheres.Add(HeatSphere);
+        USphereComponent* HS = NewObject<USphereComponent>(this);
+        HS->SetMobility(EComponentMobility::Movable);
+        HS->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+        HS->SetupAttachment(SM);
+        HS->SetRelativeLocation(FVector::ZeroVector);
+        HS->SetSphereRadius(HeatEmitRadius);
+        HS->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        HS->SetCollisionResponseToAllChannels(ECR_Overlap);
+        HS->SetGenerateOverlapEvents(true);
+        HS->SetHiddenInGame(!bShowDebugShapes);
+        HS->SetVisibility(bShowDebugShapes);
+        HS->bDrawOnlyIfSelected = !bShowDebugShapes;
+        HS->RegisterComponent();
+        HeatSpheres.Add(HS);
     }
 
-    // IceHeatZone (스플라인 중간)
     {
-        const int32  MidIndex = (NumPoints - 1) / 2;
-        const FVector MidLocal = Spline->GetLocationAtSplinePoint(MidIndex, ESplineCoordinateSpace::Local);
+        const int32   Mid    = (NumPoints - 1) / 2;
+        const FVector MidLoc = Spline->GetLocationAtSplinePoint(Mid, ESplineCoordinateSpace::Local);
 
         IceHeatZone = NewObject<USphereComponent>(this);
         IceHeatZone->SetMobility(EComponentMobility::Movable);
         IceHeatZone->CreationMethod = EComponentCreationMethod::UserConstructionScript;
         IceHeatZone->SetupAttachment(Spline);
-        IceHeatZone->SetRelativeLocation(MidLocal);
+        IceHeatZone->SetRelativeLocation(MidLoc);
         IceHeatZone->SetSphereRadius(IceHeatZoneRadius);
         IceHeatZone->SetCollisionProfileName(TEXT("Trigger"));
         IceHeatZone->SetGenerateOverlapEvents(true);
@@ -782,17 +806,14 @@ void AWire::RebuildSplineMeshes()
 
     ApplyPower();
     ApplyDebugVisibility();
+    UpdateConnectionPoint();
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 전원 전파
-// ─────────────────────────────────────────────────────────────────────────────
 
 void AWire::PropagatePowerToConnected()
 {
     for (AActor* Target : ConnectedActors)
-        if (ATransformation_actor* Conductor = Cast<ATransformation_actor>(Target))
-            Conductor->SetPowered(bPoweredFinal);
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+            C->SetPowered(bPoweredFinal);
 
     for (AWire* W : ConnectedWires)
         if (W && !W->bPoweredBySource)
