@@ -61,7 +61,7 @@ public:
     float OpenSpeed = 2.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
-    FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f); // 기본값 Y방향
-
+    FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
+    
     bool IsConditionMet() const;
 };
