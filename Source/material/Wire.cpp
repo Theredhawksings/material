@@ -468,14 +468,14 @@ void AWire::SetBatteryVoltage(float NewVoltage)
 // ─────────────────────────────────────────────────────────────────────────────
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal)
+    if (bPoweredFinal && EffectiveVoltage > 0.f)
     {
+        // ★ EffectiveVoltage만 사용 - DefaultVoltage 폴백 제거
+        // 회로 계산 결과가 없으면(0V) 가열 안 함
+        // → 직렬 끝으로 갈수록 전압이 작아져 발열도 줄어듦 (물리적으로 올바름)
+        // → 병렬이 직렬보다 발열 많음 (V 동일, 병렬은 전류 합산이라 P=I²R 더 큼)
         const float R = FMath::Max(Resistance, 0.01f);
-        const float V = (EffectiveVoltage > 0.f) ? EffectiveVoltage
-                      : (BatteryVoltage   > 0.f) ? BatteryVoltage
-                      : DefaultVoltage;
-
-        CurrentAmps = V / R;
+        CurrentAmps = EffectiveVoltage / R;
 
         const float EnergyJ = CurrentAmps * CurrentAmps * R * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
