@@ -275,6 +275,12 @@ void AmaterialCharacter::Tick(float DeltaTime)
 			UpdateHeldActorPosition();
 	}
 
+	if (BackpackComp && HeldActor)
+	{
+		BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
+		BackpackComp->SetRelativeRotation(BackpackRotWhenHolding);
+	}
+
 	UpdateAnimation();
 }
 
