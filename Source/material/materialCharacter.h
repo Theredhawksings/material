@@ -231,5 +231,5 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> BackpackUIComp;
 
-	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(3.5f, 0.f, -93.f);
+	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(6.0f, 0.f, -93.f);
 };
