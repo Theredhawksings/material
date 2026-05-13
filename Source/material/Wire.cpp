@@ -121,18 +121,12 @@ void AWire::Tick(float DeltaTime)
 #endif
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 다음 전선 수집: 직접 연결 + Metal/Copper 블록 통과
-// VoltageMap 에 이미 있는 전선(=이미 방문한 upstream)은 제외
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::CollectNextWires(TArray<AWire*>& Out, const TMap<AWire*, float>& VoltageMap) const
 {
-    // 직접 연결된 전선
     for (AWire* W : ConnectedWires)
         if (W && !VoltageMap.Contains(W))
             Out.AddUnique(W);
 
-    // Metal/Copper 블록을 통해 연결된 전선
     for (AActor* CA : ConnectedActors)
     {
         ATransformation_actor* C = Cast<ATransformation_actor>(CA);
@@ -146,22 +140,10 @@ void AWire::CollectNextWires(TArray<AWire*>& Out, const TMap<AWire*, float>& Vol
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 직렬 체인 총 저항 계산
-//
-// ★ 핵심: 병렬 분기점을 만나면 합성 저항을 계산해서 포함시킴
-//
-// 예) Wire_A(2Ω) → [Wire_B(6Ω) || Wire_C(12Ω)]
-//   CalcSeriesResistance(Wire_A) = 2 + (6||12) = 2 + 4 = 6Ω
-//
-// 이게 없으면 I = 12/2 = 6A (틀림)
-// 이게 있으면 I = 12/6 = 2A (맞음)
-// ─────────────────────────────────────────────────────────────────────────────
 float AWire::CalcSeriesResistance(TSet<AWire*>& Visited) const
 {
     float Total = Resistance;
 
-    // 다음 전선 수집 (Visited로 upstream 제외)
     TArray<AWire*> Next;
     for (AWire* W : ConnectedWires)
         if (W && !Visited.Contains(W))
@@ -181,34 +163,26 @@ float AWire::CalcSeriesResistance(TSet<AWire*>& Visited) const
 
     if (Next.Num() == 1)
     {
-        // 직렬: 다음 전선 저항 그대로 합산
         Visited.Add(Next[0]);
         Total += Next[0]->CalcSeriesResistance(Visited);
     }
     else if (Next.Num() > 1)
     {
-        // ★ 병렬: 각 가지 저항 계산 후 합성 저항 포함
-        // 기존 코드는 이 부분이 없어서 병렬 이후 전류가 틀렸음
         float InvRSum = 0.f;
         for (AWire* N : Next)
         {
-            TSet<AWire*> BranchVisited = Visited; // 가지마다 독립 탐색
+            TSet<AWire*> BranchVisited = Visited;
             BranchVisited.Add(N);
             const float BranchR = N->CalcSeriesResistance(BranchVisited);
             InvRSum += 1.f / FMath::Max(BranchR, 0.01f);
         }
         if (InvRSum > 0.f)
-            Total += 1.f / InvRSum; // 병렬 합성 저항 추가
+            Total += 1.f / InvRSum;
     }
-    // Next.Num() == 0: 회로 끝, 추가 저항 없음
 
     return Total;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 회로 해석 패스 1: 각 전선에 몇 개 경로가 들어오는지 카운트
-// (병렬 합류 지점 감지용)
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::BuildCircuitGraph(TMap<AWire*, int32>& IncomingCountMap, TSet<AWire*>& Visited)
 {
     if (Visited.Contains(this)) return;
@@ -237,118 +211,51 @@ void AWire::BuildCircuitGraph(TMap<AWire*, int32>& IncomingCountMap, TSet<AWire*
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 회로 해석 패스 2: 전압/전류 전파
-//
-// 직렬:
-//   TotalR = 내 저항 + downstream 전체 저항 (CalcSeriesResistance로 계산)
-//   I = IncomingVoltage / TotalR
-//   NextV = IncomingVoltage - I * 내 저항
-//
-// 병렬:
-//   ★ 수정: TotalR = 내 저항 + 병렬합성저항  (기존엔 내 저항 빠져서 틀렸음)
-//   I = IncomingVoltage / TotalR
-//   VParallel = IncomingVoltage - I * 내 저항  (기존엔 이 강하가 없었음)
-//   각 가지에 VParallel 전달, 가지전류 = VParallel / 가지저항
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
                               TMap<AWire*, float>& VoltageMap,
                               TMap<AWire*, float>& CurrentAccumMap,
                               const TMap<AWire*, int32>& IncomingCountMap)
 {
-    // 병렬 합류 지점: 여러 경로가 들어오는 경우 전류 누적
-    const int32* ExpectedCount = IncomingCountMap.Find(this);
-    if (ExpectedCount && *ExpectedCount > 1)
+    if (VoltageMap.Contains(this)) return;
+    VoltageMap.Add(this, IncomingVoltage);
+
+    EffectiveVoltage = IncomingVoltage;
+
+    // ★ 무조건 내가 설정한 대로만 계산 - 자동 감지 없음
+    if (bIsParallel && ParallelBranchCount > 1)
     {
-        float& Accum = CurrentAccumMap.FindOrAdd(this, 0.f);
-        Accum += IncomingCurrent;
-
-        if (VoltageMap.Contains(this))
-        {
-            EffectiveCurrent = Accum;
-            return;
-        }
-
-        VoltageMap.Add(this, IncomingVoltage);
-        EffectiveVoltage = IncomingVoltage;
-        EffectiveCurrent = Accum;
+        EffectiveCurrent   = IncomingCurrent / float(ParallelBranchCount);
+        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"),
+            ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Green;
     }
     else
     {
-        if (VoltageMap.Contains(this)) return;
-        VoltageMap.Add(this, IncomingVoltage);
-        EffectiveVoltage = IncomingVoltage;
-        EffectiveCurrent = IncomingCurrent;
+        EffectiveCurrent   = IncomingCurrent;
+        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"),
+            EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Cyan;
     }
 
     // 다음 전선 수집
     TArray<AWire*> NextWires;
     CollectNextWires(NextWires, VoltageMap);
 
-    // 회로 끝
+    // 끝
     if (NextWires.Num() == 0)
     {
-        EffectiveCurrent   = EffectiveVoltage / FMath::Max(Resistance, 0.01f);
-        CachedCircuitText  = FString::Printf(TEXT("[끝] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitText  = FString::Printf(TEXT("[끝] V:%.2f I:%.2fA"),
+            EffectiveVoltage, EffectiveCurrent);
         CachedCircuitColor = FColor::White;
         return;
     }
 
-    // ── 직렬 ─────────────────────────────────────────────────────────────────
-    if (NextWires.Num() == 1)
+    // 다음 전선으로 전파
+    const float NextV = FMath::Max(IncomingVoltage - EffectiveCurrent * Resistance, 0.f);
+    for (AWire* Next : NextWires)
     {
-        // TotalR = 내 저항 + 다음부터 끝까지 직렬 저항 (병렬 합성 포함)
-        TSet<AWire*> ResVisited;
-        ResVisited.Add(this);
-        const float DownstreamR = NextWires[0]->CalcSeriesResistance(ResVisited);
-        const float TotalR      = Resistance + DownstreamR;
-        const float I           = IncomingVoltage / FMath::Max(TotalR, 0.01f);
-        EffectiveCurrent        = I;
-        const float NextV       = FMath::Max(IncomingVoltage - I * Resistance, 0.f);
-
-        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f->%.2f I:%.2fA R:%.1f"),
-            IncomingVoltage, NextV, I, Resistance);
-        CachedCircuitColor = FColor::Cyan;
-
-        NextWires[0]->SetPowered(true);
-        NextWires[0]->PropagateVoltage(NextV, I, VoltageMap, CurrentAccumMap, IncomingCountMap);
-    }
-    // ── 병렬 분기 ────────────────────────────────────────────────────────────
-    else
-    {
-        // 각 가지의 총 저항 계산
-        float InvRSum = 0.f;
-        for (AWire* Next : NextWires)
-        {
-            TSet<AWire*> ResV;
-            ResV.Add(this);
-            const float BranchR = Next->CalcSeriesResistance(ResV);
-            InvRSum += 1.f / FMath::Max(BranchR, 0.01f);
-        }
-        const float ParallelR = (InvRSum > 0.f) ? (1.f / InvRSum) : 0.01f;
-
-        // ★ 수정: 이 전선 자체 저항도 포함해서 전류 계산
-        const float TotalR    = Resistance + ParallelR;
-        const float I_this    = IncomingVoltage / FMath::Max(TotalR, 0.01f);
-        EffectiveCurrent      = I_this;
-
-        // ★ 수정: 이 전선에서 강하된 후 남은 전압을 분기에 전달
-        const float VParallel = FMath::Max(IncomingVoltage - I_this * Resistance, 0.f);
-
-        CachedCircuitText  = FString::Printf(TEXT("[병렬x%d] V:%.2f->%.2f I:%.2fA"),
-            NextWires.Num(), IncomingVoltage, VParallel, I_this);
-        CachedCircuitColor = FColor::Green;
-
-        for (AWire* Next : NextWires)
-        {
-            TSet<AWire*> ResV;
-            ResV.Add(this);
-            const float BranchR = Next->CalcSeriesResistance(ResV);
-            const float BranchI = VParallel / FMath::Max(BranchR, 0.01f);
-            Next->SetPowered(true);
-            // ★ VParallel 전달 (기존엔 EffectiveVoltage=IncomingVoltage 전달해서 틀렸음)
-            Next->PropagateVoltage(VParallel, BranchI, VoltageMap, CurrentAccumMap, IncomingCountMap);
-        }
+        Next->SetPowered(true);
+        Next->PropagateVoltage(NextV, EffectiveCurrent, VoltageMap, CurrentAccumMap, IncomingCountMap);
     }
 }
 
@@ -366,27 +273,19 @@ void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
             W->ResetVoltageNetwork(Visited);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 소스 전선에서만 1회 회로 해석 실행
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::TriggerCircuitSolve()
 {
     if (!bPoweredBySource) return;
 
-    // 패스 1: 그래프 빌드
     TMap<AWire*, int32> IncomingCountMap;
     TSet<AWire*> GraphVisited;
     BuildCircuitGraph(IncomingCountMap, GraphVisited);
 
-    // 패스 2: 전압/전류 전파
     TMap<AWire*, float> VoltageMap;
     TMap<AWire*, float> CurrentAccumMap;
 
     const float SourceV = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
 
-    // 소스 전선의 총 저항 계산 후 시작
-    TSet<AWire*> ResV;
-    ResV.Add(this);
     TArray<AWire*> FirstNext;
     CollectNextWires(FirstNext, VoltageMap);
 
@@ -413,9 +312,6 @@ void AWire::TriggerCircuitSolve()
     PropagateVoltage(SourceV, SourceI, VoltageMap, CurrentAccumMap, IncomingCountMap);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 전원 관리
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::UpdateFinalPower()
 {
     const bool bNewFinal = (bPoweredBySource || bPoweredByMetal);
@@ -442,10 +338,11 @@ void AWire::UpdateFinalPower()
     }
 }
 
-void AWire::SetPowered(bool bNewPowered)
+void AWire::SetPowered(bool bNewPowered, bool bStartIsInput)
 {
     if (bPoweredBySource == bNewPowered) return;
     bPoweredBySource = bNewPowered;
+    bInputIsStart    = bStartIsInput;
     if (!bNewPowered) bPoweredByMetal = false;
     UpdateFinalPower();
 }
@@ -463,19 +360,12 @@ void AWire::SetBatteryVoltage(float NewVoltage)
     BatteryVoltage = FMath::Max(NewVoltage, 0.f);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 줄 가열
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal && EffectiveVoltage > 0.f)
+    if (bPoweredFinal && EffectiveVoltage > 0.f && EffectiveCurrent > 0.f)
     {
-        // ★ EffectiveVoltage만 사용 - DefaultVoltage 폴백 제거
-        // 회로 계산 결과가 없으면(0V) 가열 안 함
-        // → 직렬 끝으로 갈수록 전압이 작아져 발열도 줄어듦 (물리적으로 올바름)
-        // → 병렬이 직렬보다 발열 많음 (V 동일, 병렬은 전류 합산이라 P=I²R 더 큼)
         const float R = FMath::Max(Resistance, 0.01f);
-        CurrentAmps = EffectiveVoltage / R;
+        CurrentAmps = EffectiveCurrent;
 
         const float EnergyJ = CurrentAmps * CurrentAmps * R * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
@@ -495,10 +385,6 @@ void AWire::UpdateJouleHeating(float DeltaTime)
     UpdateWireVisual();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 연결 감지 - 제공된 코드 그대로 사용
-// (세그먼트 겹침으로 전선↔전선, 블록으로 전선↔Metal/Copper 감지)
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::RefreshConnectedActors()
 {
     ConnectedActors.Empty();
@@ -558,14 +444,10 @@ void AWire::RefreshConnectedActors()
 
     SetPoweredByMetal(bFoundPower);
 
-    // 소스 전선만 회로 해석 실행
     if (bPoweredBySource && bPoweredFinal)
         TriggerCircuitSolve();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 열 방출
-// ─────────────────────────────────────────────────────────────────────────────
 void AWire::EmitHeatToNearby(float DeltaTime)
 {
     if (!GetWorld()) return;
@@ -818,4 +700,14 @@ void AWire::PropagatePowerToConnected()
     for (AWire* W : ConnectedWires)
         if (W && !W->bPoweredBySource)
             W->SetPowered(bPoweredFinal);
+}
+
+FVector AWire::GetStartPointLocation() const
+{
+    return ConnectionSphere ? ConnectionSphere->GetComponentLocation() : GetActorLocation();
+}
+
+FVector AWire::GetEndPointLocation() const
+{
+    return ConnectionSphereEnd ? ConnectionSphereEnd->GetComponentLocation() : GetActorLocation();
 }

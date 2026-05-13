@@ -28,7 +28,10 @@ class MATERIAL_API AWire : public AActor
 public:
     AWire();
 
-    void SetPowered(bool bNewPowered);
+    void SetPowered(bool bNewPowered, bool bStartIsInput = true);
+    FVector GetStartPointLocation() const;
+    FVector GetEndPointLocation() const;
+
     void SetPoweredByMetal(bool bNewPoweredByMetal);
     void SetBatteryVoltage(float NewVoltage);
 
@@ -129,6 +132,17 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Electrical")
     float EffectiveCurrent = 0.f;
 
+    // ★ 꼼수: 이 전선이 병렬 가지인지 체크
+    // true면 ParallelBranchCount로 전류를 나눔
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical")
+    bool bIsParallel = false;
+
+    // ★ 병렬 가지 수 (bIsParallel=true일 때만 사용)
+    // 예) 2개 병렬이면 2, 3개 병렬이면 3
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical",
+        meta = (ClampMin = "1", EditCondition = "bIsParallel"))
+    int32 ParallelBranchCount = 2;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Thermal")
     float WireTemperatureC = 20.f;
 
@@ -191,10 +205,7 @@ private:
     void ApplyDebugVisibility();
     void TriggerCircuitSolve();
 
-    // 직렬 체인 총 저항 계산 (병렬 합성 포함)
     float CalcSeriesResistance(TSet<AWire*>& Visited) const;
-
-    // 다음 전선 수집 (직접 연결 + Metal/Copper 통과)
     void CollectNextWires(TArray<AWire*>& Out, const TMap<AWire*, float>& VoltageMap) const;
 
     UFUNCTION()
@@ -229,6 +240,7 @@ private:
     bool  bPoweredBySource       = false;
     bool  bPoweredByMetal        = false;
     bool  bLastAppliedPowerState = false;
+    bool  bInputIsStart          = true;
 
     float CurrentAmps            = 0.f;
     float HeatEmitAccumulator    = 0.f;

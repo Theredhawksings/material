@@ -155,11 +155,16 @@ void ABATTERY::UpdateWiresPower()
 {
     for (AWire* Wire : ConnectedWires)
     {
-        if (Wire)
-        {
-            Wire->SetPowered(bPowered);
-            Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
-        }
+        if (!Wire) continue;
+
+        const FVector OutletPos = ConnectionOutlet->GetComponentLocation();
+        const float DistToStart = FVector::Dist(OutletPos, Wire->GetStartPointLocation());
+        const float DistToEnd   = FVector::Dist(OutletPos, Wire->GetEndPointLocation());
+
+        const bool bStartIsInput = (DistToStart <= DistToEnd);
+
+        Wire->SetPowered(bPowered, bStartIsInput);
+        Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
     }
 }
 
@@ -207,7 +212,13 @@ void ABATTERY::OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* 
     if (AWire* Wire = Cast<AWire>(OtherActor))
     {
         ConnectedWires.AddUnique(Wire);
-        Wire->SetPowered(bPowered);
+
+        const FVector OutletPos  = ConnectionOutlet->GetComponentLocation();
+        const float DistToStart  = FVector::Dist(OutletPos, Wire->GetStartPointLocation());
+        const float DistToEnd    = FVector::Dist(OutletPos, Wire->GetEndPointLocation());
+        const bool bStartIsInput = (DistToStart <= DistToEnd);
+
+        Wire->SetPowered(bPowered, bStartIsInput);
         Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
     }
 }
