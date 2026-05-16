@@ -244,10 +244,20 @@ void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
     // 끝
     if (NextWires.Num() == 0)
     {
-        CachedCircuitText  = FString::Printf(TEXT("[끝] V:%.2f I:%.2fA"),
+    // 끝 전선도 직렬/병렬 설정 그대로 표시
+    if (bIsParallel && ParallelBranchCount > 1)
+    {
+        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"),
+            ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Green;
+    }
+    else
+    {
+        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"),
             EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::White;
-        return;
+        CachedCircuitColor = FColor::Cyan;
+    }
+    return;
     }
 
     // 다음 전선으로 전파
@@ -257,6 +267,12 @@ void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
         Next->SetPowered(true);
         Next->PropagateVoltage(NextV, EffectiveCurrent, VoltageMap, CurrentAccumMap, IncomingCountMap);
     }
+
+
+// 로그 추가
+UE_LOG(LogTemp, Warning, TEXT("[%s] NextWires 수: %d"), *GetName(), NextWires.Num());
+for (AWire* N : NextWires)
+    UE_LOG(LogTemp, Warning, TEXT("  -> [%s] R:%.2f"), *N->GetName(), N->Resistance);
 }
 
 void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
@@ -343,6 +359,7 @@ void AWire::SetPowered(bool bNewPowered, bool bStartIsInput)
     if (bPoweredBySource == bNewPowered) return;
     bPoweredBySource = bNewPowered;
     bInputIsStart    = bStartIsInput;
+    bCircuitSolved   = false;  // ★ 추가
     if (!bNewPowered) bPoweredByMetal = false;
     UpdateFinalPower();
 }
@@ -362,10 +379,18 @@ void AWire::SetBatteryVoltage(float NewVoltage)
 
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    if (bPoweredFinal && EffectiveVoltage > 0.f && EffectiveCurrent > 0.f)
+    if (bPoweredFinal && EffectiveCurrent > 0.f)
     {
         const float R = FMath::Max(Resistance, 0.01f);
-        CurrentAmps = EffectiveCurrent;
+
+        if (bIsParallel)
+        {
+            CurrentAmps = EffectiveVoltage / R;
+        }
+        else
+        {
+            CurrentAmps = EffectiveCurrent;  // 직렬: 전류 그대로 사용
+        }
 
         const float EnergyJ = CurrentAmps * CurrentAmps * R * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
@@ -444,8 +469,10 @@ void AWire::RefreshConnectedActors()
 
     SetPoweredByMetal(bFoundPower);
 
-    if (bPoweredBySource && bPoweredFinal)
-        TriggerCircuitSolve();
+// ★ 수정: 처음 1회만 회로 해석, 이후엔 재호출 안 함
+if (bIsBatterySource && bPoweredFinal){
+    TriggerCircuitSolve();
+}
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)

@@ -163,8 +163,8 @@ void ABATTERY::UpdateWiresPower()
 
         const bool bStartIsInput = (DistToStart <= DistToEnd);
 
+        Wire->SetBatterySource(bPowered);  // 배터리 직결 표시
         Wire->SetPowered(bPowered, bStartIsInput);
-        Wire->SetBatteryVoltage(bPowered ? Voltage : 0.f);
     }
 }
 

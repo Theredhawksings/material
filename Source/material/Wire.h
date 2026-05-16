@@ -56,6 +56,8 @@ public:
     const TArray<TObjectPtr<AActor>>& GetConnectedActors() const { return ConnectedActors; }
     const TArray<TObjectPtr<AWire>>&  GetConnectedWires()  const { return ConnectedWires; }
 
+    void SetBatterySource(bool bIsSource) { bIsBatterySource = bIsSource; }
+
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -253,4 +255,8 @@ private:
     TSet<ATransformation_actor*> CachedHeatTargets;
 
     static constexpr float StefanBoltzmannSigma = 5.67e-8f;
+
+
+    bool bCircuitSolved = false;
+    bool bIsBatterySource = false;
 };
