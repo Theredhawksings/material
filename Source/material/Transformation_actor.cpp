@@ -299,12 +299,10 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
     {
         if (!Wire || Wire->IsSourcePowered()) continue;
         Wire->SetPoweredByMetal(true);
-        Wire->RefreshConnectedActors();
         Current.Add(Wire);
     }
     WiresEnergizedByMetal = MoveTemp(Current);
 }
-
 // ============================================================================
 //  Tick
 // ============================================================================

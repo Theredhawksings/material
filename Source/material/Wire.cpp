@@ -415,178 +415,133 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 
 void AWire::RefreshConnectedActors()
 {
-    if (SourceWire && !SourceWire->IsPowered())
+    ConnectedActors.Reset();
+    ConnectedWires.Reset();
+
+    // ★ 시작점에서 upstream 전선/블럭 감지
+    AWire* UpstreamWire = nullptr;
+    ATransformation_actor* UpstreamBlock = nullptr;
+
+    if (ConnectionSphere)
     {
-        bPoweredBySource = false;
-        bPoweredByMetal  = false;
-        EffectiveVoltage = 0.f;
-        EffectiveCurrent = 0.f;
-        if (bPoweredFinal)
+        TArray<AActor*> Overlapping;
+        ConnectionSphere->GetOverlappingActors(Overlapping);
+
+        float BestCurrent = 0.f;
+        for (AActor* A : Overlapping)
         {
-            bPoweredFinal = false;
-            ApplyPower();
+            if (!A || A == this) continue;
+
+            if (AWire* OtherWire = Cast<AWire>(A))
+            {
+                // 전류 가장 높은 upstream 선택
+                if (OtherWire->IsPowered() && OtherWire->GetEffectiveCurrent() > BestCurrent)
+                {
+                    BestCurrent = OtherWire->GetEffectiveCurrent();
+                    UpstreamWire = OtherWire;
+                }
+            }
+            else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            {
+                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                {
+                    if (!UpstreamBlock && Block->IsElectrified() && Block->GetEffectiveVoltage() > 0.f)
+                        UpstreamBlock = Block;
+                }
+            }
         }
-        return;
     }
 
-    // ★ SourceBlock이 꺼지면 자신도 강제로 꺼짐
-    if (SourceBlock && !SourceBlock->IsElectrified())
-    {
-        bPoweredBySource = false;
-        bPoweredByMetal  = false;
-        EffectiveVoltage = 0.f;
-        EffectiveCurrent = 0.f;
-        if (bPoweredFinal)
-        {
-            bPoweredFinal = false;
-            ApplyPower();
-        }
-        return;
-    }
-    
-    ConnectedActors.Empty();
-    ConnectedWires.Empty();
-    bool bFoundPower = false;
-
+    // ★ 세그먼트에서 블럭만 (전선 무시)
     for (USplineMeshComponent* Segment : SegmentMeshes)
     {
         if (!Segment) continue;
-
         TArray<AActor*> Overlapping;
         Segment->GetOverlappingActors(Overlapping);
-
         for (AActor* A : Overlapping)
         {
             if (!A || A == this) continue;
-
-            if (AWire* OtherWire = Cast<AWire>(A))
-            {
-                if (SourceWire)
-                {
-                    if (OtherWire == SourceWire.Get())
-                    {
-                        ConnectedWires.AddUnique(OtherWire);
-                        if (OtherWire->IsPowered()) bFoundPower = true;
-                    }
-                }
-                else
-                {
-                    ConnectedWires.AddUnique(OtherWire);
-                    if (OtherWire->IsPowered()) bFoundPower = true;
-                }
-                continue;
-            }
-
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-            {
-                if (ATransformation_actor* Cond = Cast<ATransformation_actor>(A))
-                {
-                    ConnectedActors.AddUnique(Cond);
-                    if (Cond->IsElectrified()) bFoundPower = true;
-                }
-            }
+                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                    ConnectedActors.AddUnique(Block);
         }
     }
 
-    auto CheckEndpoint = [&](USphereComponent* Sphere)
-    {
-        if (!Sphere) return;
-        TArray<AActor*> Overlapping;
-        Sphere->GetOverlappingActors(Overlapping);
-        for (AActor* A : Overlapping)
-        {
-            if (!A || A == this) continue;
-            if (AWire* OtherWire = Cast<AWire>(A))
-            {
-                if (SourceWire && OtherWire != SourceWire.Get()) continue;
-                ConnectedWires.AddUnique(OtherWire);
-                if (OtherWire->IsPowered()) bFoundPower = true;
-            }
-        }
-    };
-
-    CheckEndpoint(ConnectionSphere);
-    CheckEndpoint(ConnectionSphereEnd);
-
-    // ★ SourceWire/SourceBlock 전원 체크
-    if (SourceWire && SourceWire->IsPowered() && SourceWire->GetEffectiveCurrent() > 0.f)
+    // ★ 전원 판단
+    bool bFoundPower = false;
+    if (bIsBatterySource)
+        bFoundPower = bPoweredBySource;
+    else if (UpstreamWire && UpstreamWire->GetEffectiveCurrent() > 0.f)
         bFoundPower = true;
-    if (SourceBlock && SourceBlock->IsElectrified() && SourceBlock->GetEffectiveVoltage() > 0.f && SourceBlock->GetEffectiveCurrent() > 0.f)
+    else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
         bFoundPower = true;
 
     SetPoweredByMetal(bFoundPower);
 
+    // ★ 배터리 소스
     if (bIsBatterySource && bPoweredFinal)
     {
         TriggerCircuitSolve();
+        ApplyPower();
+        return;
     }
-    else if (bPoweredFinal)
+
+    // ★ 꺼진 상태
+    if (!bPoweredFinal)
     {
-        AWire* UpstreamWire = SourceWire.Get();
-
-        // SourceWire 없으면 자동으로 upstream 찾기
-        if (!UpstreamWire)
-        {
-            float BestCurrent = 0.f;
-            for (AWire* W : ConnectedWires)
-            {
-                if (W && W->IsPowered() && W->GetEffectiveCurrent() > BestCurrent)
-                {
-                    BestCurrent = W->GetEffectiveCurrent();
-                    UpstreamWire = W;
-                }
-            }
-        }
-
-        if (UpstreamWire && UpstreamWire->IsPowered() && UpstreamWire->GetEffectiveCurrent() > 0.f)
-        {
-            const float PrevV = UpstreamWire->GetEffectiveVoltage();
-            const float PrevI = UpstreamWire->GetEffectiveCurrent();
-
-            if (bIsParallel)
-            {
-                EffectiveVoltage = PrevV;
-                EffectiveCurrent = PrevI / float(ParallelBranchCount);
-            }
-            else
-            {
-                EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
-                EffectiveCurrent = PrevI;
-            }
-        }
-        else if (SourceBlock && SourceBlock->IsElectrified() && SourceBlock->GetEffectiveVoltage() > 0.f && SourceBlock->GetEffectiveCurrent() > 0.f)
-        {
-            const float PrevV = SourceBlock->GetEffectiveVoltage();
-            const float PrevI = SourceBlock->GetEffectiveCurrent();
-
-            if (bIsParallel)
-            {
-                EffectiveVoltage = PrevV;
-                EffectiveCurrent = PrevI / float(ParallelBranchCount);
-            }
-            else
-            {
-                EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
-                EffectiveCurrent = PrevI;
-            }
-        }
-
-        if (bIsParallel && ParallelBranchCount > 1)
-        {
-            CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
-            CachedCircuitColor = FColor::Green;
-        }
-        else
-        {
-            CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
-            CachedCircuitColor = FColor::Cyan;
-        }
-
-        // ★ 블럭에 전원 전달
-        for (AActor* Target : ConnectedActors)
-            if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
-                C->SetPowered(true);
+        EffectiveVoltage = 0.f;
+        EffectiveCurrent = 0.f;
+        ApplyPower();
+        return;
     }
+
+    // ★ 전압/전류 계산
+    float PrevV = 0.f, PrevI = 0.f;
+    if (UpstreamWire && UpstreamWire->GetEffectiveCurrent() > 0.f)
+    {
+        PrevV = UpstreamWire->GetEffectiveVoltage();
+        PrevI = UpstreamWire->GetEffectiveCurrent();
+    }
+    else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
+    {
+        PrevV = UpstreamBlock->GetEffectiveVoltage();
+        PrevI = UpstreamBlock->GetEffectiveCurrent();
+    }
+
+    if (bIsParallel && ParallelBranchCount > 1)
+    {
+        EffectiveVoltage = PrevV;
+        EffectiveCurrent = PrevI / float(ParallelBranchCount);
+        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Green;
+    }
+    else
+    {
+        EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
+        EffectiveCurrent = PrevI;
+        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Cyan;
+    }
+
+    // ★ 끝점에서 downstream 전선 수집
+    if (ConnectionSphereEnd)
+    {
+        TArray<AActor*> Overlapping;
+        ConnectionSphereEnd->GetOverlappingActors(Overlapping);
+        for (AActor* A : Overlapping)
+        {
+            if (!A || A == this) continue;
+            if (AWire* DownWire = Cast<AWire>(A))
+                ConnectedWires.AddUnique(DownWire);
+        }
+    }
+
+    // 블럭에 전원 전달
+    for (AActor* Target : ConnectedActors)
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+            C->SetPowered(true);
+
+    ApplyPower();
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)
@@ -664,10 +619,15 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    if (bPoweredFinal && OnMaterial)
+    const bool bHasActualPower = bPoweredFinal && EffectiveVoltage > 0.f;
+
+    // ★ 상태 변화 없으면 스킵
+    if (bHasActualPower == bLastAppliedPowerState && SegmentMIDs.Num() == SegmentMeshes.Num())
+        return;
+
+    if (bHasActualPower && OnMaterial)
     {
-        if (SegmentMIDs.Num() == SegmentMeshes.Num() && bLastAppliedPowerState) return;
-        SegmentMIDs.Empty();
+        SegmentMIDs.Reset();
         for (USplineMeshComponent* Mesh : SegmentMeshes)
         {
             if (!IsValid(Mesh)) continue;
@@ -678,15 +638,14 @@ void AWire::ApplyPower()
     }
     else
     {
-        SegmentMIDs.Empty();
+        SegmentMIDs.Reset();
         for (USplineMeshComponent* Mesh : SegmentMeshes)
         {
             if (!IsValid(Mesh) || !OffMaterial) continue;
-            for (int32 i = 0; i < Mesh->GetNumMaterials(); ++i)
-                Mesh->SetMaterial(i, OffMaterial);
+            Mesh->SetMaterial(0, OffMaterial);
         }
     }
-    bLastAppliedPowerState = bPoweredFinal;
+    bLastAppliedPowerState = bHasActualPower;
 }
 
 void AWire::UpdateWireVisual()
@@ -842,10 +801,6 @@ void AWire::RebuildSplineMeshes()
 
 void AWire::PropagatePowerToConnected()
 {
-    for (AActor* Target : ConnectedActors)
-        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
-            C->SetPowered(bPoweredFinal);
-
     for (AWire* W : ConnectedWires)
         if (W && !W->bPoweredBySource)
             W->SetPowered(bPoweredFinal);
