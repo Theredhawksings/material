@@ -349,18 +349,7 @@ void AWire::UpdateFinalPower()
 
     if (!bPoweredFinal)
     {
-        BatteryVoltage    = 0.f;
-        EffectiveVoltage  = 0.f;
-        EffectiveCurrent  = 0.f;
-        CachedCircuitText = TEXT("");
-
-        TSet<AWire*> Visited;
-        Visited.Add(this);
-        for (AWire* W : ConnectedWires)
-            if (W && !Visited.Contains(W))
-                W->ResetVoltageNetwork(Visited);
-
-        RefreshConnectedActors();
+        return;
     }
 }
 
@@ -434,6 +423,12 @@ void AWire::RefreshConnectedActors()
 
             if (AWire* OtherWire = Cast<AWire>(A))
             {
+                // ★ 핵심 수정 1: 내게 지정된 SourceWire가 있다면, 그 외의 전선은 철저히 무시합니다.
+                if (SourceWire != nullptr && OtherWire != SourceWire)
+                {
+                    continue;
+                }
+
                 // 전류 가장 높은 upstream 선택
                 if (OtherWire->IsPowered() && OtherWire->GetEffectiveCurrent() > BestCurrent)
                 {
@@ -443,6 +438,12 @@ void AWire::RefreshConnectedActors()
             }
             else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
+                // ★ 핵심 수정 2: SourceWire가 지정되어 있다면 블럭으로부터의 전력 역류도 차단합니다.
+                if (SourceWire != nullptr)
+                {
+                    continue;
+                }
+
                 if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
                 {
                     if (!UpstreamBlock && Block->IsElectrified() && Block->GetEffectiveVoltage() > 0.f)
@@ -492,6 +493,15 @@ void AWire::RefreshConnectedActors()
         EffectiveVoltage = 0.f;
         EffectiveCurrent = 0.f;
         ApplyPower();
+
+        for (AActor* Target : ConnectedActors)
+        {
+            if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+            {
+                C->ClearPower();
+            }
+        }
+        
         return;
     }
 
@@ -517,12 +527,12 @@ void AWire::RefreshConnectedActors()
     }
     else
     {
-        EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
+        // 전압 강하 없이 이전 V, I 그대로 전달
+        EffectiveVoltage = PrevV;
         EffectiveCurrent = PrevI;
         CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
         CachedCircuitColor = FColor::Cyan;
     }
-
     // ★ 끝점에서 downstream 전선 수집
     if (ConnectionSphereEnd)
     {
@@ -537,12 +547,20 @@ void AWire::RefreshConnectedActors()
     }
 
     // 블럭에 전원 전달
+    // 블럭에 전원 전달
     for (AActor* Target : ConnectedActors)
+    {
         if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+        {
             C->SetPowered(true);
+            // ★ 전선이 자기가 가진 전압과 전류를 블럭에 직접 밀어넣음!
+            C->ReceivePower(EffectiveVoltage, EffectiveCurrent); 
+        }
+    }
 
     ApplyPower();
 }
+
 
 void AWire::EmitHeatToNearby(float DeltaTime)
 {

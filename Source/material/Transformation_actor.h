@@ -85,6 +85,9 @@ public:
     float GetEffectiveVoltage() const;
     float GetEffectiveCurrent() const;
 
+    void ReceivePower(float InVoltage, float InCurrent);
+    void ClearPower();
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -414,4 +417,7 @@ private:
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
     bool bShowFieldArrows = true;
 
+    // 블럭이 머금고 있는 실제 전압과 전류 값
+    float StoredVoltage = 0.f;
+    float StoredCurrent = 0.f;
 };

@@ -28,7 +28,7 @@ public:
     bool bPowered = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery|Electrical")
-    float Voltage = 12.0f;
+    float Voltage = 48.0f;
 
     // 에디터/게임에서 디버그 셰이프(InteractionBox, ConnectionOutlet) 보이기 토글
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery|Debug")

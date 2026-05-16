@@ -161,6 +161,9 @@ void ATransformation_actor::SetPowered(bool bNewPowered)
 // cpp
 bool ATransformation_actor::HasSourcePoweredWireRecursive(TSet<const ATransformation_actor*>& Visited) const
 {
+    if (StoredVoltage > 0.0f) 
+        return true;
+
     if (Visited.Contains(this)) return false;
     Visited.Add(this);
 
@@ -195,8 +198,6 @@ void ATransformation_actor::RefreshConnectedWires()
 {
     if (!IsConductive() || !MeshComp)
     {
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
         if (bElectrified) SetElectrified(false);
@@ -218,7 +219,9 @@ void ATransformation_actor::RefreshConnectedWires()
         FCollisionShape::MakeSphere(Radius), Q);
 
     ConnectedWires.Empty();
-    bool bAnyPowerFound = false;
+
+    bool bHasInternalVoltage = (StoredVoltage > 0.0f);
+    bool bAnyPowerFound = bHasInternalVoltage;
 
     for (const FOverlapResult& H : Hits)
     {
@@ -260,20 +263,10 @@ void ATransformation_actor::RefreshConnectedWires()
             Current.Add(Wire);
         }
 
-        // 이전에 켰었지만 지금은 연결 끊긴 전선은 꺼주기
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-        {
-            AWire* W = It->Get();
-            if (W && !Current.Contains(W))
-                W->SetPoweredByMetal(false);
-        }
-
         WiresEnergizedByMetal = MoveTemp(Current);
     }
     else
     {
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
         WiresEnergizedByMetal.Empty();
     }
 }
@@ -288,8 +281,6 @@ void ATransformation_actor::EnergizeWiresIfElectrified()
 {
     if (!bElectrified)
     {
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
         WiresEnergizedByMetal.Empty();
         return;
     }
@@ -385,6 +376,19 @@ void ATransformation_actor::Tick(float DeltaTime)
     {
         UpdateMagnetism(DeltaTime);
     }
+    // ★ 블럭 전압/전류 디버깅 표시 (bDebugDraw가 체크되어 있을 때만 보임)
+    if (bDebugDraw)
+    {
+        // 출력할 텍스트 만들기 (예: "V: 220.0 / A: 10.0")
+        FString DebugMsg = FString::Printf(TEXT("V: %.1f / A: %.1f"), StoredVoltage, StoredCurrent);
+        
+        // 텍스트를 띄울 위치 (블럭 중심에서 위로 60만큼 띄움)
+        FVector TextLocation = GetActorLocation() + FVector(0.f, 0.f, 60.f);
+        
+        // 화면에 노란색 텍스트 그리기
+        DrawDebugString(GetWorld(), TextLocation, DebugMsg, nullptr, FColor::Yellow, 0.f, true, 1.2f);
+    }
+
 }
 
 // ============================================================================
@@ -448,8 +452,6 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
     case EBlockForm::Metal:
     case EBlockForm::Copper:   
         SetElectrified(false);
-        for (auto It = WiresEnergizedByMetal.CreateIterator(); It; ++It)
-            if (AWire* W = It->Get()) W->SetPoweredByMetal(false);
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
         break;
@@ -1387,28 +1389,35 @@ void ATransformation_actor::RefreshOverlappingMetals()
     }
 }
 
+void ATransformation_actor::ReceivePower(float InVoltage, float InCurrent)
+{
+    // 여러 전선이 닿을 경우 가장 강력한 전압과 전류를 기억함
+    StoredVoltage = FMath::Max(StoredVoltage, InVoltage);
+    StoredCurrent = FMath::Max(StoredCurrent, InCurrent);
+
+    // 전압이 들어오면 블럭의 전원 상태를 켬
+    if (StoredVoltage > 0.f && IsConductive())
+    {
+        SetElectrified(true); 
+    }
+}
+
+// ★ 전압이 없어지면 값을 아예 날려버림 (0으로 초기화)
+void ATransformation_actor::ClearPower()
+{
+    StoredVoltage = 0.f;
+    StoredCurrent = 0.f;
+    SetElectrified(false);
+}
+
+
 float ATransformation_actor::GetEffectiveVoltage() const
 {
-    // upstream 전선(전류가 흐르고 있는 전선) 중 가장 높은 전압 반환
-    float Best = 0.f;
-    for (const TObjectPtr<AWire>& W : ConnectedWires)
-    {
-        if (!W) continue;
-        if (W->GetEffectiveCurrent() <= 0.f) continue;
-        if (W->GetEffectiveVoltage() <= 0.f) continue;
-        Best = FMath::Max(Best, W->GetEffectiveVoltage());
-    }
-    return Best;
+    // 이제 매번 계산하지 않고, 주입받아 저장된 값을 바로 뱉어냄
+    return StoredVoltage;
 }
 
 float ATransformation_actor::GetEffectiveCurrent() const
 {
-    float Best = 0.f;
-    for (const TObjectPtr<AWire>& W : ConnectedWires)
-    {
-        if (!W) continue;
-        if (W->GetEffectiveVoltage() <= 0.f) continue;
-        Best = FMath::Max(Best, W->GetEffectiveCurrent());
-    }
-    return Best;
+    return StoredCurrent;
 }
