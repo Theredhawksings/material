@@ -261,13 +261,14 @@ void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
     }
 
     // 다음 전선으로 전파
-    const float NextV = FMath::Max(IncomingVoltage - EffectiveCurrent * Resistance, 0.f);
-    for (AWire* Next : NextWires)
-    {
-        Next->SetPowered(true);
-        Next->PropagateVoltage(NextV, EffectiveCurrent, VoltageMap, CurrentAccumMap, IncomingCountMap);
-    }
-
+const float NextV = FMath::Max(IncomingVoltage - EffectiveCurrent * Resistance, 0.f);
+for (AWire* Next : NextWires)
+{
+    // ★ SourceWire가 지정된 전선은 스스로 계산하므로 전파 건너뜀
+    if (Next->SourceWire != nullptr) continue;
+    Next->SetPowered(true);
+    Next->PropagateVoltage(NextV, EffectiveCurrent, VoltageMap, CurrentAccumMap, IncomingCountMap);
+}
 
 // 로그 추가
 UE_LOG(LogTemp, Warning, TEXT("[%s] NextWires 수: %d"), *GetName(), NextWires.Num());
@@ -383,14 +384,7 @@ void AWire::UpdateJouleHeating(float DeltaTime)
     {
         const float R = FMath::Max(Resistance, 0.01f);
 
-        if (bIsParallel)
-        {
-            CurrentAmps = EffectiveVoltage / R;
-        }
-        else
-        {
-            CurrentAmps = EffectiveCurrent;  // 직렬: 전류 그대로 사용
-        }
+        CurrentAmps = EffectiveCurrent;
 
         const float EnergyJ = CurrentAmps * CurrentAmps * R * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
@@ -429,15 +423,24 @@ void AWire::RefreshConnectedActors()
 
             if (AWire* OtherWire = Cast<AWire>(A))
             {
-                ConnectedWires.AddUnique(OtherWire);
-                if (OtherWire->IsPowered()) bFoundPower = true;
+                if (SourceWire)
+                {
+                    if (OtherWire == SourceWire.Get())
+                    {
+                        ConnectedWires.AddUnique(OtherWire);
+                        if (OtherWire->IsPowered()) bFoundPower = true;
+                    }
+                }
+                else
+                {
+                    ConnectedWires.AddUnique(OtherWire);
+                    if (OtherWire->IsPowered()) bFoundPower = true;
+                }
                 continue;
             }
 
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
-                const float Dist = FVector::Dist(Segment->GetComponentLocation(), A->GetActorLocation());
-                if (Dist > OverlapRadius * 3.f) continue;
 
                 if (ATransformation_actor* Cond = Cast<ATransformation_actor>(A))
                 {
@@ -458,6 +461,7 @@ void AWire::RefreshConnectedActors()
             if (!A || A == this) continue;
             if (AWire* OtherWire = Cast<AWire>(A))
             {
+                if (SourceWire && OtherWire != SourceWire.Get()) continue;
                 ConnectedWires.AddUnique(OtherWire);
                 if (OtherWire->IsPowered()) bFoundPower = true;
             }
@@ -467,12 +471,68 @@ void AWire::RefreshConnectedActors()
     CheckEndpoint(ConnectionSphere);
     CheckEndpoint(ConnectionSphereEnd);
 
+    if (SourceWire && SourceWire->IsPowered() && SourceWire->GetEffectiveCurrent() > 0.f) bFoundPower = true;
+    if (SourceBlock && SourceBlock->IsElectrified()) bFoundPower = true;
+
     SetPoweredByMetal(bFoundPower);
 
-// ★ 수정: 처음 1회만 회로 해석, 이후엔 재호출 안 함
-if (bIsBatterySource && bPoweredFinal){
-    TriggerCircuitSolve();
-}
+    if (bIsBatterySource && bPoweredFinal)
+    {
+        TriggerCircuitSolve();
+    }
+    else if (bPoweredFinal)
+    {
+        // SourceWire 지정 없으면 자동으로 upstream 찾기
+        AWire* UpstreamWire = SourceWire.Get();
+
+        if (!UpstreamWire)
+        {
+            float BestCurrent = 0.f;
+            for (AWire* W : ConnectedWires)
+            {
+                if (W && W->IsPowered() && W->GetEffectiveCurrent() > BestCurrent)
+                {
+                    BestCurrent = W->GetEffectiveCurrent();
+                    UpstreamWire = W;
+                }
+            }
+        }
+
+        if (UpstreamWire && UpstreamWire->IsPowered() && UpstreamWire->GetEffectiveCurrent() > 0.f)
+        {
+            const float PrevV = UpstreamWire->GetEffectiveVoltage();
+            const float PrevI = UpstreamWire->GetEffectiveCurrent();
+
+            if (bIsParallel)
+            {
+                EffectiveVoltage = PrevV;
+                EffectiveCurrent = PrevI / float(ParallelBranchCount);
+            }
+            else
+            {
+                EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
+                EffectiveCurrent = PrevI;
+            }
+        }
+
+        if (bIsParallel && ParallelBranchCount > 1)
+        {
+            CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
+            CachedCircuitColor = FColor::Green;
+        }
+        else
+        {
+            CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+            CachedCircuitColor = FColor::Cyan;
+        }
+
+        if (bPoweredFinal)
+        {
+        for (AActor* Target : ConnectedActors)
+            if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+                C->SetPowered(true);
+        }
+    }
 }
 
 void AWire::EmitHeatToNearby(float DeltaTime)

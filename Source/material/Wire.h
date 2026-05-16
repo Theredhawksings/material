@@ -58,6 +58,12 @@ public:
 
     void SetBatterySource(bool bIsSource) { bIsBatterySource = bIsSource; }
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Source")
+    TObjectPtr<AWire> SourceWire = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Source")
+    TObjectPtr<ATransformation_actor> SourceBlock = nullptr;
+    
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
