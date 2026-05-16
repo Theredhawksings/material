@@ -1387,4 +1387,21 @@ void ATransformation_actor::RefreshOverlappingMetals()
         else if (CompOwner->ActorHasTag(CopperTag) && Comp->IsSimulatingPhysics())
             OverlappingCoppers.Add(Comp);
     }
+
+    float ATransformation_actor::GetEffectiveVoltage() const
+{
+    float Best = 0.f;
+    for (const TObjectPtr<AWire>& W : ConnectedWires)
+        if (W && W->GetEffectiveCurrent() > 0.f)
+            Best = FMath::Max(Best, W->GetEffectiveVoltage());
+    return Best;
+}
+
+    float ATransformation_actor::GetEffectiveCurrent() const
+    {
+    float Best = 0.f;
+    for (const TObjectPtr<AWire>& W : ConnectedWires)
+        Best = FMath::Max(Best, W->GetEffectiveCurrent());
+    return Best;
+    }
 }

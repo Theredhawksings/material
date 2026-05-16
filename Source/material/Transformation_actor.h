@@ -81,6 +81,10 @@ public:
 
     const TArray<TObjectPtr<AWire>>& GetConnectedWiresList() const { return ConnectedWires; }
 
+    
+    float GetEffectiveVoltage() const;
+    float GetEffectiveCurrent() const;
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -409,4 +413,5 @@ private:
     float ArrowY = 100.0f;
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
     bool bShowFieldArrows = true;
+
 };

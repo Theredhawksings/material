@@ -472,7 +472,22 @@ void AWire::RefreshConnectedActors()
     CheckEndpoint(ConnectionSphereEnd);
 
     if (SourceWire && SourceWire->IsPowered() && SourceWire->GetEffectiveCurrent() > 0.f) bFoundPower = true;
-    if (SourceBlock && SourceBlock->IsElectrified()) bFoundPower = true;
+    else if (SourceBlock && SourceBlock->IsElectrified())
+{
+    const float PrevV = SourceBlock->GetEffectiveVoltage();
+    const float PrevI = SourceBlock->GetEffectiveCurrent();
+
+    if (bIsParallel)
+    {
+        EffectiveVoltage = PrevV;
+        EffectiveCurrent = PrevI / float(ParallelBranchCount);
+    }
+    else
+    {
+        EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
+        EffectiveCurrent = PrevI;
+    }
+}
 
     SetPoweredByMetal(bFoundPower);
 
