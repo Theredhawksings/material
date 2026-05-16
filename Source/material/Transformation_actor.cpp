@@ -1387,21 +1387,30 @@ void ATransformation_actor::RefreshOverlappingMetals()
         else if (CompOwner->ActorHasTag(CopperTag) && Comp->IsSimulatingPhysics())
             OverlappingCoppers.Add(Comp);
     }
+}
 
-    float ATransformation_actor::GetEffectiveVoltage() const
+float ATransformation_actor::GetEffectiveVoltage() const
 {
+    // upstream 전선(전류가 흐르고 있는 전선) 중 가장 높은 전압 반환
     float Best = 0.f;
     for (const TObjectPtr<AWire>& W : ConnectedWires)
-        if (W && W->GetEffectiveCurrent() > 0.f)
-            Best = FMath::Max(Best, W->GetEffectiveVoltage());
+    {
+        if (!W) continue;
+        if (W->GetEffectiveCurrent() <= 0.f) continue;
+        if (W->GetEffectiveVoltage() <= 0.f) continue;
+        Best = FMath::Max(Best, W->GetEffectiveVoltage());
+    }
     return Best;
 }
 
-    float ATransformation_actor::GetEffectiveCurrent() const
-    {
+float ATransformation_actor::GetEffectiveCurrent() const
+{
     float Best = 0.f;
     for (const TObjectPtr<AWire>& W : ConnectedWires)
+    {
+        if (!W) continue;
+        if (W->GetEffectiveVoltage() <= 0.f) continue;
         Best = FMath::Max(Best, W->GetEffectiveCurrent());
-    return Best;
     }
+    return Best;
 }

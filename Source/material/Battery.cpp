@@ -66,14 +66,13 @@ void ABATTERY::SetupInputBinding()
 {
     if (!CachedPlayerController) return;
 
-    if (!BatteryInputComponent)
-    {
-        BatteryInputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass(), TEXT("BatteryInput"));
-        BatteryInputComponent->RegisterComponent();
-        BatteryInputComponent->BindAction("Interaction", IE_Pressed, this, &ABATTERY::OnHoldPressed);
-        BatteryInputComponent->BindAction("Interaction", IE_Released, this, &ABATTERY::OnHoldReleased);
-        BatteryInputComponent->Priority = 10;
-    }
+    if (BatteryInputComponent) return;
+
+    BatteryInputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass(), TEXT("BatteryInput"));
+    BatteryInputComponent->RegisterComponent();
+    BatteryInputComponent->BindAction("Interaction", IE_Pressed, this, &ABATTERY::OnHoldPressed);
+    BatteryInputComponent->BindAction("Interaction", IE_Released, this, &ABATTERY::OnHoldReleased);
+    BatteryInputComponent->Priority = 10;
 
     InputComponent = BatteryInputComponent;
     EnableInput(CachedPlayerController);
@@ -86,12 +85,21 @@ void ABATTERY::RemoveInputBinding()
         DisableInput(CachedPlayerController);
         InputComponent = nullptr;
     }
+
+    if (BatteryInputComponent)
+    {
+        BatteryInputComponent->UnregisterComponent();
+        BatteryInputComponent->DestroyComponent();
+        BatteryInputComponent = nullptr;
+    }
 }
 
 void ABATTERY::OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
+    if (bPlayerInRange) return; // ★ 이미 범위 안이면 스킵
+
     if (const ACharacter* Character = Cast<ACharacter>(OtherActor))
     {
         if (Character->IsPlayerControlled())
@@ -129,7 +137,14 @@ void ABATTERY::OnHoldReleased()
 void ABATTERY::TogglePower()
 {
     bPowered = !bPowered;
-    BatteryMesh->SetCustomDepthStencilValue(bPowered ? 120 : 0);
+
+    UE_LOG(LogTemp, Warning,
+        TEXT("Battery Power: %s"),
+        bPowered ? TEXT("ON") : TEXT("OFF"));
+
+    BatteryMesh->SetCustomDepthStencilValue(
+        bPowered ? 120 : 0);
+
     RefreshConnectedWires();
 }
 
@@ -157,14 +172,19 @@ void ABATTERY::UpdateWiresPower()
     {
         if (!Wire) continue;
 
-        const FVector OutletPos = ConnectionOutlet->GetComponentLocation();
-        const float DistToStart = FVector::Dist(OutletPos, Wire->GetStartPointLocation());
-        const float DistToEnd   = FVector::Dist(OutletPos, Wire->GetEndPointLocation());
+        Wire->SetBatterySource(bPowered);
 
-        const bool bStartIsInput = (DistToStart <= DistToEnd);
-
-        Wire->SetBatterySource(bPowered);  // 배터리 직결 표시
-        Wire->SetPowered(bPowered, bStartIsInput);
+        if (!bPowered)
+        {
+            TSet<AWire*> Visited;
+            Wire->ResetVoltageNetwork(Visited);
+            Wire->SetPowered(false);
+        }
+        else
+        {
+            Wire->SetBatteryVoltage(Voltage);
+            Wire->SetPowered(true);
+        }
     }
 }
 

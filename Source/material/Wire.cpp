@@ -285,6 +285,15 @@ void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
     EffectiveCurrent  = 0.f;
     CachedCircuitText = TEXT("");
 
+    // ★ 전원 상태도 같이 리셋
+    bPoweredBySource = false;
+    bPoweredByMetal  = false;
+    if (bPoweredFinal)
+    {
+        bPoweredFinal = false;
+        ApplyPower();
+    }
+
     for (AWire* W : ConnectedWires)
         if (W && !Visited.Contains(W))
             W->ResetVoltageNetwork(Visited);
@@ -406,6 +415,35 @@ void AWire::UpdateJouleHeating(float DeltaTime)
 
 void AWire::RefreshConnectedActors()
 {
+    if (SourceWire && !SourceWire->IsPowered())
+    {
+        bPoweredBySource = false;
+        bPoweredByMetal  = false;
+        EffectiveVoltage = 0.f;
+        EffectiveCurrent = 0.f;
+        if (bPoweredFinal)
+        {
+            bPoweredFinal = false;
+            ApplyPower();
+        }
+        return;
+    }
+
+    // ★ SourceBlock이 꺼지면 자신도 강제로 꺼짐
+    if (SourceBlock && !SourceBlock->IsElectrified())
+    {
+        bPoweredBySource = false;
+        bPoweredByMetal  = false;
+        EffectiveVoltage = 0.f;
+        EffectiveCurrent = 0.f;
+        if (bPoweredFinal)
+        {
+            bPoweredFinal = false;
+            ApplyPower();
+        }
+        return;
+    }
+    
     ConnectedActors.Empty();
     ConnectedWires.Empty();
     bool bFoundPower = false;
@@ -441,7 +479,6 @@ void AWire::RefreshConnectedActors()
 
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
-
                 if (ATransformation_actor* Cond = Cast<ATransformation_actor>(A))
                 {
                     ConnectedActors.AddUnique(Cond);
@@ -471,23 +508,11 @@ void AWire::RefreshConnectedActors()
     CheckEndpoint(ConnectionSphere);
     CheckEndpoint(ConnectionSphereEnd);
 
-    if (SourceWire && SourceWire->IsPowered() && SourceWire->GetEffectiveCurrent() > 0.f) bFoundPower = true;
-    else if (SourceBlock && SourceBlock->IsElectrified())
-{
-    const float PrevV = SourceBlock->GetEffectiveVoltage();
-    const float PrevI = SourceBlock->GetEffectiveCurrent();
-
-    if (bIsParallel)
-    {
-        EffectiveVoltage = PrevV;
-        EffectiveCurrent = PrevI / float(ParallelBranchCount);
-    }
-    else
-    {
-        EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
-        EffectiveCurrent = PrevI;
-    }
-}
+    // ★ SourceWire/SourceBlock 전원 체크
+    if (SourceWire && SourceWire->IsPowered() && SourceWire->GetEffectiveCurrent() > 0.f)
+        bFoundPower = true;
+    if (SourceBlock && SourceBlock->IsElectrified() && SourceBlock->GetEffectiveVoltage() > 0.f && SourceBlock->GetEffectiveCurrent() > 0.f)
+        bFoundPower = true;
 
     SetPoweredByMetal(bFoundPower);
 
@@ -497,9 +522,9 @@ void AWire::RefreshConnectedActors()
     }
     else if (bPoweredFinal)
     {
-        // SourceWire 지정 없으면 자동으로 upstream 찾기
         AWire* UpstreamWire = SourceWire.Get();
 
+        // SourceWire 없으면 자동으로 upstream 찾기
         if (!UpstreamWire)
         {
             float BestCurrent = 0.f;
@@ -529,6 +554,22 @@ void AWire::RefreshConnectedActors()
                 EffectiveCurrent = PrevI;
             }
         }
+        else if (SourceBlock && SourceBlock->IsElectrified() && SourceBlock->GetEffectiveVoltage() > 0.f && SourceBlock->GetEffectiveCurrent() > 0.f)
+        {
+            const float PrevV = SourceBlock->GetEffectiveVoltage();
+            const float PrevI = SourceBlock->GetEffectiveCurrent();
+
+            if (bIsParallel)
+            {
+                EffectiveVoltage = PrevV;
+                EffectiveCurrent = PrevI / float(ParallelBranchCount);
+            }
+            else
+            {
+                EffectiveVoltage = FMath::Max(PrevV - PrevI * Resistance, 0.f);
+                EffectiveCurrent = PrevI;
+            }
+        }
 
         if (bIsParallel && ParallelBranchCount > 1)
         {
@@ -541,12 +582,10 @@ void AWire::RefreshConnectedActors()
             CachedCircuitColor = FColor::Cyan;
         }
 
-        if (bPoweredFinal)
-        {
+        // ★ 블럭에 전원 전달
         for (AActor* Target : ConnectedActors)
             if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
                 C->SetPowered(true);
-        }
     }
 }
 
@@ -652,6 +691,14 @@ void AWire::ApplyPower()
 
 void AWire::UpdateWireVisual()
 {
+
+    if (!bPoweredFinal)
+    {
+        for (UMaterialInstanceDynamic* MID : SegmentMIDs)
+            if (MID) MID->SetScalarParameterValue(WireHeatParamName, 0.f);
+        return;
+    }
+
     const float Alpha     = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
     const float TempRatio = FMath::Clamp(
         (WireTemperatureC - AmbientTemperatureC) / (MaxWireTemperatureC - AmbientTemperatureC),
