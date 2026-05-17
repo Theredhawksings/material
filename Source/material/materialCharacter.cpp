@@ -482,6 +482,9 @@ void AmaterialCharacter::HandleActualAttachment()
 
 	HeldActor = PendingPickupActor;
 	PendingPickupActor = nullptr;
+	
+	if (ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor))
+        TransActor->ClearPower();
 
 	HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	HeldActor->SetActorRelativeLocation(FVector::ZeroVector);

@@ -256,6 +256,12 @@ void ATransformation_actor::RefreshConnectedWires()
     {
         SetElectrified(bAnyPowerFound);
     }
+    
+    if (!bAnyPowerFound)
+{
+    StoredVoltage = 0.f;
+    StoredCurrent = 0.f;
+}
 
     // ★ 핵심 수정: 전기 상태든 아니든, 전기가 있으면 매번 "현재 연결된 전선 집합"을 동기화
     if (bElectrified)

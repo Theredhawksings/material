@@ -452,17 +452,35 @@ void AWire::RefreshConnectedActors()
         return;
     }
 
-    float PrevV = 0.f, PrevI = 0.f;
-    if (UpstreamWires.Num() > 0)
+float PrevV = 0.f, PrevI = 0.f;
+if (UpstreamWires.Num() > 0)
+{
+    if (UpstreamWires.Num() == 1)
     {
-        PrevV = TotalUpstreamVoltage;
+        PrevV = UpstreamWires[0]->GetEffectiveVoltage();
         PrevI = TotalUpstreamCurrent;
     }
-    else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
+    else
     {
-        PrevV = UpstreamBlock->GetEffectiveVoltage();
-        PrevI = UpstreamBlock->GetEffectiveCurrent();
+        float WeightedVoltage = 0.f;
+        float WeightedDenom = 0.f;
+        for (AWire* W : UpstreamWires)
+        {
+            const float R = FMath::Max(
+                W->GetEffectiveVoltage() / FMath::Max(W->GetEffectiveCurrent(), 0.01f),
+                0.01f);
+            WeightedVoltage += W->GetEffectiveVoltage() / R;
+            WeightedDenom   += 1.f / R;
+        }
+        PrevV = (WeightedDenom > 0.f) ? WeightedVoltage / WeightedDenom : 0.f;
+        PrevI = TotalUpstreamCurrent;
     }
+}
+else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
+{
+    PrevV = UpstreamBlock->GetEffectiveVoltage();
+    PrevI = UpstreamBlock->GetEffectiveCurrent();
+}
 
     if (bIsParallel && ParallelBranchCount > 1)
     {
