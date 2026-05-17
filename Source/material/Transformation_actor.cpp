@@ -196,6 +196,7 @@ bool ATransformation_actor::HasSourcePoweredWire() const
 
 void ATransformation_actor::RefreshConnectedWires()
 {
+
     if (!IsConductive() || !MeshComp)
     {
         WiresEnergizedByMetal.Empty();
@@ -204,6 +205,11 @@ void ATransformation_actor::RefreshConnectedWires()
         return;
     }
 
+    if (CurrentForm == EBlockForm::Metal)
+        BlockResistance = MetalResistance;   
+    else if (CurrentForm == EBlockForm::Copper)
+        BlockResistance = CopperResistance;
+        
     UWorld* World = GetWorld();
     if (!World) { ConnectedWires.Empty(); SetElectrified(false); return; }
 
@@ -605,6 +611,19 @@ void ATransformation_actor::StartHeating(ATemperature* FireRef)
     bHeating = (CurrentFire != nullptr);
 }
 
+void ATransformation_actor::ReceivePower(float InVoltage, float InCurrent)
+{
+    if (!IsConductive()) return;
+
+    const float R = (CurrentForm == EBlockForm::Copper) ? CopperResistance : MetalResistance;
+    const float DroppedV = FMath::Max(InVoltage - InCurrent * R, 0.f);
+    
+    StoredVoltage = FMath::Max(StoredVoltage, DroppedV);
+    StoredCurrent = FMath::Max(StoredCurrent, InCurrent);
+
+    if (StoredVoltage > 0.f)
+        SetElectrified(true);
+}
 void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
 {
     if (CurrentForm != EBlockForm::Ice || !MeshComp || EnergyJ <= 0.f) return;
@@ -1389,20 +1408,6 @@ void ATransformation_actor::RefreshOverlappingMetals()
     }
 }
 
-void ATransformation_actor::ReceivePower(float InVoltage, float InCurrent)
-{
-    // 여러 전선이 닿을 경우 가장 강력한 전압과 전류를 기억함
-    StoredVoltage = FMath::Max(StoredVoltage, InVoltage);
-    StoredCurrent = FMath::Max(StoredCurrent, InCurrent);
-
-    // 전압이 들어오면 블럭의 전원 상태를 켬
-    if (StoredVoltage > 0.f && IsConductive())
-    {
-        SetElectrified(true); 
-    }
-}
-
-// ★ 전압이 없어지면 값을 아예 날려버림 (0으로 초기화)
 void ATransformation_actor::ClearPower()
 {
     StoredVoltage = 0.f;
@@ -1421,3 +1426,4 @@ float ATransformation_actor::GetEffectiveCurrent() const
 {
     return StoredCurrent;
 }
+

@@ -302,6 +302,15 @@ public:
     FVector GetNorthPoleWorldDir() const;
     FVector GetSouthPoleWorldDir() const;
 
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
+float MetalResistance = 1.5f;
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
+float CopperResistance = 0.5f;
+
+UPROPERTY(VisibleAnywhere, Category = "Electrical")
+float BlockResistance = 0.f;
+
 private:
     // ── 전기 (Metal + Copper 공용) ──
     void RefreshConnectedWires();
@@ -417,7 +426,7 @@ private:
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
     bool bShowFieldArrows = true;
 
-    // 블럭이 머금고 있는 실제 전압과 전류 값
     float StoredVoltage = 0.f;
     float StoredCurrent = 0.f;
+
 };
