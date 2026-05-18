@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+
 #include "Wire.generated.h"
 
 class USceneComponent;
@@ -10,6 +11,8 @@ class USplineMeshComponent;
 class UMaterialInterface;
 class USphereComponent;
 class UStaticMesh;
+class UNiagaraSystem;      
+class UNiagaraComponent;
 class ATransformation_actor;
 
 UENUM(BlueprintType)
@@ -265,4 +268,9 @@ private:
 
     bool bCircuitSolved = false;
     bool bIsBatterySource = false;
+
+    UNiagaraSystem* SparkEffect = nullptr;
+    UNiagaraComponent* SparkComponentStart = nullptr;
+    UNiagaraComponent* SparkComponentEnd = nullptr;
+
 };

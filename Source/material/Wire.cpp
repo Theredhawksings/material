@@ -12,6 +12,10 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "CollisionQueryParams.h"
+#include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+
 #include "Engine/EngineTypes.h"
 
 AWire::AWire()
@@ -37,7 +41,13 @@ AWire::AWire()
     ConnectionSphereEnd->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     ConnectionSphereEnd->SetCollisionResponseToAllChannels(ECR_Overlap);
     ConnectionSphereEnd->SetCollisionObjectType(ECC_GameTraceChannel2);
+
+    static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SparkFX(
+    TEXT("/Game/modeling/Effect/NS_WireSparks.NS_WireSparks"));
+if (SparkFX.Succeeded())
+    SparkEffect = SparkFX.Object;
 }
+
 
 void AWire::BeginPlay()
 {
@@ -518,6 +528,30 @@ else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
             C->ClearPower();
             C->ReceivePower(EffectiveVoltage, EffectiveCurrent);
         }
+        // ★ 전선-전선 연결 시 스파크
+    if (SparkEffect && bPoweredFinal)
+    {
+        if (UpstreamWires.Num() > 0 && !SparkComponentStart)
+            SparkComponentStart = UNiagaraFunctionLibrary::SpawnSystemAttached(
+                SparkEffect, ConnectionSphere, NAME_None,
+                FVector::ZeroVector, FRotator::ZeroRotator,
+                EAttachLocation::SnapToTarget, true);
+        else if (UpstreamWires.Num() == 0 && SparkComponentStart)
+        { SparkComponentStart->DestroyComponent(); SparkComponentStart = nullptr; }
+
+        if (ConnectedWires.Num() > 0 && !SparkComponentEnd)
+            SparkComponentEnd = UNiagaraFunctionLibrary::SpawnSystemAttached(
+                SparkEffect, ConnectionSphereEnd, NAME_None,
+                FVector::ZeroVector, FRotator::ZeroRotator,
+                EAttachLocation::SnapToTarget, true);
+        else if (ConnectedWires.Num() == 0 && SparkComponentEnd)
+        { SparkComponentEnd->DestroyComponent(); SparkComponentEnd = nullptr; }
+    }
+    else
+    {
+        if (SparkComponentStart) { SparkComponentStart->DestroyComponent(); SparkComponentStart = nullptr; }
+        if (SparkComponentEnd)   { SparkComponentEnd->DestroyComponent();   SparkComponentEnd = nullptr; }
+    }
 
     ApplyPower();
 }

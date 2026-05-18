@@ -20,7 +20,8 @@ public class material : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",  
-			"PhysicsCore"
+			"PhysicsCore",
+			"Niagara"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
