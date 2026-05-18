@@ -459,6 +459,11 @@ void AWire::RefreshConnectedActors()
         for (AActor* Target : PrevConnectedActors)
             if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
                 C->ClearPower();
+        // ★ 전원 꺼지면 스파크 제거
+    if (SparkComponentStart) { SparkComponentStart->DestroyComponent(); SparkComponentStart = nullptr; }
+    if (SparkComponentEnd)   { SparkComponentEnd->DestroyComponent();   SparkComponentEnd = nullptr; }
+
+    
         return;
     }
 
