@@ -1,6 +1,7 @@
 #include "MainStage1_Platform1.h"
 #include "Transformation_actor.h"
 #include "Engine/Engine.h"
+#include "Components/TextRenderComponent.h"
 
 AMainStage1_Platform1::AMainStage1_Platform1()
     : TrackedActor(nullptr)
@@ -59,6 +60,22 @@ void AMainStage1_Platform1::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    // ★ 칠판 업데이트
+    if (VoltageDisplay)
+    {
+        FString Txt;
+        if (TrackedActor)
+        {
+            const float V = TrackedActor->GetEffectiveVoltage();
+            Txt = FString::Printf(TEXT("Now : %.1fV\nGoal: %.1fV"), V, RequiredVoltage);
+        }
+        else
+        {
+            Txt = FString::Printf(TEXT("현재: 0.0V\n목표: %.1fV"), RequiredVoltage);
+        }
+        VoltageDisplay->GetTextRender()->SetText(FText::FromString(Txt));
+    }
+
     if (TrackedActor && !bActivated)
     {
         if (IsConditionMet())
@@ -85,12 +102,14 @@ void AMainStage1_Platform1::Tick(float DeltaTime)
             const bool bMetal  = TrackedActor->ActorHasTag(FName("Metal"));
             const bool bCopper = TrackedActor->ActorHasTag(FName("Copper"));
             const bool bElec   = TrackedActor->IsElectrified();
+            const float V      = TrackedActor->GetEffectiveVoltage();
 
             GEngine->AddOnScreenDebugMessage(2, 0.0f, FColor::Yellow,
-                FString::Printf(TEXT("Metal:%s | Copper:%s | Electrified:%s"),
+                FString::Printf(TEXT("Metal:%s | Copper:%s | Electrified:%s | V:%.1f / 목표:%.1f"),
                     bMetal  ? TEXT("O") : TEXT("X"),
                     bCopper ? TEXT("O") : TEXT("X"),
-                    bElec   ? TEXT("O") : TEXT("X")));
+                    bElec   ? TEXT("O") : TEXT("X"),
+                    V, RequiredVoltage));
         }
     }
 
@@ -118,13 +137,14 @@ bool AMainStage1_Platform1::IsConditionMet() const
 {
     if (!TrackedActor) return false;
 
-    const bool bIsMetal  = TrackedActor->ActorHasTag(FName("Metal"));
-    const bool bIsCopper = TrackedActor->ActorHasTag(FName("Copper"));
-    const bool bIsConductive = bIsMetal || bIsCopper;
-
+    const bool bIsConductive = TrackedActor->ActorHasTag(FName("Metal"))
+                            || TrackedActor->ActorHasTag(FName("Copper"));
     const bool bHasElectricity = TrackedActor->IsElectrified();
+    const float V = TrackedActor->GetEffectiveVoltage();
 
-    return bIsConductive && bHasElectricity;
+    return bIsConductive && bHasElectricity
+        && V >= RequiredVoltage - VoltageTolerance
+        && V <= RequiredVoltage + VoltageTolerance;
 }
 
 void AMainStage1_Platform1::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor,

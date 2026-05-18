@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/TextRenderActor.h"
 #include "MainStage1_Platform1.generated.h"
 
 UCLASS()
@@ -47,6 +48,15 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
     bool bRequireMetalOrCopper = true;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+    float RequiredVoltage = 30.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+    float VoltageTolerance = 5.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Display")
+    TObjectPtr<ATextRenderActor> VoltageDisplay;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     AActor* LeftDoorActor;
@@ -62,6 +72,6 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
-    
+
     bool IsConditionMet() const;
 };
