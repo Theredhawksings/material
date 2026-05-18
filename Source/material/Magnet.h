@@ -22,8 +22,22 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Magnet")
     void RefreshOverlappingMetals();
 
-UFUNCTION(BlueprintCallable, Category = "Magnet|Visual")
-static void SetAllArrowsVisible(bool bVisible);
+    UFUNCTION(BlueprintCallable, Category = "Magnet|Visual")
+    static void SetAllArrowsVisible(bool bVisible);
+
+    // ★ 추가: N/S 극 방향 반환
+    UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
+    FVector GetNorthPoleWorldDir() const;
+
+    UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
+    FVector GetSouthPoleWorldDir() const;
+
+    // ★ 추가: Generator가 읽을 수 있도록 public으로
+    UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
+    bool IsNorthPole() const { return bIsNorthPole; }
+
+    float GetStrength() const { return Strength; }
+    bool IsDemagnetized() const { return bDemagnetized; }
 
 protected:
     virtual void BeginPlay() override;
@@ -79,6 +93,13 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
     float InitialImpulseStrength = 200.f;
 
+    // ★ 추가: 회전 방향
+    UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
+    bool bRotateClockwise = true;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
+    float RotationSpeed = 0.f; // 0이면 회전 안 함
+
     UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
     bool bEnableInduction = true;
 
@@ -109,6 +130,28 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Electro")
     bool bElectroActive = false;
 
+    // ★ 추가: N/S 극 설정
+    UPROPERTY(EditAnywhere, Category = "Magnet|Polarity")
+    bool bIsNorthPole = true;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Polarity")
+    FVector NorthPoleLocalDir = FVector(1.f, 0.f, 0.f);
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    TSubclassOf<AActor> ArrowEffectClass;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowPower = 5.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowX = 100.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowY = 100.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    bool bShowFieldArrows = true;
+
     UFUNCTION()
     void OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -127,21 +170,6 @@ protected:
     void OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-        UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    TSubclassOf<AActor> ArrowEffectClass;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowPower = 5.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowX = 100.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowY = 100.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    bool bShowFieldArrows = true;
-
 private:
     UPROPERTY()
     TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
@@ -149,8 +177,16 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<AWire>> ContactedWires;
 
+    UPROPERTY()
+    TObjectPtr<AActor> SpawnedArrowEffect;
+
     float TimeSinceLastRefresh = 0.f;
     float BaseStrength = 0.f;
+
+    // ★ 추가: Arrow 스폰 함수 분리
+    void SpawnArrowEffect();
+    void SyncArrowTransform();
+    void UpdateArrowVisibility();
 
     void UpdateElectroBoost();
     void ApplyInducedMagnetism();
@@ -160,14 +196,4 @@ private:
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
-
-    FRotator ArrowRotationOffset = FRotator(180.f, 90.f, 0.f);
-
-
-// 헤더 private 섹션에서
-// TObjectPtr<UChildActorComponent> ArrowEffectComp;  ← 삭제 또는 주석처리
-UPROPERTY()
-TObjectPtr<AActor> SpawnedArrowEffect;
-
-
 };

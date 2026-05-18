@@ -1,288 +1,134 @@
-    #include "Magnet.h"
-    #include "Wire.h"
-    #include "Components/StaticMeshComponent.h"
-    #include "Components/SphereComponent.h"
-    #include "Components/SplineComponent.h"
-    #include "Components/PrimitiveComponent.h"
-    #include "DrawDebugHelpers.h"
-    #include "Temperature.h"
-    #include "EngineUtils.h"
-    #include "Components/MeshComponent.h"
-    #include "Kismet/GameplayStatics.h"
-    
-    AMagnet::AMagnet()
-    {
-        PrimaryActorTick.bCanEverTick = true;
+#include "Magnet.h"
+#include "Wire.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/SplineComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/MeshComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Temperature.h"
+#include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 
-        MagnetMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MagnetMesh"));
-        RootComponent = MagnetMesh;
-        MagnetMesh->SetSimulatePhysics(false);
+AMagnet::AMagnet()
+{
+    PrimaryActorTick.bCanEverTick = true;
 
-        MagnetRange = CreateDefaultSubobject<USphereComponent>(TEXT("MagnetRange"));
-        MagnetRange->SetupAttachment(MagnetMesh);
-        MagnetRange->SetSphereRadius(MaxDistance);
-        MagnetRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        MagnetRange->SetCollisionResponseToAllChannels(ECR_Ignore);
-        MagnetRange->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
-        MagnetRange->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+    MagnetMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MagnetMesh"));
+    RootComponent = MagnetMesh;
+    MagnetMesh->SetSimulatePhysics(false);
 
-        WireContactRange = CreateDefaultSubobject<USphereComponent>(TEXT("WireContactRange"));
-        WireContactRange->SetupAttachment(MagnetMesh);
-        WireContactRange->SetSphereRadius(WireContactRadius);
-        WireContactRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        WireContactRange->SetCollisionResponseToAllChannels(ECR_Overlap);
+    MagnetRange = CreateDefaultSubobject<USphereComponent>(TEXT("MagnetRange"));
+    MagnetRange->SetupAttachment(MagnetMesh);
+    MagnetRange->SetSphereRadius(MaxDistance);
+    MagnetRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    MagnetRange->SetCollisionResponseToAllChannels(ECR_Ignore);
+    MagnetRange->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+    MagnetRange->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 
-        static ConstructorHelpers::FClassFinder<AActor> ArrowBP(
+    WireContactRange = CreateDefaultSubobject<USphereComponent>(TEXT("WireContactRange"));
+    WireContactRange->SetupAttachment(MagnetMesh);
+    WireContactRange->SetSphereRadius(WireContactRadius);
+    WireContactRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    WireContactRange->SetCollisionResponseToAllChannels(ECR_Overlap);
+
+    static ConstructorHelpers::FClassFinder<AActor> ArrowBP(
         TEXT("/Game/modeling/Object/Arrow/Arrow_Effect"));
-        if (ArrowBP.Succeeded())
-        {
-            ArrowEffectClass = ArrowBP.Class;
-        }       
+    if (ArrowBP.Succeeded())
+    {
+        ArrowEffectClass = ArrowBP.Class;
     }
-
-    void AMagnet::BeginPlay()
-    {
-        Super::BeginPlay();
-
-        if (bAutoComputeStrength)
-        {
-            Strength = MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
-        }
-
-        BaseStrength = Strength;
-
-        MagnetRange->SetSphereRadius(MaxDistance);
-        WireContactRange->SetSphereRadius(WireContactRadius);
-
-        MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
-        MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
-        WireContactRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnWireContactBegin);
-        WireContactRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnWireContactEnd);
-
-        CheckDemagnetize();
-
-        if (!bDemagnetized)
-        {
-            RefreshOverlappingMetals();
-        }
-
-if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
-{
-    FTimerHandle SpawnTimerHandle;
-    GetWorldTimerManager().SetTimer(SpawnTimerHandle, [this]()
-    {
-        if (!IsValid(this) || bDemagnetized || !ArrowEffectClass) return;
-
-FQuat MagnetQuat = GetActorRotation().Quaternion();
-FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
-FTransform SpawnTransform((MagnetQuat * OffsetQuat).Rotator(), GetActorLocation());
-
-        AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
-            ArrowEffectClass, SpawnTransform, this, nullptr,
-            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-
-        if (Arrow)
-        {
-            FProperty* PowerProp = Arrow->GetClass()->FindPropertyByName(TEXT("Power"));
-            FProperty* XProp     = Arrow->GetClass()->FindPropertyByName(TEXT("X"));
-            FProperty* YProp     = Arrow->GetClass()->FindPropertyByName(TEXT("Y"));
-
-            if (PowerProp)
-            {
-                if (FDoubleProperty* D = CastField<FDoubleProperty>(PowerProp))
-                    D->SetPropertyValue_InContainer(Arrow, (double)ArrowPower);
-                else if (FFloatProperty* F = CastField<FFloatProperty>(PowerProp))
-                    F->SetPropertyValue_InContainer(Arrow, ArrowPower);
-            }
-            if (XProp)
-            {
-                if (FDoubleProperty* D = CastField<FDoubleProperty>(XProp))
-                    D->SetPropertyValue_InContainer(Arrow, (double)ArrowX);
-                else if (FFloatProperty* F = CastField<FFloatProperty>(XProp))
-                    F->SetPropertyValue_InContainer(Arrow, ArrowX);
-            }
-            if (YProp)
-            {
-                if (FDoubleProperty* D = CastField<FDoubleProperty>(YProp))
-                    D->SetPropertyValue_InContainer(Arrow, (double)ArrowY);
-                else if (FFloatProperty* F = CastField<FFloatProperty>(YProp))
-                    F->SetPropertyValue_InContainer(Arrow, ArrowY);
-            }
-
-            UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
-
-// 모든 컴포넌트를 Movable로 강제 설정
-TArray<USceneComponent*> AllComps;
-Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
-AllComps.Add(Arrow->GetRootComponent());
-for (USceneComponent* Comp : AllComps)
-{
-    Comp->SetMobility(EComponentMobility::Movable);
 }
 
-SpawnedArrowEffect = Arrow;
-SpawnedArrowEffect->SetActorHiddenInGame(true);  // 기본 비활성
-        }
-    }, 1.0f, false);
-}
+void AMagnet::BeginPlay()
+{
+    Super::BeginPlay();
 
+    if (bAutoComputeStrength)
+    {
+        Strength = MaxLiftMass * GravityAccel * FMath::Pow(ReferenceDistance, MagneticDecayExponent);
     }
 
-    void AMagnet::Tick(float DeltaTime)
+    BaseStrength = Strength;
+
+    MagnetRange->SetSphereRadius(MaxDistance);
+    WireContactRange->SetSphereRadius(WireContactRadius);
+
+    MagnetRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnRangeBegin);
+    MagnetRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnRangeEnd);
+    WireContactRange->OnComponentBeginOverlap.AddDynamic(this, &AMagnet::OnWireContactBegin);
+    WireContactRange->OnComponentEndOverlap.AddDynamic(this, &AMagnet::OnWireContactEnd);
+
+    CheckDemagnetize();
+
+    if (!bDemagnetized)
     {
-        Super::Tick(DeltaTime);
+        RefreshOverlappingMetals();
+    }
 
-        if (bDemagnetized)
+    // ★ Arrow 스폰 (1초 딜레이)
+    if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
+    {
+        FTimerHandle SpawnTimer;
+        GetWorldTimerManager().SetTimer(SpawnTimer, [this]()
         {
-            return;
-        }
+            SpawnArrowEffect();
+        }, 1.0f, false);
+    }
+}
 
-        TimeSinceLastRefresh += DeltaTime;
-        if (TimeSinceLastRefresh >= RefreshInterval)
-        {
-            TimeSinceLastRefresh = 0.f;
-
-            CheckDemagnetize();
-            if (bDemagnetized)
-            {
-                OverlappingMetals.Empty();
-                return;
-            }
-
-            UpdateElectroBoost();
-            RefreshOverlappingMetals();
-        }
-
-    #if ENABLE_DRAW_DEBUG
-        if (bDebugDraw)
-        {
-            if (bElectroActive)
-            {
-                DrawDebugSphere(GetWorld(), GetActorLocation(), WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
-                const float BoostRatio = (BaseStrength > 0.f) ? (Strength / BaseStrength) : 1.f;
-                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                    FString::Printf(TEXT("[전자석 활성]\n연결 전선: %d개\n기본 자력: %.0f\n현재 자력: %.0f\n부스트: x%.2f"),
-                        ContactedWires.Num(), BaseStrength, Strength, BoostRatio),
-                    nullptr, FColor::Cyan, 0.0f, true);
-            }
-            else
-            {
-                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150),
-                    FString::Printf(TEXT("[일반 자석]\n자력: %.0f"), Strength),
-                    nullptr, FColor::White, 0.0f, true);
-            }
-        }
-    #endif
-
-        if (OverlappingMetals.Num() == 0)
-        {
-            return;
-        }
-
-        const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
-        const FVector MagnetForward = MagnetMesh->GetForwardVector();
-        const bool bMagnetSimulating = MagnetMesh->IsSimulatingPhysics();
-        const float StrengthTimesMultiplier = Strength * ForceMultiplier;
-
-        for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
-        {
-            UPrimitiveComponent* Comp = It->Get();
-            if (!IsValid(Comp))
-            {
-                It.RemoveCurrent();
-                continue;
-            }
-
-            AActor* OwnerActor = Comp->GetOwner();
-            if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag))
-            {
-                It.RemoveCurrent();
-                continue;
-            }
-        }
-
-        if (OverlappingMetals.Num() == 0)
-        {
-            return;
-        }
-
-        for (UPrimitiveComponent* MetalComp : OverlappingMetals)
-        {
-            if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics())
-            {
-                continue;
-            }
-
-            const FVector MetalLoc = MetalComp->GetComponentLocation();
-            const FVector ToMagnet = MagnetLoc - MetalLoc;
-            const float Distance = ToMagnet.Size();
-
-            if (Distance < MinDistance || Distance > MaxDistance)
-            {
-                continue;
-            }
-
-            const FVector Dir = ToMagnet / Distance;
-            const float DirDot = FVector::DotProduct(Dir, MagnetForward);
-            const float DirectionFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
-
-            const float SafeDist = FMath::Max(Distance, MinDistance);
-            float ForceMag = (StrengthTimesMultiplier * DirectionFactor) / FMath::Pow(SafeDist, MagneticDecayExponent);
-
-            const float MetalMass = MetalComp->GetMass();
-            ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
-
-            const FVector CurrentVel = MetalComp->GetPhysicsLinearVelocity();
-            const float VelTowardsMagnet = FVector::DotProduct(CurrentVel, Dir);
-
-            float VelocityDamping = 1.0f;
-            if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
-            {
-                VelocityDamping = FMath::Clamp(1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
-            }
-
-            const FVector DampingForce = -CurrentVel * (VelocityDampingFactor * MetalMass);
-            FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
-            FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
-
-            MetalComp->AddForce(FinalForce, NAME_None, false);
-
-            if (bUseTorque)
-            {
-                const FVector CrossProduct = FVector::CrossProduct(MetalComp->GetForwardVector(), Dir);
-                const float TorqueMagnitude = CrossProduct.Size() * ForceMag * 0.3f;
-
-                if (TorqueMagnitude > 0.01f)
-                {
-                    MetalComp->AddTorqueInRadians(CrossProduct.GetSafeNormal() * TorqueMagnitude, NAME_None, false);
-                }
-            }
-
-            if (bMagnetSimulating)
-            {
-                MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
-            }
-
-    #if ENABLE_DRAW_DEBUG
-            if (bDebugDraw)
-            {
-                const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
-                DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
-                DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
-                DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
-                    FString::Printf(TEXT("%.0f N"), FinalForce.Size()), nullptr, FColor::Yellow, 0.0f);
-            }
-    #endif
-        }
-
-        if (bEnableInduction)
-        {
-            ApplyInducedMagnetism();
-        }
-
-if (SpawnedArrowEffect)
+// ★ Arrow 스폰 로직 함수로 분리
+void AMagnet::SpawnArrowEffect()
 {
+    if (!IsValid(this) || bDemagnetized || !ArrowEffectClass) return;
+
+    const FQuat MagnetQuat = GetActorRotation().Quaternion();
     const FQuat OffsetQuat = FRotator(90.f, 0.f, 0.f).Quaternion();
+    FTransform SpawnTransform((MagnetQuat * OffsetQuat).Rotator(), GetActorLocation());
+
+    AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
+        ArrowEffectClass, SpawnTransform, this, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+    if (!Arrow) return;
+
+    // Power, X, Y 프로퍼티 설정
+    auto SetFloatProp = [Arrow](const TCHAR* PropName, float Value)
+    {
+        if (FProperty* Prop = Arrow->GetClass()->FindPropertyByName(PropName))
+        {
+            if (FDoubleProperty* D = CastField<FDoubleProperty>(Prop))
+                D->SetPropertyValue_InContainer(Arrow, (double)Value);
+            else if (FFloatProperty* F = CastField<FFloatProperty>(Prop))
+                F->SetPropertyValue_InContainer(Arrow, Value);
+        }
+    };
+
+    SetFloatProp(TEXT("Power"), ArrowPower);
+    SetFloatProp(TEXT("X"),     ArrowX);
+    SetFloatProp(TEXT("Y"),     ArrowY);
+
+    UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
+
+    // 모든 컴포넌트 Movable 강제 설정
+    TArray<USceneComponent*> AllComps;
+    Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
+    AllComps.Add(Arrow->GetRootComponent());
+    for (USceneComponent* Comp : AllComps)
+    {
+        Comp->SetMobility(EComponentMobility::Movable);
+    }
+
+    SpawnedArrowEffect = Arrow;
+    SpawnedArrowEffect->SetActorHiddenInGame(true); // 기본 숨김
+}
+
+// ★ Arrow 위치/회전 동기화
+void AMagnet::SyncArrowTransform()
+{
+    if (!SpawnedArrowEffect) return;
+
+    const FQuat OffsetQuat  = FRotator(90.f, 0.f, 0.f).Quaternion();
     const FQuat DesiredQuat = GetActorQuat() * OffsetQuat;
     const FVector DesiredLoc = GetActorLocation();
 
@@ -292,341 +138,419 @@ if (SpawnedArrowEffect)
         SpawnedArrowEffect->SetActorLocationAndRotation(DesiredLoc, DesiredQuat);
     }
 }
+
+// ★ Arrow 가시성 업데이트 (소자 여부 반영)
+void AMagnet::UpdateArrowVisibility()
+{
+    if (!SpawnedArrowEffect) return;
+    SpawnedArrowEffect->SetActorHiddenInGame(bDemagnetized);
+}
+
+void AMagnet::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    // ★ 회전 처리
+    if (RotationSpeed > 0.f)
+    {
+        const float RotDir = bRotateClockwise ? 1.f : -1.f;
+        FRotator CurrentRot = GetActorRotation();
+        CurrentRot.Yaw += RotDir * RotationSpeed * DeltaTime;
+        SetActorRotation(CurrentRot);
     }
 
-    void AMagnet::UpdateElectroBoost()
+    if (bDemagnetized)
     {
-        bool bAnyPowered = false;
-        float TotalCurrent = 0.f;
+        UpdateArrowVisibility();
+        return;
+    }
 
-        TArray<AActor*> NearbyActors;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
+    TimeSinceLastRefresh += DeltaTime;
+    if (TimeSinceLastRefresh >= RefreshInterval)
+    {
+        TimeSinceLastRefresh = 0.f;
 
-        ContactedWires.Empty();
-
-        const FVector MyLoc = GetActorLocation();
-
-        for (AActor* Actor : NearbyActors)
+        CheckDemagnetize();
+        if (bDemagnetized)
         {
-            AWire* Wire = Cast<AWire>(Actor);
-            if (!Wire) continue;
-            if (!Wire->IsPowered()) continue;
-
-            bool bClose = false;
-
-            USplineComponent* WireSpline = Wire->GetSplineComponent();
-            if (WireSpline)
-            {
-                // 스플라인에서 가장 가까운 점 찾기
-                const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
-                if (FVector::Dist(MyLoc, Closest) <= WireContactRadius)
-                {
-                    bClose = true;
-                }
-
-                // 포인트도 개별 체크
-                if (!bClose)
-                {
-                    const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
-                    for (int32 i = 0; i < NumPoints; ++i)
-                    {
-                        const FVector PointWorld = WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
-                        if (FVector::Dist(MyLoc, PointWorld) <= WireContactRadius)
-                        {
-                            bClose = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                bClose = FVector::Dist(MyLoc, Wire->GetActorLocation()) <= WireContactRadius;
-            }
-
-            if (bClose)
-            {
-                bAnyPowered = true;
-                TotalCurrent += Wire->GetWireTemperature() / 100.f;
-                ContactedWires.AddUnique(Wire);
-            }
+            OverlappingMetals.Empty();
+            UpdateArrowVisibility();
+            return;
         }
 
-        bElectroActive = bAnyPowered;
+        UpdateElectroBoost();
+        RefreshOverlappingMetals();
+    }
+
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw)
+    {
+        // ★ N/S 극 방향 표시
+        const FVector NorthDir = GetNorthPoleWorldDir();
+        DrawDebugDirectionalArrow(GetWorld(),
+            GetActorLocation(),
+            GetActorLocation() + NorthDir * 80.f,
+            20.f, FColor::Red, false, -1.f, 0, 3.f);
+
+        DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 80.f),
+            FString::Printf(TEXT("[%s극]\n자력: %.0f"),
+                bIsNorthPole ? TEXT("N") : TEXT("S"), Strength),
+            nullptr, bIsNorthPole ? FColor::Red : FColor::Blue, 0.f, true);
 
         if (bElectroActive)
         {
-            const float CurrentBoost = FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier);
-            Strength = BaseStrength * CurrentBoost;
+            DrawDebugSphere(GetWorld(), GetActorLocation(),
+                WireContactRadius, 16, FColor::Cyan, false, -1.f, 0, 2.f);
+        }
+    }
+#endif
+
+    if (OverlappingMetals.Num() == 0)
+    {
+        SyncArrowTransform();
+        return;
+    }
+
+    const FVector MagnetLoc             = MagnetMesh->GetComponentLocation();
+    const FVector MagnetForward         = MagnetMesh->GetForwardVector();
+    const bool    bMagnetSimulating     = MagnetMesh->IsSimulatingPhysics();
+    const float   StrengthTimesMultiplier = Strength * ForceMultiplier;
+
+    // 유효하지 않은 항목 제거
+    for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
+    {
+        UPrimitiveComponent* Comp = It->Get();
+        if (!IsValid(Comp)) { It.RemoveCurrent(); continue; }
+
+    AActor* OwnerActor = Comp->GetOwner();
+    if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) { It.RemoveCurrent(); }
+    }
+
+    for (UPrimitiveComponent* MetalComp : OverlappingMetals)
+    {
+        if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics()) continue;
+
+        const FVector MetalLoc   = MetalComp->GetComponentLocation();
+        const FVector ToMagnet   = MagnetLoc - MetalLoc;
+        const float   Distance   = ToMagnet.Size();
+
+        if (Distance < MinDistance || Distance > MaxDistance) continue;
+
+        const FVector Dir          = ToMagnet / Distance;
+        const float   DirDot       = FVector::DotProduct(Dir, MagnetForward);
+        const float   DirFactor    = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
+        const float   SafeDist     = FMath::Max(Distance, MinDistance);
+
+        float ForceMag = (StrengthTimesMultiplier * DirFactor)
+                       / FMath::Pow(SafeDist, MagneticDecayExponent);
+
+        const float MetalMass = MetalComp->GetMass();
+        ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
+
+        const FVector CurVel          = MetalComp->GetPhysicsLinearVelocity();
+        const float   VelTowardsMagnet = FVector::DotProduct(CurVel, Dir);
+
+        float VelocityDamping = 1.0f;
+        if (VelTowardsMagnet > MaxAttractVelocity * 0.7f)
+        {
+            VelocityDamping = FMath::Clamp(
+                1.0f - (VelTowardsMagnet / MaxAttractVelocity), 0.4f, 1.0f);
+        }
+
+        const FVector DampingForce = -CurVel * (VelocityDampingFactor * MetalMass);
+        FVector FinalForce = (Dir * ForceMag * VelocityDamping) + DampingForce;
+        FinalForce = FinalForce.GetClampedToMaxSize(MaxForceClamp);
+
+        MetalComp->AddForce(FinalForce, NAME_None, false);
+
+        if (bUseTorque)
+        {
+            const FVector Cross    = FVector::CrossProduct(MetalComp->GetForwardVector(), Dir);
+            const float   TorqueMag = Cross.Size() * ForceMag * 0.3f;
+            if (TorqueMag > 0.01f)
+                MetalComp->AddTorqueInRadians(Cross.GetSafeNormal() * TorqueMag, NAME_None, false);
+        }
+
+        if (bMagnetSimulating)
+            MagnetMesh->AddForce(-FinalForce * 0.2f, NAME_None, false);
+
+#if ENABLE_DRAW_DEBUG
+        if (bDebugDraw)
+        {
+            const FColor LineColor = bElectroActive ? FColor::Cyan : FColor::Blue;
+            DrawDebugLine(GetWorld(), MetalLoc, MagnetLoc, LineColor, false, -1.f, 0, 2.f);
+            DrawDebugSphere(GetWorld(), MetalLoc, 25.f, 8, FColor::Red, false, -1.f);
+            DrawDebugString(GetWorld(), MetalLoc + FVector(0, 0, 50),
+                FString::Printf(TEXT("%.0f N"), FinalForce.Size()),
+                nullptr, FColor::Yellow, 0.f);
+        }
+#endif
+    }
+
+    if (bEnableInduction)
+        ApplyInducedMagnetism();
+
+    // ★ Arrow 동기화
+    SyncArrowTransform();
+}
+
+// ★ N/S 극 방향 반환
+FVector AMagnet::GetNorthPoleWorldDir() const
+{
+    if (!MagnetMesh) return FVector::ForwardVector;
+    return MagnetMesh->GetComponentTransform()
+        .TransformVectorNoScale(NorthPoleLocalDir)
+        .GetSafeNormal();
+}
+
+FVector AMagnet::GetSouthPoleWorldDir() const
+{
+    return -GetNorthPoleWorldDir();
+}
+
+void AMagnet::UpdateElectroBoost()
+{
+    bool  bAnyPowered = false;
+    float TotalCurrent = 0.f;
+
+    TArray<AActor*> NearbyActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AWire::StaticClass(), NearbyActors);
+
+    ContactedWires.Empty();
+    const FVector MyLoc = GetActorLocation();
+
+    for (AActor* Actor : NearbyActors)
+    {
+        AWire* Wire = Cast<AWire>(Actor);
+        if (!Wire || !Wire->IsPowered()) continue;
+
+        bool bClose = false;
+
+        if (USplineComponent* WireSpline = Wire->GetSplineComponent())
+        {
+            const FVector Closest = WireSpline->FindLocationClosestToWorldLocation(
+                MyLoc, ESplineCoordinateSpace::World);
+            bClose = FVector::Dist(MyLoc, Closest) <= WireContactRadius;
+
+            if (!bClose)
+            {
+                const int32 NumPoints = WireSpline->GetNumberOfSplinePoints();
+                for (int32 i = 0; i < NumPoints; ++i)
+                {
+                    if (FVector::Dist(MyLoc,
+                        WireSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World))
+                        <= WireContactRadius)
+                    { bClose = true; break; }
+                }
+            }
         }
         else
         {
-            Strength = BaseStrength;
+            bClose = FVector::Dist(MyLoc, Wire->GetActorLocation()) <= WireContactRadius;
         }
-    }
 
-    void AMagnet::OnWireContactBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-        bool bFromSweep, const FHitResult& SweepResult)
-    {
-        if (!OtherActor || OtherActor == this) return;
-
-        if (AWire* Wire = Cast<AWire>(OtherActor))
+        if (bClose)
         {
+            bAnyPowered = true;
+            TotalCurrent += Wire->GetWireTemperature() / 100.f;
             ContactedWires.AddUnique(Wire);
-            UpdateElectroBoost();
         }
     }
 
-    void AMagnet::OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-    {
-        if (!OtherActor) return;
+    bElectroActive = bAnyPowered;
+    Strength = bElectroActive
+        ? BaseStrength * FMath::Clamp(TotalCurrent, 1.0f, ElectroBoostMultiplier)
+        : BaseStrength;
+}
 
-        if (AWire* Wire = Cast<AWire>(OtherActor))
-        {
-            ContactedWires.Remove(Wire);
-            UpdateElectroBoost();
-        }
+void AMagnet::OnWireContactBegin(UPrimitiveComponent*, AActor* OtherActor,
+    UPrimitiveComponent*, int32, bool, const FHitResult&)
+{
+    if (!OtherActor || OtherActor == this) return;
+    if (AWire* Wire = Cast<AWire>(OtherActor))
+    {
+        ContactedWires.AddUnique(Wire);
+        UpdateElectroBoost();
     }
+}
 
-    void AMagnet::CheckDemagnetize()
+void AMagnet::OnWireContactEnd(UPrimitiveComponent*, AActor* OtherActor,
+    UPrimitiveComponent*, int32)
+{
+    if (!OtherActor) return;
+    if (AWire* Wire = Cast<AWire>(OtherActor))
     {
-        if (bDemagnetized)
+        ContactedWires.Remove(Wire);
+        UpdateElectroBoost();
+    }
+}
+
+void AMagnet::CheckDemagnetize()
+{
+    if (bDemagnetized) return;
+
+    TArray<AActor*> HeatSources;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
+
+    const FVector MyLoc = GetActorLocation();
+
+    for (AActor* Actor : HeatSources)
+    {
+        const ATemperature* Heat = Cast<ATemperature>(Actor);
+        if (!Heat) continue;
+
+        const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
+        if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
         {
+            bDemagnetized  = true;
+            bElectroActive = false;
+            Strength       = 0.f;
+            OverlappingMetals.Empty();
+            ContactedWires.Empty();
+
+            // ★ Arrow 숨기기 (Destroy 대신 숨김 처리)
+            if (SpawnedArrowEffect)
+                SpawnedArrowEffect->SetActorHiddenInGame(true);
+
+#if ENABLE_DRAW_DEBUG
+            if (bDebugDraw)
+            {
+                DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
+                    TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
+            }
+#endif
             return;
         }
-
-        TArray<AActor*> HeatSources;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATemperature::StaticClass(), HeatSources);
-
-        const FVector MyLoc = GetActorLocation();
-
-        for (AActor* Actor : HeatSources)
-        {
-            const ATemperature* Heat = Cast<ATemperature>(Actor);
-            if (!Heat)
-            {
-                continue;
-            }
-
-            const float DistCm = FVector::Dist(MyLoc, Heat->GetActorLocation());
-
-            if (Heat->MaxHeatDistance > 0.f && DistCm <= Heat->MaxHeatDistance)
-            {
-                bDemagnetized = true;
-                bElectroActive = false;
-                Strength = 0.f;
-                OverlappingMetals.Empty();
-                ContactedWires.Empty();
-
-                if (SpawnedArrowEffect)
-                    {
-                SpawnedArrowEffect->Destroy();
-                 SpawnedArrowEffect = nullptr;
-                    }       
-    #if ENABLE_DRAW_DEBUG
-                if (bDebugDraw)
-                {
-                    DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 100),
-                        TEXT("DEMAGNETIZED"), nullptr, FColor::Red, 5.0f, true);
-                }
-    #endif
-                return;
-            }
-        }
     }
+}
 
-    void AMagnet::RefreshOverlappingMetals()
+void AMagnet::RefreshOverlappingMetals()
+{
+    OverlappingMetals.Empty();
+
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    const FVector Center = MagnetMesh->GetComponentLocation();
+    FCollisionQueryParams Q(SCENE_QUERY_STAT(MagnetSense), false);
+    Q.AddIgnoredActor(this);
+
+    TArray<FOverlapResult> Hits;
+    World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
+        FCollisionShape::MakeSphere(MaxDistance), Q);
+
+    for (const FOverlapResult& H : Hits)
     {
-        OverlappingMetals.Empty();
+        UPrimitiveComponent* Comp = H.GetComponent();
+        if (!Comp) continue;
 
-        UWorld* World = GetWorld();
-        if (!World) return;
+        AActor* CompOwner = Comp->GetOwner();
+        if (!CompOwner || CompOwner == this) continue;
 
-        const FVector Center = MagnetMesh->GetComponentLocation();
-        FCollisionObjectQueryParams Obj = FCollisionObjectQueryParams::AllObjects;
-        FCollisionQueryParams Q(SCENE_QUERY_STAT(MagnetSense), false);
-        Q.AddIgnoredActor(this);
-
-        TArray<FOverlapResult> Hits;
-        World->OverlapMultiByObjectType(Hits, Center, FQuat::Identity, Obj,
-            FCollisionShape::MakeSphere(MaxDistance), Q);
-
-        for (const FOverlapResult& H : Hits)
-        {
-            UPrimitiveComponent* Comp = H.GetComponent();
-            if (!Comp) continue;
-
-            AActor* CompOwner = Comp->GetOwner();
-            if (!CompOwner || CompOwner == this) continue;
-
-            if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
-            {
-                OverlappingMetals.Add(Comp);
-            }
-        }
+        if (CompOwner->ActorHasTag(MetalTag) && Comp->IsSimulatingPhysics())
+            OverlappingMetals.Add(Comp);
     }
+}
 
-    void AMagnet::OnRangeBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void AMagnet::OnRangeBegin(UPrimitiveComponent*, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32, bool, const FHitResult&)
+{
+    if (bDemagnetized || !OtherActor || OtherActor == this || !OtherComp) return;
+
+    if (OtherActor->ActorHasTag(MetalTag) && OtherComp->IsSimulatingPhysics())
     {
-        if (bDemagnetized) return;
-        if (!OtherActor || OtherActor == this || !OtherComp) return;
-
-        if (OtherActor->ActorHasTag(MetalTag) && OtherComp->IsSimulatingPhysics())
+        if (!OverlappingMetals.Contains(OtherComp))
         {
-            const bool bAlreadyInside = OverlappingMetals.Contains(OtherComp);
+            OverlappingMetals.Add(OtherComp);
 
-            if (!bAlreadyInside)
+            if (bApplyInitialImpulse)
             {
-                OverlappingMetals.Add(OtherComp);
-
-                if (bApplyInitialImpulse)
-                {
-                    const FVector ToMagnet =
-                        (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation()).GetSafeNormal();
-                    OtherComp->AddImpulse(ToMagnet * InitialImpulseStrength * OtherComp->GetMass());
-                }
+                const FVector ToMagnet =
+                    (MagnetMesh->GetComponentLocation() - OtherComp->GetComponentLocation())
+                    .GetSafeNormal();
+                OtherComp->AddImpulse(ToMagnet * InitialImpulseStrength * OtherComp->GetMass());
             }
         }
     }
+}
 
-    void AMagnet::OnRangeEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+void AMagnet::OnRangeEnd(UPrimitiveComponent*, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32)
+{
+    if (!OtherActor || !OtherComp) return;
+    if (OtherActor->ActorHasTag(MetalTag))
+        OverlappingMetals.Remove(OtherComp);
+}
+
+void AMagnet::ApplyInducedMagnetism()
+{
+    const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
+    const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
+    const int32 Num = MetalArray.Num();
+
+    for (int32 i = 0; i < Num; ++i)
     {
-        if (!OtherActor || !OtherComp)
+        UPrimitiveComponent* MetalA = MetalArray[i];
+        if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics()) continue;
+
+        const FVector MetalALoc    = MetalA->GetComponentLocation();
+        const float   DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
+        if (DistAToMagnet > MinDistanceForInduction) continue;
+
+        const float   InducedStr  = CalculateInducedStrength(DistAToMagnet, Strength);
+        const FVector MagnetToA   = (MetalALoc - MagnetLoc).GetSafeNormal();
+
+        for (int32 j = i + 1; j < Num; ++j)
         {
-            return;
-        }
+            UPrimitiveComponent* MetalB = MetalArray[j];
+            if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics()) continue;
 
-        if (OtherActor->ActorHasTag(MetalTag))
-        {
-            OverlappingMetals.Remove(OtherComp);
-        }
-    }
+            const FVector AtoB    = MetalB->GetComponentLocation() - MetalALoc;
+            const float   DistAtoB = AtoB.Size();
+            if (DistAtoB < 10.f || DistAtoB > InductionRange) continue;
 
-    void AMagnet::ApplyInducedMagnetism()
-    {
-        const FVector MagnetLoc = MagnetMesh->GetComponentLocation();
-        const TArray<UPrimitiveComponent*> MetalArray = OverlappingMetals.Array();
-        const int32 Num = MetalArray.Num();
+            const FVector Dir        = AtoB / DistAtoB;
+            const float   Alignment  = FVector::DotProduct(Dir, MagnetToA);
 
-        for (int32 i = 0; i < Num; ++i)
-        {
-            UPrimitiveComponent* MetalA = MetalArray[i];
-            if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics())
-            {
-                continue;
-            }
+            float ForceMag = (InducedStr * InductionStrengthRatio * FMath::Abs(Alignment))
+                           / FMath::Pow(DistAtoB, MagneticDecayExponent);
+            ForceMag *= FMath::Clamp(MetalB->GetMass() / 10.0f, 0.5f, 2.0f);
 
-            const FVector MetalALoc = MetalA->GetComponentLocation();
-            const float DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
+            const FVector VelB    = MetalB->GetPhysicsLinearVelocity();
+            const float   VelToA  = FVector::DotProduct(VelB, Dir);
+            float VelDamp = 1.0f;
+            if (VelToA > MaxAttractVelocity * 0.5f)
+                VelDamp = FMath::Clamp(1.0f - (VelToA / MaxAttractVelocity), 0.3f, 1.0f);
 
-            if (DistAToMagnet > MinDistanceForInduction)
-            {
-                continue;
-            }
+            FVector Force = (Dir * ForceMag * VelDamp * Alignment)
+                          + (-VelB * VelocityDampingFactor * 0.5f * MetalB->GetMass());
+            Force = Force.GetClampedToMaxSize(MaxInducedForceClamp);
 
-            const float InducedStrength = CalculateInducedStrength(DistAToMagnet, Strength);
-            const FVector MagnetToA = (MetalALoc - MagnetLoc).GetSafeNormal();
-
-            for (int32 j = i + 1; j < Num; ++j)
-            {
-                UPrimitiveComponent* MetalB = MetalArray[j];
-                if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics())
-                {
-                    continue;
-                }
-
-                const FVector MetalBLoc = MetalB->GetComponentLocation();
-                const FVector AtoB = MetalBLoc - MetalALoc;
-                const float DistAtoB = AtoB.Size();
-
-                if (DistAtoB < 10.f || DistAtoB > InductionRange)
-                {
-                    continue;
-                }
-
-                const FVector Dir = AtoB / DistAtoB;
-                const float AlignmentFactor = FVector::DotProduct(Dir, MagnetToA);
-
-                float ForceMag = (InducedStrength * InductionStrengthRatio * FMath::Abs(AlignmentFactor))
-                            / FMath::Pow(DistAtoB, MagneticDecayExponent);
-
-                const float MetalBMass = MetalB->GetMass();
-                ForceMag *= FMath::Clamp(MetalBMass / 10.0f, 0.5f, 2.0f);
-
-                const FVector CurrentVelB = MetalB->GetPhysicsLinearVelocity();
-                const float VelTowardsA = FVector::DotProduct(CurrentVelB, Dir);
-
-                float VelocityDamping = 1.0f;
-                if (VelTowardsA > MaxAttractVelocity * 0.5f)
-                {
-                    VelocityDamping = FMath::Clamp(1.0f - (VelTowardsA / MaxAttractVelocity), 0.3f, 1.0f);
-                }
-
-                const FVector DampingForce = -CurrentVelB * (VelocityDampingFactor * 0.5f * MetalBMass);
-                FVector FinalForce = (Dir * ForceMag * VelocityDamping * AlignmentFactor) + DampingForce;
-                FinalForce = FinalForce.GetClampedToMaxSize(MaxInducedForceClamp);
-
-                MetalB->AddForce(FinalForce, NAME_None, false);
-                MetalA->AddForce(-FinalForce * 0.5f, NAME_None, false);
-
-    #if ENABLE_DRAW_DEBUG
-                if (bDebugDraw)
-                {
-                    DrawDebugLine(GetWorld(), MetalALoc, MetalBLoc, FColor::Yellow, false, -1.f, 0, 1.f);
-                }
-    #endif
-            }
+            MetalB->AddForce(Force, NAME_None, false);
+            MetalA->AddForce(-Force * 0.5f, NAME_None, false);
         }
     }
+}
 
-    float AMagnet::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const
-    {
-        const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
-        const float InductionFactor = FMath::Clamp(
-            1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
-        return BaseMagnetStrength * InductionFactor;
-    }
+float AMagnet::CalculateInducedStrength(float DistanceToMagnet, float BaseMagnetStrength) const
+{
+    const float SafeDist = FMath::Max(DistanceToMagnet, 1.0f);
+    return BaseMagnetStrength * FMath::Clamp(
+        1.0f / FMath::Pow(SafeDist / MinDistanceForInduction, 1.5f), 0.0f, 1.0f);
+}
 
 void AMagnet::SetAllArrowsVisible(bool bVisible)
 {
-    // AMagnet 처리
     for (TObjectIterator<AMagnet> It; It; ++It)
     {
         AMagnet* Magnet = *It;
-        if (!IsValid(Magnet) || !Magnet->SpawnedArrowEffect)
-            continue;
+        if (!IsValid(Magnet) || !Magnet->SpawnedArrowEffect) continue;
 
         Magnet->SpawnedArrowEffect->SetActorHiddenInGame(!bVisible);
 
         TArray<UActorComponent*> MeshComps;
-        Magnet->SpawnedArrowEffect->GetComponents(
-            UMeshComponent::StaticClass(), MeshComps);
-        for (UActorComponent* Comp : MeshComps)
-        {
-            if (UMeshComponent* Mesh = Cast<UMeshComponent>(Comp))
-            {
-                Mesh->SetCustomDepthStencilValue(bVisible ? 255 : 0);
-                Mesh->SetRenderCustomDepth(bVisible);
-            }
-        }
-    }
-
-    // ATransformation_actor (자석 모드) 처리
-    for (TObjectIterator<ATransformation_actor> It; It; ++It)
-    {
-        ATransformation_actor* TA = *It;
-        if (!IsValid(TA) || !TA->SpawnedArrowEffect)
-            continue;
-
-        TA->SpawnedArrowEffect->SetActorHiddenInGame(!bVisible);
-
-        TArray<UActorComponent*> MeshComps;
-        TA->SpawnedArrowEffect->GetComponents(
-            UMeshComponent::StaticClass(), MeshComps);
+        Magnet->SpawnedArrowEffect->GetComponents(UMeshComponent::StaticClass(), MeshComps);
         for (UActorComponent* Comp : MeshComps)
         {
             if (UMeshComponent* Mesh = Cast<UMeshComponent>(Comp))
