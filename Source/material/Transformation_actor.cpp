@@ -19,6 +19,9 @@
 // ============================================================================
 //  Constructor
 // ============================================================================
+// ============================================================================
+//  Constructor
+// ============================================================================
 ATransformation_actor::ATransformation_actor()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -29,13 +32,138 @@ ATransformation_actor::ATransformation_actor()
     MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
     MeshComp->SetGenerateOverlapEvents(true);
 
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WoodMatFinder(
-        TEXT("/Game/modeling/Texture/M_wood"));
-    if (WoodMatFinder.Succeeded()) BurnMaterial = WoodMatFinder.Object;
+    // ============================================================
+    //  공용 메시 로드 (모든 폼 동일 + 시작 메시도 Box1으로)
+    // ============================================================
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BoxMesh(
+        TEXT("/Game/modeling/Object/Box/Box1.Box1"));
+    if (BoxMesh.Succeeded())
+        MeshComp->SetStaticMesh(BoxMesh.Object); // ★ 시작 메시 바로 적용
 
+    // ============================================================
+    //  머터리얼 로드
+    // ============================================================
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> MetalMatFinder(
+        TEXT("/DatasmithContent/Materials/FBXImporter/VRED/BrushedMetal.BrushedMetal"));
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WoodMatFinder(
+        TEXT("/Game/modeling/Texture/M_wood.M_wood"));
+
+    // ★ 고무 머터리얼 변경
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> RubberMatFinder(
+        TEXT("/AnimationSharing/AnimSharingBlue.AnimSharingBlue"));
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> MagnetMatFinder(
+        TEXT("/Game/M_Magnet_Master.M_Magnet_Master"));
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> IceMatFinder(
+        TEXT("/Game/ICE.ICE"));
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> CopperMatFinder(
+        TEXT("/AnimationSharing/AnimSharingBlue.AnimSharingBlue"));
+
+    // ============================================================
+    //  피지컬 머터리얼 로드
+    // ============================================================
+    static ConstructorHelpers::FObjectFinder<UPhysicalMaterial> PM_Ice(
+        TEXT("/Game/Block/PM_Ice.PM_Ice"));
+
+    static ConstructorHelpers::FObjectFinder<UPhysicalMaterial> PM_Magnet(
+        TEXT("/Game/Block/PM_Magent.PM_Magent"));
+
+    static ConstructorHelpers::FObjectFinder<UPhysicalMaterial> PM_Metal(
+        TEXT("/Game/Block/PM_Metal.PM_Metal"));
+
+    static ConstructorHelpers::FObjectFinder<UPhysicalMaterial> PM_Rubber(
+        TEXT("/Game/Block/PM_Rubber.PM_Rubber"));
+
+    static ConstructorHelpers::FObjectFinder<UPhysicalMaterial> PM_Wood(
+        TEXT("/Game/Block/PM_Wood.PM_Wood"));
+
+    // ============================================================
+    //  BurnMaterial (Wood 불탈 때 사용)
+    // ============================================================
+    if (WoodMatFinder.Succeeded())
+        BurnMaterial = WoodMatFinder.Object;
+
+    // ============================================================
+    //  Arrow Effect 블루프린트
+    // ============================================================
     static ConstructorHelpers::FClassFinder<AActor> ArrowBP(
         TEXT("/Game/modeling/Object/Arrow/Arrow_Effect"));
-    if (ArrowBP.Succeeded()) ArrowEffectClass = ArrowBP.Class;
+    if (ArrowBP.Succeeded())
+        ArrowEffectClass = ArrowBP.Class;
+
+    // ============================================================
+    //  FormSpecs 기본값 세팅
+    //  PM이 모든 물리값 담당 → bOverrideMass/Damping 건드리지 않음
+    // ============================================================
+
+    // ── Metal ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Metal;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())        Spec.Mesh = BoxMesh.Object;
+        if (MetalMatFinder.Succeeded()) Spec.Materials.Add(MetalMatFinder.Object);
+        if (PM_Metal.Succeeded())       Spec.PhysMat = PM_Metal.Object;
+        FormSpecs.Add(Spec);
+    }
+
+    // ── Copper ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Copper;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())         Spec.Mesh = BoxMesh.Object;
+        if (CopperMatFinder.Succeeded()) Spec.Materials.Add(CopperMatFinder.Object);
+        if (PM_Metal.Succeeded())        Spec.PhysMat = PM_Metal.Object; // 구리는 PM_Metal 공유
+        FormSpecs.Add(Spec);
+    }
+
+    // ── Ice ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Ice;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())      Spec.Mesh = BoxMesh.Object;
+        if (IceMatFinder.Succeeded()) Spec.Materials.Add(IceMatFinder.Object);
+        if (PM_Ice.Succeeded())       Spec.PhysMat = PM_Ice.Object;
+        FormSpecs.Add(Spec);
+    }
+
+    // ── Rubber ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Rubber;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())        Spec.Mesh = BoxMesh.Object;
+        if (RubberMatFinder.Succeeded()) Spec.Materials.Add(RubberMatFinder.Object);
+        if (PM_Rubber.Succeeded())      Spec.PhysMat = PM_Rubber.Object;
+        FormSpecs.Add(Spec);
+    }
+
+    // ── Wood ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Wood;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())       Spec.Mesh = BoxMesh.Object;
+        if (WoodMatFinder.Succeeded()) Spec.Materials.Add(WoodMatFinder.Object);
+        if (PM_Wood.Succeeded())       Spec.PhysMat = PM_Wood.Object;
+        FormSpecs.Add(Spec);
+    }
+
+    // ── Magnet ──
+    {
+        FBlockFormSpec Spec;
+        Spec.Form             = EBlockForm::Magnet;
+        Spec.bSimulatePhysics = true;
+        if (BoxMesh.Succeeded())         Spec.Mesh = BoxMesh.Object;
+        if (MagnetMatFinder.Succeeded()) Spec.Materials.Add(MagnetMatFinder.Object);
+        if (PM_Magnet.Succeeded())       Spec.PhysMat = PM_Magnet.Object;
+        FormSpecs.Add(Spec);
+    }
 }
 
 // ============================================================================
