@@ -54,6 +54,10 @@ private:
     UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
     float WireDetectRadius = 200.f;
 
+    // Wire 감지 위치 오프셋 (에디터에서 조정 가능)
+    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
+    FVector WireDetectOffset = FVector::ZeroVector;
+
     // 현재 EMF (디버그용)
     UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
     float CurrentEMF = 0.f;

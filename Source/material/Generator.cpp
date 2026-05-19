@@ -39,7 +39,8 @@ void AGenerator::Tick(float DeltaTime)
 #if ENABLE_DRAW_DEBUG
     if (!bDebugDraw) return;
 
-    const FVector MyLoc = GetActorLocation();
+    const FVector MyLoc      = GetActorLocation();
+    const FVector DetectLoc  = MyLoc + GetActorRotation().RotateVector(WireDetectOffset);
 
     // 자석 감지 범위
     DrawDebugSphere(GetWorld(), MyLoc,
@@ -110,8 +111,8 @@ void AGenerator::Tick(float DeltaTime)
             nullptr, FColor::Orange, 0.f, true);
     }
 
-    // Wire 탐지 범위
-    DrawDebugSphere(GetWorld(), MyLoc,
+    // Wire 탐지 범위 (오프셋 적용)
+    DrawDebugSphere(GetWorld(), DetectLoc,
         WireDetectRadius, 12, FColor::Cyan, false, -1.f, 0, 1.f);
 #endif
 }
@@ -164,9 +165,16 @@ void AGenerator::UpdateEMF(float DeltaTime)
         return;
     }
 
-    // 회전각 업데이트
-    RotationAngle += RotationSpeed * DeltaTime;
-    if (RotationAngle >= 360.f) RotationAngle -= 360.f;
+    // N극이 왼쪽이면 반시계 방향 회전
+    const FVector ToNorth =
+        (NorthMagnet->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+    const float Dot = FVector::DotProduct(ToNorth, GetActorRightVector());
+    const float RotDir = (Dot > 0.f) ? 1.f : -1.f; // N극 오른쪽=시계, 왼쪽=반시계
+
+    // 회전각 업데이트 (반시계 = 음수 방향)
+    RotationAngle -= RotDir * RotationSpeed * DeltaTime;
+    if (RotationAngle <= -360.f) RotationAngle += 360.f;
+    if (RotationAngle >= 360.f)  RotationAngle -= 360.f;
 
     // GeneratorMesh만 회전 (루트는 고정)
     GeneratorMesh->SetRelativeRotation(
@@ -207,13 +215,17 @@ void AGenerator::UpdateCircuit()
     const float AbsEMF = FMath::Abs(CurrentEMF);
     if (AbsEMF < MinEMFThreshold) return;
 
+    // 오프셋 적용한 감지 위치
+    const FVector DetectLoc = GetActorLocation()
+        + GetActorRotation().RotateVector(WireDetectOffset);
+
     // 주변 Wire 탐지
     TArray<FOverlapResult> Hits;
     FCollisionQueryParams QParams(SCENE_QUERY_STAT(GeneratorWireSense), false);
     QParams.AddIgnoredActor(this);
 
     GetWorld()->OverlapMultiByObjectType(
-        Hits, GetActorLocation(), FQuat::Identity,
+        Hits, DetectLoc, FQuat::Identity,
         FCollisionObjectQueryParams::AllObjects,
         FCollisionShape::MakeSphere(WireDetectRadius), QParams);
 
@@ -222,9 +234,9 @@ void AGenerator::UpdateCircuit()
         AWire* Wire = Cast<AWire>(H.GetActor());
         if (!Wire) continue;
 
-        // 업스트림(시작점)이 Generator 근처인지 확인
+        // 업스트림(시작점)이 DetectLoc 근처인지 확인
         const float StartDist = FVector::Dist(
-            GetActorLocation(), Wire->GetStartPointLocation());
+            DetectLoc, Wire->GetStartPointLocation());
         if (StartDist > WireDetectRadius) continue;
 
         // 전력 주입
