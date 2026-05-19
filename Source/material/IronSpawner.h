@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Components/BoxComponent.h" // 박스 컴포넌트 추가
+#include "Components/BoxComponent.h"
 #include "Transformation_actor.h"
 #include "IronSpawner.generated.h"
 
@@ -16,11 +16,9 @@ struct FIronSpawnData
     UPROPERTY()
     ATransformation_actor* IronActor = nullptr;
 
-    // 바닥 구역(Trigger) 내부에 머무른 누적 시간
     UPROPERTY()
     float TimeInZone = 0.0f;
 
-    // 현재 바닥 구역 안에 들어와 있는지 여부
     UPROPERTY()
     bool bIsInZone = false;
 };
@@ -39,7 +37,6 @@ protected:
 public: 
     virtual void Tick(float DeltaTime) override;
 
-    // 코일건 흡수용 함수
     UFUNCTION(BlueprintCallable, Category = "IronSpawner")
     void OnIronConsumed(AActor* ConsumedIron);
 
@@ -47,7 +44,6 @@ protected:
     void SpawnIron();
     void CheckIronLifeTime(float DeltaTime);
 
-    // ★ 충돌 구역 진입/퇴출 감지용 이벤트 함수
     UFUNCTION()
     void OnZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, 
                             UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, 
@@ -58,11 +54,15 @@ protected:
                           UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 protected:
-    // 어디서 스폰할지 시각적으로 배치할 컴포넌트
+    // 루트 컴포넌트용 (스폰러 자체의 기준점)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
+    USceneComponent* DefaultRoot;
+
+    // 1. 소환하는 곳 (이제 에디터에서 개별 선택 후 이동 가능)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     USceneComponent* SpawnLocationComponent;
 
-    // ★ 바닥 파괴 영역을 담당할 박스 콜리전 컴포넌트
+    // 2. 삭제되는 곳 구역 박스 (이제 에디터에서 개별 선택 후 이동 및 크기 조절 가능)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     UBoxComponent* DestructionZoneComponent;
 

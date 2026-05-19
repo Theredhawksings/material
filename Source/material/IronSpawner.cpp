@@ -10,20 +10,27 @@ AIronSpawner::AIronSpawner()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // 스폰 위치 컴포넌트
-    SpawnLocationComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SpawnLocationComp"));
-    SetRootComponent(SpawnLocationComponent);
+    // 진짜 기준이 될 루트 컴포넌트 생성
+    DefaultRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultRootComp"));
+    SetRootComponent(DefaultRoot);
 
-    // ★ 바닥 파괴 영역 박스 컴포넌트 생성 및 루트에 부착
+    // [소환하는 곳]을 루트에 부착 (에디터에서 따로 움직일 수 있음)
+    SpawnLocationComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SpawnLocationComp"));
+    SpawnLocationComponent->SetupAttachment(RootComponent);
+
+    // [삭제되는 곳]을 루트에 부착 (소환 구역과 별개로 따로 움직일 수 있음)
     DestructionZoneComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("DestructionZoneComp"));
     DestructionZoneComponent->SetupAttachment(RootComponent);
     
-    // 에디터에서 보기 편하게 기본 박스 크기 지정 (가로 세로 높이)
+    // 박스 기본 크기 설정 (원하는 대로 에디터에서 수정 가능)
     DestructionZoneComponent->SetBoxExtent(FVector(200.0f, 200.0f, 50.0f));
-    // 겹침(Overlap) 이벤트만 다루도록 설정
-    DestructionZoneComponent->SetCollisionProfileName(TEXT("Trigger"));
+    
+    // ★ 콜리전 설정을 명확하게 코드로 강제 (Overlap 관련 버그 원천 차단)
+    DestructionZoneComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    DestructionZoneComponent->SetCollisionObjectType(ECollisionChannel::ECC_WorldDynamic);
+    DestructionZoneComponent->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Overlap);
 
-    // 기획 스펙 세팅
+    // 기본 시간 세팅 (생산 4초, 방치 3.5초)
     SpawnInterval = 4.0f; 
     IronLifeTime = 3.5f;  
     IronClass = ATransformation_actor::StaticClass();
@@ -33,11 +40,11 @@ void AIronSpawner::BeginPlay()
 {
     Super::BeginPlay();
     
-    // 델리게이트 연결: 박스 구역에 무언가 들어오고 나갈 때 매니저가 알아챔
+    // 이벤트 바인딩
     DestructionZoneComponent->OnComponentBeginOverlap.AddDynamic(this, &AIronSpawner::OnZoneBeginOverlap);
     DestructionZoneComponent->OnComponentEndOverlap.AddDynamic(this, &AIronSpawner::OnZoneEndOverlap);
 
-    // 4초 주기 스폰 시작
+    // 스폰 타이머 작동
     GetWorldTimerManager().SetTimer(
         SpawnTimerHandle, 
         this, 
@@ -58,6 +65,7 @@ void AIronSpawner::SpawnIron()
     UWorld* World = GetWorld();
     if (!World || !IronClass) return;
 
+    // 소환하는 곳(SpawnLocationComponent)의 위치를 기준으로 스폰
     FVector SpawnLocation = SpawnLocationComponent->GetComponentLocation();
     FRotator SpawnRotation = SpawnLocationComponent->GetComponentRotation();
 
@@ -78,7 +86,7 @@ void AIronSpawner::SpawnIron()
         FIronSpawnData NewData;
         NewData.IronActor = NewIron;
         NewData.TimeInZone = 0.0f;
-        NewData.bIsInZone = false; // 태어날 때는 공중이므로 false
+        NewData.bIsInZone = false; 
 
         SpawnedIronList.Add(NewData);
     }
@@ -90,12 +98,13 @@ void AIronSpawner::OnZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActo
 {
     if (!OtherActor) return;
 
-    // 들어온 액터가 우리가 관리하는 철 목록에 있는지 검사
+    // 감지 로그 출력 (삭제가 안 될 때 박스가 정상 작동하는지 확인용)
+    UE_LOG(LogTemp, Warning, TEXT("삭제 구역에 무언가 들어옴: %s"), *OtherActor->GetName());
+
     for (int32 i = 0; i < SpawnedIronList.Num(); ++i)
     {
         if (SpawnedIronList[i].IronActor == OtherActor)
         {
-            // 바닥 구역 진입 확인 -> 타이머 가동 시작 시그널
             SpawnedIronList[i].bIsInZone = true;
             break;
         }
@@ -107,14 +116,15 @@ void AIronSpawner::OnZoneEndOverlap(UPrimitiveComponent* OverlappedComp, AActor*
 {
     if (!OtherActor) return;
 
-    // 플레이어가 들고 가거나 튕겨서 구역을 벗어난 경우
+    // 탈출 로그 출력
+    UE_LOG(LogTemp, Warning, TEXT("삭제 구역에서 벗어남: %s"), *OtherActor->GetName());
+
     for (int32 i = 0; i < SpawnedIronList.Num(); ++i)
     {
         if (SpawnedIronList[i].IronActor == OtherActor)
         {
-            // 구역을 나갔으므로 타이머를 끄고 초기화 (파괴 면역)
             SpawnedIronList[i].bIsInZone = false;
-            SpawnedIronList[i].TimeInZone = 0.0f;
+            SpawnedIronList[i].TimeInZone = 0.0f; // 타이머 초기화 (살려줌)
             break;
         }
     }
@@ -132,14 +142,13 @@ void AIronSpawner::CheckIronLifeTime(float DeltaTime)
             continue;
         }
 
-        // ★ 오직 "바닥 파괴 영역 안에 들어와 있는 철"만 시간이 흘러감
         if (SpawnedIronList[i].bIsInZone)
         {
             SpawnedIronList[i].TimeInZone += DeltaTime;
 
-            // 영역 내에서 3.5초를 버티면 방치된 것으로 보고 청소
             if (SpawnedIronList[i].TimeInZone >= IronLifeTime)
             {
+                UE_LOG(LogTemp, Error, TEXT("방치 시간 초과로 철 파괴: %s"), *Iron->GetName());
                 Iron->Destroy();
                 SpawnedIronList.RemoveAt(i);
             }
@@ -157,7 +166,7 @@ void AIronSpawner::OnIronConsumed(AActor* ConsumedIron)
         {
             ConsumedIron->Destroy();
             SpawnedIronList.RemoveAt(i);
-            SpawnIron(); // 코일건 소비 시 즉시 보충
+            SpawnIron(); 
             break;
         }
     }
