@@ -1,10 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Transformation_actor.h"
 #include "IronSpawner.generated.h"
 
@@ -54,15 +53,19 @@ protected:
                           UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 protected:
-    // 루트 컴포넌트용 (스폰러 자체의 기준점)
+    // 루트 컴포넌트
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     USceneComponent* DefaultRoot;
 
-    // 1. 소환하는 곳 (이제 에디터에서 개별 선택 후 이동 가능)
+    // ★ 스포너 본체 메시 (에디터에서 메시/머터리얼 지정 가능)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
+    UStaticMeshComponent* SpawnerMesh;
+
+    // 소환 위치 (SpawnerMesh에 부착)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     USceneComponent* SpawnLocationComponent;
 
-    // 2. 삭제되는 곳 구역 박스 (이제 에디터에서 개별 선택 후 이동 및 크기 조절 가능)
+    // 삭제 구역 박스
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     UBoxComponent* DestructionZoneComponent;
 
