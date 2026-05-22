@@ -56,7 +56,7 @@ private:
 
     // 전압 → 발사속도 변환 배율
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float VoltageToSpeedMultiplier = 20.f;
+    float VoltageToSpeedMultiplier = 10.0f;
 
     // 전압 없을 때 기본 발사 속도 (테스트용)
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
