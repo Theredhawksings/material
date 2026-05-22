@@ -129,7 +129,14 @@ void ACoilGun::DetectAndFire()
         UPrimitiveComponent* Comp = H.GetComponent();
         if (!Comp || !Comp->IsSimulatingPhysics()) continue;
 
-        // 철 발견 → 즉시 발사
+        // ★ 철의 속도가 발사 방향과 반대면 무시
+        const FVector IronVel   = Comp->GetPhysicsLinearVelocity();
+        const FVector FireDir   = GetFireWorldDir();
+        const float   VelDot    = FVector::DotProduct(IronVel.GetSafeNormal(), FireDir);
+
+        // 발사 방향과 90도 이상 반대면 스킵
+        if (VelDot < -0.3f) continue;
+
         DoFire(Comp);
         CurrentState = ECoilGunState::Fire;
         break;

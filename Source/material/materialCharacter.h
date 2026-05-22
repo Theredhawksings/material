@@ -131,7 +131,7 @@ private:
 	
 	UPROPERTY(EditAnywhere, Category = "Equipment") FName BackpackSocketName = TEXT("spine_002Socket");
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeLocation = FVector(0.f, -0.2f, -0.35f);
-	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -93.f);
+	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRelativeRotation = FRotator(0.f, 0.f, -90.f);
 	UPROPERTY(EditAnywhere, Category = "Equipment") FVector BackpackRelativeScale = FVector(0.55f);
 	UPROPERTY(EditAnywhere, Category = "Interaction") float InteractRange = 2000.f;
 	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 0;
@@ -231,5 +231,5 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> BackpackUIComp;
 
-	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(6.0f, 0.f, -93.f);
+	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(3.0f, 0.f, -90.f);
 };
