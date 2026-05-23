@@ -178,7 +178,7 @@ void AGenerator::UpdateEMF(float DeltaTime)
 
     // GeneratorMesh만 회전 (루트는 고정)
     GeneratorMesh->SetRelativeRotation(
-        FRotator(RotationAngle, 0.f, 0.f));
+        FRotator(0.f,-RotationAngle, 0.f));  // Yaw = Z축 = 위에서 보면 빙글빙글
 
     // 자기장 세기 (두 자석 평균, 게임 스케일 조정)
     const float B = ((NorthMagnet->GetStrength()
