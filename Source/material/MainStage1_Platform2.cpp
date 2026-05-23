@@ -1,9 +1,10 @@
 #include "MainStage1_Platform2.h"
-#include "Transformation_actor.h"
 #include "Engine/Engine.h"
+#include "DrawDebugHelpers.h"
 
 AMainStage1_Platform2::AMainStage1_Platform2()
-    : TrackedActor(nullptr)
+    : LeftDoorActor(nullptr)
+    , RightDoorActor(nullptr)
     , bActivated(false)
     , bIsOpening(false)
     , bIsOpen(false)
@@ -15,8 +16,6 @@ AMainStage1_Platform2::AMainStage1_Platform2()
     RootComponent = TriggerBox;
     TriggerBox->SetBoxExtent(FVector(100.0f, 100.0f, 50.0f));
     TriggerBox->SetCollisionProfileName(TEXT("Trigger"));
-    TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AMainStage1_Platform2::OnOverlapBegin);
-    TriggerBox->OnComponentEndOverlap.AddDynamic(this, &AMainStage1_Platform2::OnOverlapEnd);
 
     PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
     PlatformMesh->SetupAttachment(RootComponent);
@@ -26,6 +25,7 @@ void AMainStage1_Platform2::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 문 시작/끝 위치 계산
     const FVector NormDir = OpenDirection.GetSafeNormal();
 
     if (LeftDoorActor)
@@ -39,54 +39,18 @@ void AMainStage1_Platform2::BeginPlay()
         RightTargetLocation = RightStartLocation - NormDir * OpenDistance;
     }
 
-    FTimerHandle InitTimer;
-    GetWorld()->GetTimerManager().SetTimer(InitTimer, [this]()
-    {
-        TArray<AActor*> OverlappingActors;
-        TriggerBox->GetOverlappingActors(OverlappingActors, ATransformation_actor::StaticClass());
-        for (AActor* Actor : OverlappingActors)
-        {
-            if (ATransformation_actor* T = Cast<ATransformation_actor>(Actor))
-            {
-                TrackedActor = T;
-                break;
-            }
-        }
-    }, 0.1f, false);
+    // Overlap 이벤트 바인딩
+    TriggerBox->OnComponentBeginOverlap.AddDynamic(
+        this, &AMainStage1_Platform2::OnOverlapBegin);
+    TriggerBox->OnComponentEndOverlap.AddDynamic(
+        this, &AMainStage1_Platform2::OnOverlapEnd);
 }
 
 void AMainStage1_Platform2::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (TrackedActor && !bActivated)
-    {
-        if (IsConditionMet())
-        {
-            bActivated = true;
-            bIsOpening = true;
-
-            if (GEngine)
-                GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("✅ 태그 감지! 문이 열립니다"));
-
-            auto DisableCollision = [](AActor* Door)
-            {
-                if (!Door) return;
-                TArray<UStaticMeshComponent*> Meshes;
-                Door->GetComponents<UStaticMeshComponent>(Meshes);
-                for (UStaticMeshComponent* M : Meshes)
-                    M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-            };
-            DisableCollision(LeftDoorActor);
-            DisableCollision(RightDoorActor);
-        }
-        else if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(3, 0.0f, FColor::Yellow,
-                FString::Printf(TEXT("Tag [%s] 감지 대기중..."), *RequiredComponentTag.ToString()));
-        }
-    }
-
+    // 문 열기 애니메이션
     if (bIsOpening && !bIsOpen)
     {
         CurrentTime += DeltaTime * OpenSpeed;
@@ -95,6 +59,10 @@ void AMainStage1_Platform2::Tick(float DeltaTime)
             CurrentTime = 1.0f;
             bIsOpen     = true;
             bIsOpening  = false;
+
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 3.0f,
+                    FColor::Green, TEXT("✅ 문 열림 완료!"));
         }
 
         if (LeftDoorActor)
@@ -105,35 +73,64 @@ void AMainStage1_Platform2::Tick(float DeltaTime)
             RightDoorActor->SetActorLocation(
                 FMath::Lerp(RightStartLocation, RightTargetLocation, CurrentTime));
     }
-}
 
-bool AMainStage1_Platform2::IsConditionMet() const
-{
-    if (!TrackedActor) return false;
-
-    TArray<UActorComponent*> Components;
-    TrackedActor->GetComponents(Components);
-
-    for (UActorComponent* Comp : Components)
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw)
     {
-        if (Comp->ComponentTags.Contains(RequiredComponentTag))
-            return true;
-    }
+        const FColor BoxColor = bActivated ? FColor::Green : FColor::Red;
+        DrawDebugBox(GetWorld(),
+            TriggerBox->GetComponentLocation(),
+            TriggerBox->GetScaledBoxExtent(),
+            TriggerBox->GetComponentQuat(),
+            BoxColor, false, -1.f, 0, 2.f);
 
-    return false;
+        DrawDebugString(GetWorld(),
+            GetActorLocation() + FVector(0, 0, 80.f),
+            FString::Printf(TEXT("[MetalTarget]\n상태: %s\n태그: %s"),
+                bActivated ? TEXT("활성화됨") : TEXT("대기중"),
+                *RequiredTag.ToString()),
+            nullptr,
+            bActivated ? FColor::Green : FColor::Yellow,
+            0.f, true);
+    }
+#endif
 }
 
 void AMainStage1_Platform2::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32, bool, const FHitResult&)
 {
-    if (!OtherActor) return;
-    if (ATransformation_actor* T = Cast<ATransformation_actor>(OtherActor))
-        TrackedActor = T;
+    if (!OtherActor || bActivated) return;
+
+    // Metal 태그 확인
+    if (!OtherActor->ActorHasTag(RequiredTag)) return;
+
+    // ★ 문 열기 시작
+    bActivated = true;
+    bIsOpening = true;
+    CurrentTime = 0.0f;
+
+    // 문 충돌 제거 (열리는 동안 막히지 않게)
+    auto DisableCollision = [](AActor* Door)
+    {
+        if (!Door) return;
+        TArray<UStaticMeshComponent*> Meshes;
+        Door->GetComponents<UStaticMeshComponent>(Meshes);
+        for (UStaticMeshComponent* M : Meshes)
+            M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    };
+    DisableCollision(LeftDoorActor);
+    DisableCollision(RightDoorActor);
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f,
+            FColor::Green, TEXT("✅ 철 감지! 문이 열립니다"));
+
+    UE_LOG(LogTemp, Log, TEXT("MetalTarget: %s 감지 → 문 열기"),
+        *OtherActor->GetName());
 }
 
 void AMainStage1_Platform2::OnOverlapEnd(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32)
 {
-    if (OtherActor == TrackedActor)
-        TrackedActor = nullptr;
+    // 한 번 열리면 닫히지 않음 (bActivated 유지)
 }

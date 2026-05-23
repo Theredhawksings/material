@@ -16,6 +16,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaTime) override;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UBoxComponent* TriggerBox;
@@ -32,22 +33,12 @@ protected:
     void OnOverlapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-    class ATransformation_actor* TrackedActor;
-    bool bActivated;
-    bool bIsOpening;
-    bool bIsOpen;
-    float CurrentTime;
-    FVector LeftStartLocation;
-    FVector LeftTargetLocation;
-    FVector RightStartLocation;
-    FVector RightTargetLocation;
-
 public:
-    virtual void Tick(float DeltaTime) override;
-
+    // 감지할 태그 (기본값 "Metal")
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
-    FName RequiredComponentTag = FName("Check");
+    FName RequiredTag = FName("Metal");
 
+    // 문 액터
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     AActor* LeftDoorActor;
 
@@ -63,5 +54,18 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
 
-    bool IsConditionMet() const;
+    // 디버그
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
+    bool bDebugDraw = true;
+
+private:
+    bool bActivated  = false;
+    bool bIsOpening  = false;
+    bool bIsOpen     = false;
+    float CurrentTime = 0.0f;
+
+    FVector LeftStartLocation;
+    FVector LeftTargetLocation;
+    FVector RightStartLocation;
+    FVector RightTargetLocation;
 };
