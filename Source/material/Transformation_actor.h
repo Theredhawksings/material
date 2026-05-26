@@ -71,7 +71,6 @@ public:
     void SetPowered(bool bNewPowered);
     bool IsElectrified() const { return bElectrified; }
 
-    // ★ 전기 전도 가능 폼인지 (Metal 또는 Copper)
     bool IsConductive() const { return CurrentForm == EBlockForm::Metal || CurrentForm == EBlockForm::Copper; }
     bool HasSourcePoweredWire() const;
 
@@ -88,6 +87,9 @@ public:
 
     void ReceivePower(float InVoltage, float InCurrent);
     void ClearPower();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Pickup")
+    bool bCanBePickedUp = true;
 
 protected:
     virtual void BeginPlay() override;

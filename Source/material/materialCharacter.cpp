@@ -441,20 +441,31 @@ bool AmaterialCharacter::TryPickup()
 {
 	if (!FollowCamera || bIsPickingUp)
 		return false;
+
 	const FVector Start = FollowCamera->GetComponentLocation();
 	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange;
+
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TryPickup), false, this);
 	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
 										  ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params))
 		return false;
+
 	AActor *Target = Hit.GetActor();
 	if (!Target)
 		return false;
+
+	if (ATransformation_actor* TransActor = Cast<ATransformation_actor>(Target))
+	{
+		if (!TransActor->bCanBePickedUp)
+			return false;
+	}
+
 	const bool bHasValidTag = PickupTags.ContainsByPredicate([Target](const FName &Tag)
 															 { return Target->ActorHasTag(Tag); });
 	if (!bHasValidTag)
 		return false;
+
 	SetPrimitiveComponentsPhysics(Target, false);
 	PendingPickupActor = Target;
 
