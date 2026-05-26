@@ -227,7 +227,7 @@ void ATransformation_actor::BeginPlay()
         CycleOrder.Add(EBlockForm::Copper);
 
     if (const FBlockFormSpec* Spec = FindSpec(CurrentForm))
-        ApplySpec(*Spec);
+        ApplySpec(*Spec);  // ← ApplySpec 내부에서 bFixedInPlace 체크하므로 OK
 
     if (bAutoUpdateTags)
         UpdateTagsForForm(CurrentForm);
@@ -246,7 +246,7 @@ void ATransformation_actor::BeginPlay()
     {
         EnterMagnetMode();
     }
-    // ★ Copper/Metal은 특별한 Enter 없음 (전기는 타이머가 처리)
+\
 
     GetWorld()->GetTimerManager().SetTimer(
         RefreshTimerHandle, this,
@@ -806,6 +806,12 @@ void ATransformation_actor::ApplySpec(const FBlockFormSpec& Spec)
         if (Spec.Materials[i] && MeshComp->GetMaterial(i) != Spec.Materials[i])
             MeshComp->SetMaterial(i, Spec.Materials[i]);
     }
+
+    if (bFixedInPlace)
+    {
+        ApplyFixedPhysics();
+        return;
+    }
  
     MeshComp->SetSimulatePhysics(Spec.bSimulatePhysics);
     MeshComp->SetLinearDamping(Spec.LinearDamping);
@@ -1212,10 +1218,17 @@ void ATransformation_actor::EnterMagnetMode()
     MagnetContactedWires.Empty();
     PreviousOverlappingMetals.Empty();
 
-    MeshComp->SetSimulatePhysics(true);
-    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
-    MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-    MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    if (bFixedInPlace)
+    {
+        ApplyFixedPhysics();
+    }
+    else
+    {
+        MeshComp->SetSimulatePhysics(true);
+        MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
 
     FormTemperatureC = 20.f;
     BaseArrowPower = ArrowPower;
@@ -1561,3 +1574,10 @@ float ATransformation_actor::GetEffectiveCurrent() const
     return StoredCurrent;
 }
 
+void ATransformation_actor::ApplyFixedPhysics()
+{
+    if (!MeshComp) return;
+    MeshComp->SetSimulatePhysics(false);
+    MeshComp->SetEnableGravity(false);
+    MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 충돌은 유지
+}

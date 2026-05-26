@@ -91,6 +91,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Pickup")
     bool bCanBePickedUp = true;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Pickup")
+    bool bFixedInPlace = false;
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -431,5 +434,8 @@ private:
 
     float StoredVoltage = 0.f;
     float StoredCurrent = 0.f;
+
+    private:
+    void ApplyFixedPhysics();
 
 };
