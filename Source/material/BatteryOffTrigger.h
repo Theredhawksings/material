@@ -6,6 +6,9 @@
 #include "Battery.h"
 #include "BatteryOffTrigger.generated.h"
 
+class AGenerator;
+class AIronSpawner;
+
 UCLASS()
 class MATERIAL_API ABatteryOffTrigger : public AActor
 {
@@ -16,6 +19,12 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battery")
     TObjectPtr<ABATTERY> TargetBattery;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
+    TObjectPtr<AGenerator> TargetGenerator;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
+    TObjectPtr<AIronSpawner> TargetSpawner;
 
 protected:
     virtual void BeginPlay() override;

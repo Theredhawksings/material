@@ -30,6 +30,9 @@ class MATERIAL_API AIronSpawner : public AActor
 public: 
     AIronSpawner();
 
+    // 외부(트리거)에서 스포너를 가동시킬 함수
+    void ActivateSpawner();
+
 protected:
     virtual void BeginPlay() override;
 
@@ -53,19 +56,15 @@ protected:
                           UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 protected:
-    // 루트 컴포넌트
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     USceneComponent* DefaultRoot;
 
-    // ★ 스포너 본체 메시 (에디터에서 메시/머터리얼 지정 가능)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     UStaticMeshComponent* SpawnerMesh;
 
-    // 소환 위치 (SpawnerMesh에 부착)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     USceneComponent* SpawnLocationComponent;
 
-    // 삭제 구역 박스
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IronSpawner|Components")
     UBoxComponent* DestructionZoneComponent;
 
@@ -79,6 +78,9 @@ protected:
     float IronLifeTime;
 
 private:
+    // 작동 상태 변수
+    bool bIsActive = false;
+
     UPROPERTY()
     TArray<FIronSpawnData> SpawnedIronList;
 

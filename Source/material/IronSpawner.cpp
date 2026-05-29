@@ -7,23 +7,18 @@ AIronSpawner::AIronSpawner()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // 루트
     DefaultRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultRootComp"));
     SetRootComponent(DefaultRoot);
 
-    // ★ 스포너 본체 메시 (루트에 부착)
     SpawnerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SpawnerMesh"));
     SpawnerMesh->SetupAttachment(RootComponent);
     SpawnerMesh->SetSimulatePhysics(false);
-    SpawnerMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌 없음 (장식용)
+    SpawnerMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-    // 소환 위치 (SpawnerMesh에 부착 → 메시 위에서 철이 나옴)
     SpawnLocationComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SpawnLocationComp"));
     SpawnLocationComponent->SetupAttachment(SpawnerMesh);
-    // ★ 기본 위치: 메시 위쪽 (에디터에서 조정 가능)
     SpawnLocationComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 
-    // 삭제 구역 박스 (루트에 부착)
     DestructionZoneComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("DestructionZoneComp"));
     DestructionZoneComponent->SetupAttachment(RootComponent);
     DestructionZoneComponent->SetBoxExtent(FVector(200.0f, 200.0f, 50.0f));
@@ -40,17 +35,28 @@ void AIronSpawner::BeginPlay()
 {
     Super::BeginPlay();
 
-    DestructionZoneComponent->OnComponentBeginOverlap.AddDynamic(
-        this, &AIronSpawner::OnZoneBeginOverlap);
-    DestructionZoneComponent->OnComponentEndOverlap.AddDynamic(
-        this, &AIronSpawner::OnZoneEndOverlap);
+    DestructionZoneComponent->OnComponentBeginOverlap.AddDynamic(this, &AIronSpawner::OnZoneBeginOverlap);
+    DestructionZoneComponent->OnComponentEndOverlap.AddDynamic(this, &AIronSpawner::OnZoneEndOverlap);
 
+    // 처음에는 정지 상태
+    SetActorTickEnabled(false);
+}
+
+void AIronSpawner::ActivateSpawner()
+{
+    if (bIsActive) return;
+    bIsActive = true;
+
+    SetActorTickEnabled(true);
+    
     GetWorldTimerManager().SetTimer(
         SpawnTimerHandle,
         this,
         &AIronSpawner::SpawnIron,
         SpawnInterval,
         true);
+
+    UE_LOG(LogTemp, Warning, TEXT("철 스포너가 가동되었습니다!"));
 }
 
 void AIronSpawner::Tick(float DeltaTime)
@@ -68,8 +74,7 @@ void AIronSpawner::SpawnIron()
     FRotator SpawnRotation  = SpawnLocationComponent->GetComponentRotation();
 
     FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride =
-        ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
     ATransformation_actor* NewIron = World->SpawnActor<ATransformation_actor>(
         IronClass, SpawnLocation, SpawnRotation, SpawnParams);
@@ -95,11 +100,13 @@ void AIronSpawner::OnZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActo
 {
     if (!OtherActor) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("삭제 구역 진입: %s"), *OtherActor->GetName());
+    // 캐스팅으로 철 액터만 처리하도록 최적화 적용
+    ATransformation_actor* OverlappedIron = Cast<ATransformation_actor>(OtherActor);
+    if (!OverlappedIron) return;
 
     for (int32 i = 0; i < SpawnedIronList.Num(); ++i)
     {
-        if (SpawnedIronList[i].IronActor == OtherActor)
+        if (SpawnedIronList[i].IronActor == OverlappedIron)
         {
             SpawnedIronList[i].bIsInZone = true;
             break;
@@ -112,11 +119,12 @@ void AIronSpawner::OnZoneEndOverlap(UPrimitiveComponent* OverlappedComp, AActor*
 {
     if (!OtherActor) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("삭제 구역 탈출: %s"), *OtherActor->GetName());
+    ATransformation_actor* OverlappedIron = Cast<ATransformation_actor>(OtherActor);
+    if (!OverlappedIron) return;
 
     for (int32 i = 0; i < SpawnedIronList.Num(); ++i)
     {
-        if (SpawnedIronList[i].IronActor == OtherActor)
+        if (SpawnedIronList[i].IronActor == OverlappedIron)
         {
             SpawnedIronList[i].bIsInZone  = false;
             SpawnedIronList[i].TimeInZone = 0.0f;

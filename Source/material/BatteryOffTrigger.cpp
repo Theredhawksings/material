@@ -1,5 +1,7 @@
 #include "BatteryOffTrigger.h"
 #include "GameFramework/Character.h"
+#include "Generator.h"
+#include "IronSpawner.h"
 
 ABatteryOffTrigger::ABatteryOffTrigger()
 {
@@ -20,9 +22,18 @@ void ABatteryOffTrigger::BeginPlay()
 void ABatteryOffTrigger::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32, bool, const FHitResult&)
 {
-    if (!Cast<ACharacter>(OtherActor)) return;
-    if (!Cast<ACharacter>(OtherActor)->IsPlayerControlled()) return;
+    ACharacter* OverlappedCharacter = Cast<ACharacter>(OtherActor);
+    if (!OverlappedCharacter || !OverlappedCharacter->IsPlayerControlled()) return;
 
+    // 배터리 전원 토글
     if (TargetBattery && TargetBattery->bPowered)
         TargetBattery->TogglePower();
+
+    // 발전기 작동
+    if (TargetGenerator)
+        TargetGenerator->ActivateGenerator();
+
+    // 스포너 작동
+    if (TargetSpawner)
+        TargetSpawner->ActivateSpawner();
 }

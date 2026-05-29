@@ -17,6 +17,8 @@ class MATERIAL_API AGenerator : public AActor
 public:
     AGenerator();
 
+    void ActivateGenerator();
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -83,6 +85,9 @@ private:
     // 연결된 Wire들
     UPROPERTY()
     TArray<TObjectPtr<AWire>> ConnectedWires;
+
+    // 작동 상태 변수
+    bool bIsActive = false;
 
     void DetectMagnets();
     void UpdateEMF(float DeltaTime);
