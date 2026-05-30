@@ -32,6 +32,8 @@ public:
 
     // 외부(트리거)에서 스포너를 가동시킬 함수
     void ActivateSpawner();
+    
+    void DeactivateSpawner();
 
 protected:
     virtual void BeginPlay() override;
@@ -78,7 +80,6 @@ protected:
     float IronLifeTime;
 
 private:
-    // 작동 상태 변수
     bool bIsActive = false;
 
     UPROPERTY()

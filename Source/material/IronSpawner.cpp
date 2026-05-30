@@ -174,3 +174,15 @@ void AIronSpawner::OnIronConsumed(AActor* ConsumedIron)
         }
     }
 }
+
+void AIronSpawner::DeactivateSpawner()
+{
+    if (!bIsActive) return;
+    bIsActive = false;
+
+    SetActorTickEnabled(false);
+
+    GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+
+    UE_LOG(LogTemp, Warning, TEXT("철 스포너가 정지되었습니다!"));
+}

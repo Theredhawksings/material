@@ -198,3 +198,24 @@ void AGenerator::UpdateCircuit()
         ConnectedWires.Add(Wire);
     }
 }
+
+void AGenerator::DeactivateGenerator()
+{
+    if (!bIsActive) return;
+    bIsActive = false;
+
+    SetActorTickEnabled(false);
+
+    CurrentEMF = 0.f;
+    for (TObjectPtr<AWire>& WirePtr : ConnectedWires)
+    {
+        AWire* Wire = WirePtr.Get();
+        if (!Wire) continue;
+        Wire->SetBatterySource(false);
+        Wire->SetPowered(false);
+        Wire->SetBatteryVoltage(0.f);
+    }
+    ConnectedWires.Empty();
+
+    UE_LOG(LogTemp, Warning, TEXT("발전기가 정지되었습니다!"));
+}
