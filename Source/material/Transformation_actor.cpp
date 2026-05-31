@@ -1236,47 +1236,81 @@ void ATransformation_actor::EnterMagnetMode()
 
     RefreshOverlappingMetals();
 
-    if (bShowFieldArrows && ArrowEffectClass)
+if (bShowFieldArrows && ArrowEffectClass)
+{
+    // ★ 1초 타이머 제거! (즉시 스폰되도록 수정)
+    const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
+    FTransform T((GetActorQuat() * OffQ).Rotator(), GetActorLocation());
+
+    AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
+        ArrowEffectClass, T, this, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        
+    if (!Arrow) return;
+
+    // 파라미터 세팅
+    auto SetFloat = [Arrow](const TCHAR* Name, float Val)
     {
-        FTimerHandle Timer;
-        GetWorldTimerManager().SetTimer(Timer, [this]()
+        if (FProperty* P = Arrow->GetClass()->FindPropertyByName(Name))
         {
-            if (!IsValid(this) || !ArrowEffectClass) return;
-            if (CurrentForm != EBlockForm::Magnet) return;
+            if (FDoubleProperty* D = CastField<FDoubleProperty>(P))
+                D->SetPropertyValue_InContainer(Arrow, (double)Val);
+            else if (FFloatProperty* F = CastField<FFloatProperty>(P))
+                F->SetPropertyValue_InContainer(Arrow, Val);
+        }
+    };
+    SetFloat(TEXT("Power"), ArrowPower);
+    SetFloat(TEXT("X"), ArrowX);
+    SetFloat(TEXT("Y"), ArrowY);
 
-            const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
-            FTransform T((GetActorQuat() * OffQ).Rotator(), GetActorLocation());
+    UGameplayStatics::FinishSpawningActor(Arrow, T);
 
-            AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
-                ArrowEffectClass, T, this, nullptr,
-                ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-            if (!Arrow) return;
-
-            auto SetFloat = [Arrow](const TCHAR* Name, float Val)
-            {
-                if (FProperty* P = Arrow->GetClass()->FindPropertyByName(Name))
-                {
-                    if (FDoubleProperty* D = CastField<FDoubleProperty>(P))
-                        D->SetPropertyValue_InContainer(Arrow, (double)Val);
-                    else if (FFloatProperty* F = CastField<FFloatProperty>(P))
-                        F->SetPropertyValue_InContainer(Arrow, Val);
-                }
-            };
-            SetFloat(TEXT("Power"), ArrowPower);
-            SetFloat(TEXT("X"), ArrowX);
-            SetFloat(TEXT("Y"), ArrowY);
-
-            UGameplayStatics::FinishSpawningActor(Arrow, T);
-
-            TArray<USceneComponent*> AllComps;
-            Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
-            AllComps.Add(Arrow->GetRootComponent());
-            for (USceneComponent* C : AllComps) C->SetMobility(EComponentMobility::Movable);
-
-            SpawnedArrowEffect = Arrow;
-            SpawnedArrowEffect->SetActorHiddenInGame(true);
-        }, 1.0f, false);
+    TArray<USceneComponent*> AllComps;
+    Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
+    AllComps.Add(Arrow->GetRootComponent());
+    
+    for (USceneComponent* C : AllComps) 
+    {
+        C->SetMobility(EComponentMobility::Movable);
+        
+        // ★ 화살표에도 자석과 똑같이 Custom Depth Stencil 적용 (매우 중요)
+        if (UPrimitiveComponent* PrimC = Cast<UPrimitiveComponent>(C))
+        {
+            PrimC->SetRenderCustomDepth(true);
+            PrimC->SetCustomDepthStencilValue(255); // 현재 포스트 프로세스에서 감지하는 스텐실 값(예: 255)으로 설정
+            PrimC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
     }
+
+    SpawnedArrowEffect = Arrow;
+    
+if (SpawnedArrowEffect && MeshComp)
+    {
+        // 1. 큐브에 상대적(Relative)으로 부착하여, 큐브 스케일이 변하면 화살표도 자동으로 변하게 만듭니다.
+        SpawnedArrowEffect->AttachToComponent(MeshComp, FAttachmentTransformRules::KeepRelativeTransform);
+
+        // 2. 메시의 '원본 로컬 크기(바운딩 박스)'를 가져옵니다.
+        FVector MinBounds, MaxBounds;
+        MeshComp->GetLocalBounds(MinBounds, MaxBounds);
+        
+        // 3. 위치 자동 맞춤: 큐브의 실제 꼭대기 높이(MaxBounds.Z)에 약간의 여백(10.f)을 띄웁니다.
+        // 이제 큐브가 길쭉하든 납작하든 무조건 큐브 정수리에 딱 붙습니다.
+        float TopZ = MaxBounds.Z - 50.f;
+        SpawnedArrowEffect->SetActorRelativeLocation(FVector(0.f, 0.f, TopZ));
+        
+        // 4. 각도 고정 (항상 위를 향하도록)
+        SpawnedArrowEffect->SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
+
+        // 5. 크기 자동 맞춤: 큐브의 가로 크기(X, Y 중 큰 값)를 기준으로 화살표 스케일을 계산합니다.
+        // 기본 큐브 반경인 50.f를 기준으로 잡고, 화살표가 너무 튀지 않게 0.6배(60%) 사이즈로 자동 보정합니다.
+        float AutoScale = (FMath::Max(MaxBounds.X, MaxBounds.Y) / 50.f) * 0.6f; 
+        
+        SpawnedArrowEffect->SetActorRelativeScale3D(FVector(AutoScale));
+    }
+
+    RefreshArrowVisibility();
+}
+
 }
 
 void ATransformation_actor::ExitMagnetMode()
@@ -1376,7 +1410,7 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
         }
     }
 
-    if (OverlappingMetals.Num() == 0) goto ArrowSync;
+    if (OverlappingMetals.Num() == 0) return;
 
     {
         // InitialImpulse
@@ -1502,20 +1536,6 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
         if (bEnableInduction)
             ApplyInducedMagnetism();
     }
-
-ArrowSync:
-    // 화살표 위치 동기화
-    if (SpawnedArrowEffect)
-    {
-        const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
-        const FQuat DesQ = GetActorQuat() * OffQ;
-        const FVector DesLoc = GetActorLocation();
-        if (!SpawnedArrowEffect->GetActorQuat().Equals(DesQ, 0.01f) ||
-            !SpawnedArrowEffect->GetActorLocation().Equals(DesLoc, 1.f))
-        {
-            SpawnedArrowEffect->SetActorLocationAndRotation(DesLoc, DesQ);
-        }
-    }
 }
 
 // ============================================================================
@@ -1580,4 +1600,40 @@ void ATransformation_actor::ApplyFixedPhysics()
     MeshComp->SetSimulatePhysics(false);
     MeshComp->SetEnableGravity(false);
     MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 충돌은 유지
+}
+
+void ATransformation_actor::SetGlobalMagneticCameraState(const UObject* WorldContextObject, bool bIsCameraOn)
+{
+    if (!WorldContextObject || !WorldContextObject->GetWorld()) return;
+
+    // 맵에 있는 모든 큐브를 자동으로 찾습니다.
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(WorldContextObject->GetWorld(), ATransformation_actor::StaticClass(), FoundActors);
+    
+    // 찾은 모든 큐브에게 카메라 켜짐/꺼짐 신호를 전달합니다.
+    for (AActor* Actor : FoundActors)
+    {
+        if (ATransformation_actor* Cube = Cast<ATransformation_actor>(Actor))
+        {
+            Cube->SetMagneticCameraState(bIsCameraOn);
+        }
+    }
+}
+
+void ATransformation_actor::SetMagneticCameraState(bool bIsCameraOn)
+{
+    bIsMagneticCameraOn = bIsCameraOn;
+    RefreshArrowVisibility();
+}
+
+void ATransformation_actor::RefreshArrowVisibility()
+{
+    if (SpawnedArrowEffect)
+    {
+        // 자기장 카메라 켜짐 + 현재 자석 폼 + 자력 안 잃음 
+        // 3가지 조건이 모두 맞아야만 화살표가 보임!
+        bool bShouldShow = bIsMagneticCameraOn && (CurrentForm == EBlockForm::Magnet) && (!bDemagnetized);
+        
+        SpawnedArrowEffect->SetActorHiddenInGame(!bShouldShow);
+    }
 }

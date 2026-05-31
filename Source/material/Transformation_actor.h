@@ -94,10 +94,18 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Pickup")
     bool bFixedInPlace = false;
 
+    void SetMagneticCameraState(bool bIsCameraOn);
+
+    UFUNCTION(BlueprintCallable, Category = "CameraSystem", meta = (WorldContext = "WorldContextObject"))
+    static void SetGlobalMagneticCameraState(const UObject* WorldContextObject, bool bIsCameraOn);
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
     virtual void OnConstruction(const FTransform &Transform) override;
+
+    bool bIsMagneticCameraOn = false;
+    void RefreshArrowVisibility();  
 
 public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
