@@ -196,7 +196,8 @@ private:
 	FORCEINLINE bool IsMoving() const { return GetVelocity().SizeSquared2D() > (WalkSpeedThreshold * WalkSpeedThreshold); }
 
 	static constexpr float CameraArmLength      = 350.f;
-	static constexpr float CameraSocketOffsetZ  = 80.f;
+	static constexpr float CameraSocketOffsetZ = 65.f; 
+	static constexpr float CameraSocketOffsetY = 55.f;
 	static constexpr float CameraLagSpeed       = 6.0f;
 	static constexpr float CameraRotLagSpeed    = 12.0f;
 	static constexpr float JumpVelocity         = 600.f;
@@ -206,7 +207,7 @@ private:
 	static constexpr float MeshRotationYaw      = 90.f;
 	static constexpr float PickupAnimAttachTime = 1.125f;
 	static constexpr float PickupSphereRadius   = 75.f;
-	static constexpr float InteractSphereRadius = 50.f;
+	static constexpr float InteractSphereRadius = 150.f;
 	static constexpr float DropForwardOffset    = 15.f;
 	static constexpr float DropDetachTime       = 1.03f;
 

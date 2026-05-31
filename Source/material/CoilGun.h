@@ -7,13 +7,15 @@
 class UStaticMeshComponent;
 class UBoxComponent;
 class AWire;
+class AGenerator;
 
 UENUM()
 enum class ECoilGunState : uint8
 {
-    Idle,     // 대기
-    Fire,     // 발사
-    Cooldown  // 재장전 대기
+    Idle,      // 대기
+    Charging,  // 흡입중 (sin > 0)
+    Fired,     // 발사됨 (sin < 0)
+    Cooldown   // 재장전 대기
 };
 
 UCLASS()
@@ -26,10 +28,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "CoilGun")
     ECoilGunState GetState() const { return CurrentState; }
-
-    // Wire에서 전압 주입
-    UFUNCTION(BlueprintCallable, Category = "CoilGun")
-    void SetVoltage(float InVoltage) { CurrentVoltage = InVoltage; }
 
     UFUNCTION(BlueprintCallable, Category = "CoilGun")
     float GetVoltage() const { return CurrentVoltage; }
@@ -45,38 +43,48 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "CoilGun")
     TObjectPtr<UStaticMeshComponent> CoilMesh;
 
-    // 철 감지 범위
     UPROPERTY(VisibleAnywhere, Category = "CoilGun")
     TObjectPtr<UBoxComponent> BarrelZone;
 
+    // ★ 발전기 직접 참조 (에디터에서 지정)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Circuit")
+    TObjectPtr<AGenerator> ConnectedGenerator;
+
     // 발사 방향 (로컬 기준)
-    // -Y: (0,-1,0) / -X: (-1,0,0) / +X: (1,0,0)
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
     FVector FireDirection = FVector(0.f, -1.f, 0.f);
 
-    // 전압 → 발사속도 변환 배율
+    // 코일 권선수
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float VoltageToSpeedMultiplier = 10.0f;
+    int32 CoilWindings = 50;
 
-    // 전압 없을 때 기본 발사 속도 (테스트용)
+    // 코일 반지름 (cm)
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float DefaultLaunchSpeed = 1000.f;
+    float CoilRadiusCM = 10.f;
 
-    // 최소 발사 속도
+    // 코일 길이 (cm)
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float MinLaunchSpeed = 300.f;
+    float CoilLengthCM = 20.f;
 
-    // 최대 발사 속도
+    // 코일 저항 (Ω)
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float MaxLaunchSpeed = 5000.f;
+    float CoilResistance = 1.f;
+
+    // 게임 스케일 배율
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float ForceScaleMultiplier = 500000.f;
+
+    // 최대 흡입 속도
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float MaxPullSpeed = 300.f;
+
+    // 쿨다운 시간
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float CooldownTime = 1.f;
 
     // 철 감지 태그
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
     FName IronTag = TEXT("Metal");
-
-    // 쿨다운 시간
-    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float CooldownTime = 2.f;
 
     // Wire 감지 반경
     UPROPERTY(EditAnywhere, Category = "CoilGun|Circuit")
@@ -86,23 +94,26 @@ private:
     UPROPERTY(EditAnywhere, Category = "CoilGun|Debug")
     bool bDebugDraw = true;
 
-    // 현재 상태
     ECoilGunState CurrentState = ECoilGunState::Idle;
 
-    // 현재 전압 (Wire에서 받아옴)
     UPROPERTY(VisibleAnywhere, Category = "CoilGun|Circuit")
     float CurrentVoltage = 0.f;
 
-    // 쿨다운 타이머
-    float CooldownTimer = 0.f;
+    UPROPERTY(VisibleAnywhere, Category = "CoilGun|Circuit")
+    bool bCurrentPositive = false;
 
-    // 연결된 Wire
+    UPROPERTY()
+    TObjectPtr<UPrimitiveComponent> LoadedIron;
+
     UPROPERTY()
     TArray<TObjectPtr<AWire>> ConnectedWires;
 
+    float CooldownTimer = 0.f;
+
     FVector GetFireWorldDir() const;
-    void    DetectAndFire();
-    void    DoFire(UPrimitiveComponent* IronComp);
-    void    ReadVoltageFromWires();
+    void    ReadWireState();
+    void    DetectIron();
+    void    ApplyMagneticForce();
+    void    ReleaseFire();
     void    DebugVisualize();
 };

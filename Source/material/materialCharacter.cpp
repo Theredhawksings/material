@@ -17,6 +17,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Blueprint/UserWidget.h"
 
 AmaterialCharacter::AmaterialCharacter()
@@ -38,7 +39,7 @@ AmaterialCharacter::AmaterialCharacter()
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = CameraArmLength;
-	CameraBoom->SocketOffset = FVector(0.f, 0.f, CameraSocketOffsetZ);
+	CameraBoom->SocketOffset = FVector(0.f, CameraSocketOffsetY, CameraSocketOffsetZ);	
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bEnableCameraLag = false;
 	CameraBoom->CameraLagSpeed = CameraLagSpeed;
