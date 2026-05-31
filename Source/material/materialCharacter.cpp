@@ -879,35 +879,67 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 	}
 
 	if (bConfirm && FollowCamera)
-	{
-		const FVector Start = FollowCamera->GetComponentLocation();
-		const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
-		FHitResult Hit;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
+    {
+		const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 60.f); 
+        
+        // 방향은 카메라(마우스 에임)가 바라보는 곳을 정확히 향합니다.
+        const FVector TraceDir = FollowCamera->GetForwardVector();
+        const FVector End = Start + (TraceDir * InteractRange);	
+        FHitResult Hit;
+        // 자기 자신(플레이어 캡슐)은 충돌에서 무시하도록 세팅되어 있습니다.
+        FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
 
-		if (GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-											 ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
-		{
-			if (ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
-			{
-				RadialMenuWidget->TargetActor = TransformActor;
+        // 1. 기존 코드 방식 그대로 두꺼운 구체(Sphere)를 쏩니다.
+        bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+                                             ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params);
 
-				if (UseLeftAnim && GetMesh())
-				{
-					GetMesh()->PlayAnimation(UseLeftAnim, false);
-					bIsPickingUp = true;
-					bRadialMenuOpen = false;
-					GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-														   &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
-					return;
-				}
-				else
-				{
-					RadialMenuWidget->ConfirmSelection();
-				}
-			}
-		}
-	}
+        // =========================================================================
+        // 🚨 레이저 디버그 시각화 (여기를 추가했습니다)
+        // =========================================================================
+        FColor DrawColor = bHit ? FColor::Green : FColor::Red; // 맞으면 초록색, 허공이면 빨간색
+        
+        // 시작 위치에 파란색 공 그리기 (총구가 어디서 시작되는지 확인)
+        DrawDebugSphere(GetWorld(), Start, InteractSphereRadius, 12, FColor::Blue, false, 3.0f);
+        // 날아간 궤적과 도착 지점 그리기
+        DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 3.0f);
+        DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 3.0f, 0, 2.0f);
+
+        if (bHit && Hit.GetActor())
+        {
+            // 정확히 닿은 타격점에 노란색 점 찍기
+            DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.0f, FColor::Yellow, false, 3.0f);
+            
+            // 화면 왼쪽 위에 "뭐랑 부딪혔는지" 범인 이름 띄우기
+            if (GEngine)
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, 
+                    FString::Printf(TEXT("💥 충돌한 물체: %s"), *Hit.GetActor()->GetName()));
+            }
+        }
+        // =========================================================================
+
+        if (bHit)
+        {
+            if (ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
+            {
+                RadialMenuWidget->TargetActor = TransformActor;
+
+                if (UseLeftAnim && GetMesh())
+                {
+                    GetMesh()->PlayAnimation(UseLeftAnim, false);
+                    bIsPickingUp = true;
+                    bRadialMenuOpen = false;
+                    GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+                                                           &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
+                    return;
+                }
+                else
+                {
+                    RadialMenuWidget->ConfirmSelection();
+                }
+            }
+        }
+    }
 
 	bRadialMenuOpen = false;
 	UpdateAnimation();

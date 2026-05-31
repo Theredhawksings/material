@@ -246,11 +246,16 @@ void ATransformation_actor::BeginPlay()
     {
         EnterMagnetMode();
     }
-\
-
+    
+    MeshComp->SetNotifyRigidBodyCollision(true);
+    MeshComp->OnComponentHit.AddDynamic(this, &ATransformation_actor::OnRubberHit);
+    CurrentBounceMultiplier = RubberBounceMultiplier;
+    
     GetWorld()->GetTimerManager().SetTimer(
         RefreshTimerHandle, this,
         &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
+        
+    
 }
 
 // ============================================================================
@@ -1636,4 +1641,24 @@ void ATransformation_actor::RefreshArrowVisibility()
         
         SpawnedArrowEffect->SetActorHiddenInGame(!bShouldShow);
     }
+}
+
+void ATransformation_actor::OnRubberHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+    if (CurrentForm != EBlockForm::Rubber) return;
+    if (!OtherComp || !OtherComp->IsSimulatingPhysics()) return;
+
+    FVector Vel = OtherComp->GetPhysicsLinearVelocity();
+    float Speed = FMath::Max(Vel.Size(), 300.f);
+
+    FVector BounceDir = Hit.ImpactNormal;
+    FVector NewVel;
+    NewVel.X = Vel.X;
+    NewVel.Y = Vel.Y;
+    NewVel.Z = FMath::Abs(BounceDir.Z) * Speed * CurrentBounceMultiplier;
+
+    OtherComp->SetPhysicsLinearVelocity(NewVel);
+
+    CurrentBounceMultiplier = FMath::Max(CurrentBounceMultiplier * RubberBounceDecay, 0.1f);
 }

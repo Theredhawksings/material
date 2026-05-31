@@ -443,7 +443,21 @@ private:
     float StoredVoltage = 0.f;
     float StoredCurrent = 0.f;
 
-    private:
+private:
     void ApplyFixedPhysics();
+
+    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+    float RubberBounceMultiplier = 2.5f;
+
+    UFUNCTION()
+    void OnRubberHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+
+    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+    float RubberBounceDecay = 0.8f;
+
+    float CurrentBounceMultiplier = RubberBounceMultiplier; 
+    
 
 };
