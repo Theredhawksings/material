@@ -444,13 +444,64 @@ bool AmaterialCharacter::TryPickup()
 		return false;
 
 	const FVector Start = FollowCamera->GetComponentLocation();
-	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange;
+	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange + FollowCamera->GetRightVector() * -20.f;	
+
+	// =========================================================================
+	// 픽업 레이저 디버그 시각화
+	// =========================================================================
+	// 카메라 위치 (레이저 시작점) - 흰색 구체
+	DrawDebugSphere(GetWorld(), Start, 8.f, 8, FColor::White, false, 3.0f, 0, 1.f);
+
+	// 레이저 방향 및 끝점 - 파란색 (스위프 반경 포함)
+	DrawDebugSphere(GetWorld(), End, PickupSphereRadius, 12, FColor::Blue, false, 3.0f);
+	DrawDebugLine(GetWorld(), Start, End, FColor::Blue, false, 3.0f, 0, 1.5f);
+
+	// 캐릭터 위치도 표시 (카메라 vs 캐릭터 위치 비교용) - 회색
+	DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 8, FColor(128,128,128), false, 3.0f);
+
+	// 로그: 레이저 시작/끝/방향 출력
+	UE_LOG(LogTemp, Warning, TEXT("[TryPickup] CameraPos=(%s) | Forward=(%s) | Range=%.0f | SphereR=%.0f"),
+		*Start.ToCompactString(),
+		*FollowCamera->GetForwardVector().ToCompactString(),
+		PickupRange,
+		PickupSphereRadius);
+	// =========================================================================
 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TryPickup), false, this);
-	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-										  ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params))
+	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+										  ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params);
+
+	// =========================================================================
+	// 히트 결과 디버그
+	// =========================================================================
+	if (bHit && Hit.GetActor())
+	{
+		// 히트된 지점 - 노란색 점
+		DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.f, FColor::Yellow, false, 3.0f);
+		// 히트된 액터 바운딩박스 - 초록색
+		DrawDebugBox(GetWorld(),
+			Hit.GetActor()->GetActorLocation(),
+			FVector(40.f),
+			FColor::Green, false, 3.0f, 0, 2.f);
+		// 히트된 액터 이름 (월드 공간에 텍스트)
+		DrawDebugString(GetWorld(),
+			Hit.GetActor()->GetActorLocation() + FVector(0.f, 0.f, 60.f),
+			FString::Printf(TEXT("HIT: %s"), *Hit.GetActor()->GetName()),
+			nullptr, FColor::Green, 3.0f, true);
+
+		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] HIT -> Actor=%s | Tag 체크 시작"),
+			*Hit.GetActor()->GetName());
+	}
+	else
+	{
+		// 히트 없음 - 빨간색 끝점
+		DrawDebugSphere(GetWorld(), End, PickupSphereRadius, 12, FColor::Red, false, 3.0f);
+		DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 3.0f, 0, 1.5f);
+		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] NO HIT (ECC_Camera, Range=%.0f)"), PickupRange);
 		return false;
+	}
+	// =========================================================================
 
 	AActor *Target = Hit.GetActor();
 	if (!Target)
@@ -459,13 +510,33 @@ bool AmaterialCharacter::TryPickup()
 	if (ATransformation_actor* TransActor = Cast<ATransformation_actor>(Target))
 	{
 		if (!TransActor->bCanBePickedUp)
+		{
+			// 픽업 불가 상태 표시 - 주황색
+			DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Orange, false, 3.0f, 0, 2.f);
+			DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
+				TEXT("bCanBePickedUp = false"), nullptr, FColor::Orange, 3.0f, true);
+			UE_LOG(LogTemp, Warning, TEXT("[TryPickup] REJECTED: bCanBePickedUp=false on %s"), *Target->GetName());
 			return false;
+		}
 	}
 
 	const bool bHasValidTag = PickupTags.ContainsByPredicate([Target](const FName &Tag)
 															 { return Target->ActorHasTag(Tag); });
 	if (!bHasValidTag)
+	{
+		// 유효 태그 없음 - 빨간색 박스
+		DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Red, false, 3.0f, 0, 2.f);
+		DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
+			TEXT("NO VALID TAG"), nullptr, FColor::Red, 3.0f, true);
+		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] REJECTED: 유효한 픽업 태그 없음 on %s"), *Target->GetName());
 		return false;
+	}
+
+	// 픽업 성공 - 초록색 확정 표시
+	DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(45.f), FColor::Green, false, 3.0f, 0, 3.f);
+	DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 100.f),
+		TEXT("PICKUP OK!"), nullptr, FColor::Green, 3.0f, true);
+	UE_LOG(LogTemp, Warning, TEXT("[TryPickup] SUCCESS: %s 픽업 시작"), *Target->GetName());
 
 	SetPrimitiveComponentsPhysics(Target, false);
 	PendingPickupActor = Target;
@@ -793,7 +864,6 @@ void AmaterialCharacter::DecreaseGaugeForMaterial(const FName &MaterialTag)
 		WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0, MaxGauge);
 	else if (MaterialTag == TEXT("Magnet"))
 		MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	// WBP가 타이머로 직접 폴링하므로 여기서 호출 불필요
 }
 
 int32 AmaterialCharacter::GetGaugeByTag(const FName &MaterialTag) const
@@ -882,42 +952,30 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 	if (bConfirm && FollowCamera)
     {
 		const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 60.f); 
-        
-        // 방향은 카메라(마우스 에임)가 바라보는 곳을 정확히 향합니다.
         const FVector TraceDir = FollowCamera->GetForwardVector();
         const FVector End = Start + (TraceDir * InteractRange);	
         FHitResult Hit;
-        // 자기 자신(플레이어 캡슐)은 충돌에서 무시하도록 세팅되어 있습니다.
         FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
 
-        // 1. 기존 코드 방식 그대로 두꺼운 구체(Sphere)를 쏩니다.
         bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
                                              ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params);
 
-        // =========================================================================
-        // 🚨 레이저 디버그 시각화 (여기를 추가했습니다)
-        // =========================================================================
-        FColor DrawColor = bHit ? FColor::Green : FColor::Red; // 맞으면 초록색, 허공이면 빨간색
+        FColor DrawColor = bHit ? FColor::Green : FColor::Red;
         
-        // 시작 위치에 파란색 공 그리기 (총구가 어디서 시작되는지 확인)
         DrawDebugSphere(GetWorld(), Start, InteractSphereRadius, 12, FColor::Blue, false, 3.0f);
-        // 날아간 궤적과 도착 지점 그리기
         DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 3.0f);
         DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 3.0f, 0, 2.0f);
 
         if (bHit && Hit.GetActor())
         {
-            // 정확히 닿은 타격점에 노란색 점 찍기
             DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.0f, FColor::Yellow, false, 3.0f);
             
-            // 화면 왼쪽 위에 "뭐랑 부딪혔는지" 범인 이름 띄우기
             if (GEngine)
             {
                 GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, 
-                    FString::Printf(TEXT("💥 충돌한 물체: %s"), *Hit.GetActor()->GetName()));
+                    FString::Printf(TEXT("충돌한 물체: %s"), *Hit.GetActor()->GetName()));
             }
         }
-        // =========================================================================
 
         if (bHit)
         {

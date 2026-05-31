@@ -102,7 +102,6 @@ void ACoilGun::ReadWireState()
         const float EMF  = ConnectedGenerator->GetCurrentEMF();
         CurrentVoltage   = FMath::Abs(EMF);
         bCurrentPositive = ConnectedGenerator->IsCurrentPositive();
-        return;
     }
 
     // Generator 없으면 Wire 태그로 fallback

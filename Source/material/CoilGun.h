@@ -72,7 +72,7 @@ private:
 
     // 게임 스케일 배율
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
-    float ForceScaleMultiplier = 500000.f;
+    float ForceScaleMultiplier = 1.f;
 
     // 최대 흡입 속도
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
