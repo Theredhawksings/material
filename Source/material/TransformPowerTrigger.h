@@ -4,7 +4,6 @@
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
 #include "Battery.h"
-#include "Transformation_actor.h" // 전방 선언 대신 바로 포함시켜 형태(Form) 확인 등에 대비
 #include "TransformPowerTrigger.generated.h"
 
 UCLASS()
@@ -18,8 +17,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
     TObjectPtr<ABATTERY> TargetBattery;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
+    FName KeyTag = TEXT("PowerKey");
+
 protected:
     virtual void BeginPlay() override;
+
+    virtual void Tick(float DeltaTime) override;
 
     UPROPERTY(VisibleAnywhere, Category = "Components")
     TObjectPtr<UBoxComponent> TriggerBox;
