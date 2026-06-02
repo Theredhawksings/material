@@ -282,7 +282,11 @@ void AmaterialCharacter::Tick(float DeltaTime)
 		BackpackComp->SetRelativeRotation(BackpackRotWhenHolding);
 	}
 
+	if (HeldActor) UpdateHeldMagnetism();
+
 	UpdateAnimation();
+
+	
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputComponent)
@@ -1081,4 +1085,72 @@ void AmaterialCharacter::OnInsertAnimFinished()
 	}
 	
 	UpdateAnimation();
+}
+
+void AmaterialCharacter::UpdateHeldMagnetism()
+{
+    if (!HeldActor || !HeldActor->ActorHasTag(TEXT("Magnet")))
+        return;
+
+    const FVector Center = GetActorLocation();
+
+    // 스캔 범위 디버그 - 파란 구체
+    DrawDebugSphere(GetWorld(), Center, MagnetScanRange, 16, FColor::Blue, false, 0.f);
+
+    // GEngine 텍스트 - 들고 있는 것
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan,
+            FString::Printf(TEXT("들고 있음: Magnet | 스캔 범위: %.0f"), MagnetScanRange));
+
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(HeldMagnetism), false, this);
+    Params.AddIgnoredActor(HeldActor);
+
+    TArray<FOverlapResult> Hits;
+    GetWorld()->OverlapMultiByObjectType(Hits, Center, FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,
+        FCollisionShape::MakeSphere(MagnetScanRange), Params);
+
+    int32 MetalCount = 0;
+
+    for (const FOverlapResult& Hit : Hits)
+    {
+        AActor* OtherActor = Hit.GetActor();
+        if (!OtherActor || OtherActor == this) continue;
+        if (!OtherActor->ActorHasTag(TEXT("Metal"))) continue;
+
+        UPrimitiveComponent* PrimComp = Hit.GetComponent();
+        if (!PrimComp || !PrimComp->IsSimulatingPhysics()) continue;
+
+        const FVector OtherLoc = OtherActor->GetActorLocation();
+        const FVector ToCenter = Center - OtherLoc;
+        const float Dist = ToCenter.Size();
+        if (Dist < 1.f) continue;
+
+        // 거리 감쇠
+        const float SafeDist = FMath::Max(Dist, 10.f);
+		float ForceMag = (MagnetForceStrength * 5000.f) / FMath::Pow(SafeDist, 1.0f);
+		ForceMag *= PrimComp->GetMass(); // 질량 보정 추가
+
+        // 속도 댐핑 - 이미 충분히 오고 있으면 힘 줄임
+        const FVector Dir = ToCenter / Dist;
+        const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
+        const float VelToward = FVector::DotProduct(CurVel, Dir);
+        if (VelToward > MagnetMaxVelocity * 0.5f)
+            ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
+
+        const FVector Force = Dir * ForceMag;
+        PrimComp->AddForce(Force, NAME_None, false);
+
+        // 디버그 - 초록선 (인력)
+        DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
+        DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
+            FString::Printf(TEXT("[ATTRACT] Metal | dist:%.0f | force:%.0f"), Dist, ForceMag),
+            nullptr, FColor::Green, 0.f, true);
+
+        MetalCount++;
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Green,
+            FString::Printf(TEXT("감지된 Metal: %d개"), MetalCount));
 }

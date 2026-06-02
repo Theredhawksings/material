@@ -233,4 +233,10 @@ private:
 	TObjectPtr<UWidgetComponent> BackpackUIComp;
 
 	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(3.0f, 0.f, -90.f);
+
+	void UpdateHeldMagnetism();
+
+	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetScanRange = 300.f;
+	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetForceStrength = 150.f;
+	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetMaxVelocity = 80.f;
 };
