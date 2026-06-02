@@ -1092,12 +1092,15 @@ void AmaterialCharacter::UpdateHeldMagnetism()
     if (!HeldActor || !HeldActor->ActorHasTag(TEXT("Magnet")))
         return;
 
+    // HeldActor를 Magnet으로 캐스팅
+    ATransformation_actor* HeldMagnet = Cast<ATransformation_actor>(HeldActor);
+    if (!HeldMagnet) return;
+
     const FVector Center = GetActorLocation();
 
-    // 스캔 범위 디버그 - 파란 구체
+    // 스캔 범위 디버그
     DrawDebugSphere(GetWorld(), Center, MagnetScanRange, 16, FColor::Blue, false, 0.f);
 
-    // GEngine 텍스트 - 들고 있는 것
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan,
             FString::Printf(TEXT("들고 있음: Magnet | 스캔 범위: %.0f"), MagnetScanRange));
@@ -1111,12 +1114,12 @@ void AmaterialCharacter::UpdateHeldMagnetism()
         FCollisionShape::MakeSphere(MagnetScanRange), Params);
 
     int32 MetalCount = 0;
+    int32 MagnetCount = 0;
 
     for (const FOverlapResult& Hit : Hits)
     {
         AActor* OtherActor = Hit.GetActor();
         if (!OtherActor || OtherActor == this) continue;
-        if (!OtherActor->ActorHasTag(TEXT("Metal"))) continue;
 
         UPrimitiveComponent* PrimComp = Hit.GetComponent();
         if (!PrimComp || !PrimComp->IsSimulatingPhysics()) continue;
@@ -1126,31 +1129,78 @@ void AmaterialCharacter::UpdateHeldMagnetism()
         const float Dist = ToCenter.Size();
         if (Dist < 1.f) continue;
 
-        // 거리 감쇠
-        const float SafeDist = FMath::Max(Dist, 10.f);
-		float ForceMag = (MagnetForceStrength * 5000.f) / FMath::Pow(SafeDist, 1.0f);
-		ForceMag *= PrimComp->GetMass(); // 질량 보정 추가
-
-        // 속도 댐핑 - 이미 충분히 오고 있으면 힘 줄임
         const FVector Dir = ToCenter / Dist;
-        const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
-        const float VelToward = FVector::DotProduct(CurVel, Dir);
-        if (VelToward > MagnetMaxVelocity * 0.5f)
-            ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
+        const float SafeDist = FMath::Max(Dist, 10.f);
 
-        const FVector Force = Dir * ForceMag;
-        PrimComp->AddForce(Force, NAME_None, false);
+        // ── Metal: 무조건 인력 ──
+        if (OtherActor->ActorHasTag(TEXT("Metal")))
+        {
+            float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
+            ForceMag *= PrimComp->GetMass();
 
-        // 디버그 - 초록선 (인력)
-        DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
-        DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
-            FString::Printf(TEXT("[ATTRACT] Metal | dist:%.0f | force:%.0f"), Dist, ForceMag),
-            nullptr, FColor::Green, 0.f, true);
+            // 속도 댐핑
+            const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
+            const float VelToward = FVector::DotProduct(CurVel, Dir);
+            if (VelToward > MagnetMaxVelocity * 0.5f)
+                ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
 
-        MetalCount++;
+            PrimComp->AddForce(Dir * ForceMag, NAME_None, false);
+
+            DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
+            DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
+                FString::Printf(TEXT("[ATTRACT] Metal | dist:%.0f | force:%.0f"), Dist, ForceMag),
+                nullptr, FColor::Green, 0.f, true);
+
+            MetalCount++;
+        }
+
+        // ── Magnet: 극성 계산 ──
+        else if (OtherActor->ActorHasTag(TEXT("Magnet")))
+        {
+            ATransformation_actor* OtherMagnet = Cast<ATransformation_actor>(OtherActor);
+            if (!OtherMagnet) continue;
+
+            // 극성 계산
+            const FVector MyNorth = HeldMagnet->GetNorthPoleWorldDir();
+            const FVector DirToOther = -Dir; // 캐릭터 → 상대 방향
+            const FVector OtherNorth = OtherMagnet->GetNorthPoleWorldDir();
+
+            const float MyPole    = FVector::DotProduct(MyNorth, DirToOther);
+            const float OtherPole = FVector::DotProduct(OtherNorth, -DirToOther);
+            const float Polarity  = -(MyPole * OtherPole); // 양수=인력 / 음수=척력
+
+            float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
+            ForceMag *= PrimComp->GetMass();
+
+            // 인력이면 캐릭터 방향, 척력이면 반대 방향
+            const FVector ForceDir = Dir * FMath::Sign(Polarity);
+
+            // 속도 댐핑
+            const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
+            const float VelToward = FVector::DotProduct(CurVel, ForceDir);
+            if (VelToward > MagnetMaxVelocity * 0.5f)
+                ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
+
+            PrimComp->AddForce(ForceDir * ForceMag, NAME_None, false);
+
+            // 디버그 - 인력이면 초록, 척력이면 빨강
+            const FColor LineColor = Polarity > 0.f ? FColor::Green : FColor::Red;
+            const FString Label = Polarity > 0.f ? TEXT("[ATTRACT]") : TEXT("[REPEL]");
+            DrawDebugLine(GetWorld(), Center, OtherLoc, LineColor, false, 0.f, 0, 2.f);
+            DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
+                FString::Printf(TEXT("%s Magnet | dist:%.0f | force:%.0f | polarity:%.2f"),
+                    *Label, Dist, ForceMag, Polarity),
+                nullptr, LineColor, 0.f, true);
+
+            MagnetCount++;
+        }
     }
 
     if (GEngine)
+    {
         GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Green,
             FString::Printf(TEXT("감지된 Metal: %d개"), MetalCount));
+        GEngine->AddOnScreenDebugMessage(3, 0.f, FColor::Magenta,
+            FString::Printf(TEXT("감지된 Magnet: %d개"), MagnetCount));
+    }
 }
