@@ -86,6 +86,11 @@ AmaterialCharacter::AmaterialCharacter()
 		TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'"));
 	if (BackpackMeshAsset.Succeeded())
 		BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
+		
+	static ConstructorHelpers::FObjectFinder<UMaterial> BackpackMat(
+    TEXT("Material'/Game/modeling/Character/backPack/M_BackPack.M_BackPack'"));
+	if (BackpackMat.Succeeded())
+    	BackpackComp->SetMaterial(0, BackpackMat.Object);
 
 	BackpackUIComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("BackpackUIComp"));
 	BackpackUIComp->SetupAttachment(BackpackComp);
