@@ -39,7 +39,7 @@ AmaterialCharacter::AmaterialCharacter()
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = CameraArmLength;
-	CameraBoom->SocketOffset = FVector(0.f, CameraSocketOffsetY, CameraSocketOffsetZ);	
+	CameraBoom->SocketOffset = FVector(0.f, CameraSocketOffsetY, CameraSocketOffsetZ);
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bEnableCameraLag = false;
 	CameraBoom->CameraLagSpeed = CameraLagSpeed;
@@ -86,11 +86,11 @@ AmaterialCharacter::AmaterialCharacter()
 		TEXT("StaticMesh'/Game/modeling/Character/backPack/BackPack_final.BackPack_final'"));
 	if (BackpackMeshAsset.Succeeded())
 		BackpackComp->SetStaticMesh(BackpackMeshAsset.Object);
-		
+
 	static ConstructorHelpers::FObjectFinder<UMaterial> BackpackMat(
-    TEXT("Material'/Game/modeling/Character/backPack/M_BackPack.M_BackPack'"));
+		TEXT("Material'/Game/modeling/Character/backPack/M_BackPack.M_BackPack'"));
 	if (BackpackMat.Succeeded())
-    	BackpackComp->SetMaterial(0, BackpackMat.Object);
+		BackpackComp->SetMaterial(0, BackpackMat.Object);
 
 	BackpackUIComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("BackpackUIComp"));
 	BackpackUIComp->SetupAttachment(BackpackComp);
@@ -142,8 +142,7 @@ AmaterialCharacter::AmaterialCharacter()
 		{TEXT("AnimSequence'/Game/modeling/Animation/Walk_bring1.Walk_bring1'"), &WalkBringAnim},
 		{TEXT("AnimSequence'/Game/modeling/Animation/Use_E.Use_E'"), &UseEAnim},
 		{TEXT("AnimSequence'/Game/modeling/Animation/Use_Left.Use_Left'"), &UseLeftAnim},
-		{TEXT("AnimSequence'/Game/modeling/Animation/insert.insert'"), &InsertAnim}
-	};
+		{TEXT("AnimSequence'/Game/modeling/Animation/insert.insert'"), &InsertAnim}};
 
 	for (const FAnimLoader &Loader : AnimAssets)
 	{
@@ -275,10 +274,7 @@ void AmaterialCharacter::Tick(float DeltaTime)
 
 	if (HeldActor)
 	{
-		if (bIsPickingUp)
-			UpdateHoldPivotTransform();
-		else
-			UpdateHeldActorPosition();
+		UpdateHoldPivotTransform();
 	}
 
 	if (BackpackComp && HeldActor)
@@ -287,11 +283,10 @@ void AmaterialCharacter::Tick(float DeltaTime)
 		BackpackComp->SetRelativeRotation(BackpackRotWhenHolding);
 	}
 
-	if (HeldActor) UpdateHeldMagnetism();
+	if (HeldActor)
+		UpdateHeldMagnetism();
 
 	UpdateAnimation();
-
-	
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputComponent)
@@ -331,7 +326,8 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputC
 
 void AmaterialCharacter::Move(const FInputActionValue &Value)
 {
-	if (!Controller || bIsPickingUp || bIsUsingSyringe) return;
+	if (!Controller || bIsPickingUp || bIsUsingSyringe)
+		return;
 	const FVector2D Axis = Value.Get<FVector2D>();
 	if (Axis.IsNearlyZero())
 		return;
@@ -398,7 +394,8 @@ void AmaterialCharacter::CheckWeight()
 
 void AmaterialCharacter::HoldPressed()
 {
-	if (bIsPickingUp || bRadialMenuOpen) return;
+	if (bIsPickingUp || bRadialMenuOpen)
+		return;
 
 	if (AttachedSyringe && !bIsUsingSyringe)
 	{
@@ -406,8 +403,10 @@ void AmaterialCharacter::HoldPressed()
 		return;
 	}
 
-	if (HeldActor) DropHeld();
-	else TryPickup();
+	if (HeldActor)
+		DropHeld();
+	else
+		TryPickup();
 }
 
 void AmaterialCharacter::OnLeftClick()
@@ -453,7 +452,7 @@ bool AmaterialCharacter::TryPickup()
 		return false;
 
 	const FVector Start = FollowCamera->GetComponentLocation();
-	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange + FollowCamera->GetRightVector() * -20.f;	
+	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange + FollowCamera->GetRightVector() * -20.f;
 
 	// =========================================================================
 	// 픽업 레이저 디버그 시각화
@@ -466,20 +465,20 @@ bool AmaterialCharacter::TryPickup()
 	DrawDebugLine(GetWorld(), Start, End, FColor::Blue, false, 3.0f, 0, 1.5f);
 
 	// 캐릭터 위치도 표시 (카메라 vs 캐릭터 위치 비교용) - 회색
-	DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 8, FColor(128,128,128), false, 3.0f);
+	DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 8, FColor(128, 128, 128), false, 3.0f);
 
 	// 로그: 레이저 시작/끝/방향 출력
 	UE_LOG(LogTemp, Warning, TEXT("[TryPickup] CameraPos=(%s) | Forward=(%s) | Range=%.0f | SphereR=%.0f"),
-		*Start.ToCompactString(),
-		*FollowCamera->GetForwardVector().ToCompactString(),
-		PickupRange,
-		PickupSphereRadius);
+		   *Start.ToCompactString(),
+		   *FollowCamera->GetForwardVector().ToCompactString(),
+		   PickupRange,
+		   PickupSphereRadius);
 	// =========================================================================
 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TryPickup), false, this);
 	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-										  ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params);
+													   ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params);
 
 	// =========================================================================
 	// 히트 결과 디버그
@@ -490,17 +489,17 @@ bool AmaterialCharacter::TryPickup()
 		DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.f, FColor::Yellow, false, 3.0f);
 		// 히트된 액터 바운딩박스 - 초록색
 		DrawDebugBox(GetWorld(),
-			Hit.GetActor()->GetActorLocation(),
-			FVector(40.f),
-			FColor::Green, false, 3.0f, 0, 2.f);
+					 Hit.GetActor()->GetActorLocation(),
+					 FVector(40.f),
+					 FColor::Green, false, 3.0f, 0, 2.f);
 		// 히트된 액터 이름 (월드 공간에 텍스트)
 		DrawDebugString(GetWorld(),
-			Hit.GetActor()->GetActorLocation() + FVector(0.f, 0.f, 60.f),
-			FString::Printf(TEXT("HIT: %s"), *Hit.GetActor()->GetName()),
-			nullptr, FColor::Green, 3.0f, true);
+						Hit.GetActor()->GetActorLocation() + FVector(0.f, 0.f, 60.f),
+						FString::Printf(TEXT("HIT: %s"), *Hit.GetActor()->GetName()),
+						nullptr, FColor::Green, 3.0f, true);
 
 		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] HIT -> Actor=%s | Tag 체크 시작"),
-			*Hit.GetActor()->GetName());
+			   *Hit.GetActor()->GetName());
 	}
 	else
 	{
@@ -516,14 +515,14 @@ bool AmaterialCharacter::TryPickup()
 	if (!Target)
 		return false;
 
-	if (ATransformation_actor* TransActor = Cast<ATransformation_actor>(Target))
+	if (ATransformation_actor *TransActor = Cast<ATransformation_actor>(Target))
 	{
 		if (!TransActor->bCanBePickedUp)
 		{
 			// 픽업 불가 상태 표시 - 주황색
 			DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Orange, false, 3.0f, 0, 2.f);
 			DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
-				TEXT("bCanBePickedUp = false"), nullptr, FColor::Orange, 3.0f, true);
+							TEXT("bCanBePickedUp = false"), nullptr, FColor::Orange, 3.0f, true);
 			UE_LOG(LogTemp, Warning, TEXT("[TryPickup] REJECTED: bCanBePickedUp=false on %s"), *Target->GetName());
 			return false;
 		}
@@ -536,7 +535,7 @@ bool AmaterialCharacter::TryPickup()
 		// 유효 태그 없음 - 빨간색 박스
 		DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Red, false, 3.0f, 0, 2.f);
 		DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
-			TEXT("NO VALID TAG"), nullptr, FColor::Red, 3.0f, true);
+						TEXT("NO VALID TAG"), nullptr, FColor::Red, 3.0f, true);
 		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] REJECTED: 유효한 픽업 태그 없음 on %s"), *Target->GetName());
 		return false;
 	}
@@ -544,7 +543,7 @@ bool AmaterialCharacter::TryPickup()
 	// 픽업 성공 - 초록색 확정 표시
 	DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(45.f), FColor::Green, false, 3.0f, 0, 3.f);
 	DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 100.f),
-		TEXT("PICKUP OK!"), nullptr, FColor::Green, 3.0f, true);
+					TEXT("PICKUP OK!"), nullptr, FColor::Green, 3.0f, true);
 	UE_LOG(LogTemp, Warning, TEXT("[TryPickup] SUCCESS: %s 픽업 시작"), *Target->GetName());
 
 	SetPrimitiveComponentsPhysics(Target, false);
@@ -574,9 +573,9 @@ void AmaterialCharacter::HandleActualAttachment()
 
 	HeldActor = PendingPickupActor;
 	PendingPickupActor = nullptr;
-	
-	if (ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor))
-        TransActor->ClearPower();
+
+	if (ATransformation_actor *TransActor = Cast<ATransformation_actor>(HeldActor))
+		TransActor->ClearPower();
 
 	HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	HeldActor->SetActorRelativeLocation(FVector::ZeroVector);
@@ -593,17 +592,11 @@ void AmaterialCharacter::OnPickupAnimFinished()
 {
 	bIsPickingUp = false;
 
-	if (HeldActor)
-	{
-		HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-		SetPrimitiveComponentsPhysics(HeldActor, false);
-	}
-
 	GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
 										   {
-			bWasHolding = false;
-			bIsPlayingWalk = false;
-			UpdateAnimation(); }, 0.2f, false);
+				bWasHolding = false;
+				bIsPlayingWalk = false;
+				UpdateAnimation(); }, 0.2f, false);
 }
 
 void AmaterialCharacter::UpdateHeldActorPosition()
@@ -646,28 +639,28 @@ void AmaterialCharacter::DropHeld()
 	FTimerHandle DropTimerHandle;
 	GetWorld()->GetTimerManager().SetTimer(DropTimerHandle, [this]()
 										   {
-			if (!HeldActor) return;
+				if (!HeldActor) return;
 
-			HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-			HeldActor->SetActorLocation(HeldActor->GetActorLocation() +
-				GetActorForwardVector() * DropForwardOffset);
+				HeldActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+				HeldActor->SetActorLocation(HeldActor->GetActorLocation() +
+					GetActorForwardVector() * DropForwardOffset);
 
-			SetPrimitiveComponentsPhysics(HeldActor, true);
-			ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
-			RestoreWalkSpeed();
-			HeldActor = nullptr; }, DropDetachTime, false);
+				SetPrimitiveComponentsPhysics(HeldActor, true);
+				ATransformation_actor* TransActor = Cast<ATransformation_actor>(HeldActor);
+				RestoreWalkSpeed();
+				HeldActor = nullptr; }, DropDetachTime, false);
 
 	GetWorld()->GetTimerManager().SetTimer(PickupEndTimerHandle, [this]()
 										   {
-			bIsPickingUp   = false;
-			bWasHolding    = false;
-			bIsPlayingWalk = false;
-			if (HoldPivot)
-			{
-				HoldPivot->SetRelativeLocation(FVector::ZeroVector);
-				HoldPivot->SetRelativeRotation(FRotator::ZeroRotator);
-			}
-			UpdateAnimation(); }, PickupAnim->GetPlayLength(), false);
+				bIsPickingUp   = false;
+				bWasHolding    = false;
+				bIsPlayingWalk = false;
+				if (HoldPivot)
+				{
+					HoldPivot->SetRelativeLocation(FVector::ZeroVector);
+					HoldPivot->SetRelativeRotation(FRotator::ZeroRotator);
+				}
+				UpdateAnimation(); }, PickupAnim->GetPlayLength(), false);
 }
 
 void AmaterialCharacter::ApplyWeightSpeedPenalty(AActor *Actor)
@@ -728,7 +721,12 @@ void AmaterialCharacter::UpdateHoldPivotTransform()
 		FVector2D(-0.25f, -0.40f),
 		ObjectScale);
 
-	FVector FinalLoc(-0.20f, AdjustedY, 0.10f);
+	const float AdjustedZ = FMath::GetMappedRangeValueClamped(
+		FVector2D(-0.1f, 1.0f),
+		bMoving ? FVector2D(-0.005f, -0.01f) : FVector2D(0.05f, 0.10f),
+		ObjectScale);
+
+	FVector FinalLoc(-0.20f, AdjustedY, AdjustedZ);
 
 	FinalLoc += bMoving ? HoldExtraLocalOffset_Walk : HoldExtraLocalOffset_Idle;
 	HoldPivot->SetRelativeLocation(FinalLoc);
@@ -959,55 +957,55 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 	}
 
 	if (bConfirm && FollowCamera)
-    {
-		const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 60.f); 
-        const FVector TraceDir = FollowCamera->GetForwardVector();
-        const FVector End = Start + (TraceDir * InteractRange);	
-        FHitResult Hit;
-        FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
+	{
+		const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 60.f);
+		const FVector TraceDir = FollowCamera->GetForwardVector();
+		const FVector End = Start + (TraceDir * InteractRange);
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
 
-        bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-                                             ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params);
+		bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+													 ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params);
 
-        FColor DrawColor = bHit ? FColor::Green : FColor::Red;
-        
-        DrawDebugSphere(GetWorld(), Start, InteractSphereRadius, 12, FColor::Blue, false, 3.0f);
-        DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 3.0f);
-        DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 3.0f, 0, 2.0f);
+		FColor DrawColor = bHit ? FColor::Green : FColor::Red;
 
-        if (bHit && Hit.GetActor())
-        {
-            DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.0f, FColor::Yellow, false, 3.0f);
-            
-            if (GEngine)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, 
-                    FString::Printf(TEXT("충돌한 물체: %s"), *Hit.GetActor()->GetName()));
-            }
-        }
+		DrawDebugSphere(GetWorld(), Start, InteractSphereRadius, 12, FColor::Blue, false, 3.0f);
+		DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 3.0f);
+		DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 3.0f, 0, 2.0f);
 
-        if (bHit)
-        {
-            if (ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
-            {
-                RadialMenuWidget->TargetActor = TransformActor;
+		if (bHit && Hit.GetActor())
+		{
+			DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.0f, FColor::Yellow, false, 3.0f);
 
-                if (UseLeftAnim && GetMesh())
-                {
-                    GetMesh()->PlayAnimation(UseLeftAnim, false);
-                    bIsPickingUp = true;
-                    bRadialMenuOpen = false;
-                    GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-                                                           &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
-                    return;
-                }
-                else
-                {
-                    RadialMenuWidget->ConfirmSelection();
-                }
-            }
-        }
-    }
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
+												 FString::Printf(TEXT("충돌한 물체: %s"), *Hit.GetActor()->GetName()));
+			}
+		}
+
+		if (bHit)
+		{
+			if (ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
+			{
+				RadialMenuWidget->TargetActor = TransformActor;
+
+				if (UseLeftAnim && GetMesh())
+				{
+					GetMesh()->PlayAnimation(UseLeftAnim, false);
+					bIsPickingUp = true;
+					bRadialMenuOpen = false;
+					GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+														   &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
+					return;
+				}
+				else
+				{
+					RadialMenuWidget->ConfirmSelection();
+				}
+			}
+		}
+	}
 
 	bRadialMenuOpen = false;
 	UpdateAnimation();
@@ -1062,150 +1060,194 @@ void AmaterialCharacter::OnWarpStage3()
 
 void AmaterialCharacter::UseSyringePressed()
 {
-    if (!AttachedSyringe || bIsUsingSyringe || bIsPickingUp) return;
+	if (!AttachedSyringe || bIsUsingSyringe || bIsPickingUp)
+		return;
 
-    if (InsertAnim && GetMesh())
-    {
-        GetMesh()->PlayAnimation(InsertAnim, false);
-        bIsUsingSyringe = true;
-        bIsPickingUp = true;
+	if (InsertAnim && GetMesh())
+	{
+		GetMesh()->PlayAnimation(InsertAnim, false);
+		bIsUsingSyringe = true;
+		bIsPickingUp = true;
 
-        AttachedSyringe->StartRotationAnim();
+		AttachedSyringe->StartRotationAnim();
 
-        GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-            &AmaterialCharacter::OnInsertAnimFinished, InsertAnim->GetPlayLength(), false);
-    }
+		GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+											   &AmaterialCharacter::OnInsertAnimFinished, InsertAnim->GetPlayLength(), false);
+	}
 }
 
 void AmaterialCharacter::OnInsertAnimFinished()
 {
 	bIsUsingSyringe = false;
 	bIsPickingUp = false;
-	
+
 	if (AttachedSyringe)
 	{
 		AttachedSyringe->UseSyringe(this);
 		AttachedSyringe->Destroy();
 		AttachedSyringe = nullptr;
 	}
-	
+
 	UpdateAnimation();
 }
 
 void AmaterialCharacter::UpdateHeldMagnetism()
 {
-    if (!HeldActor || !HeldActor->ActorHasTag(TEXT("Magnet")))
-        return;
+	if (!HeldActor)
+		return;
 
-    // HeldActor를 Magnet으로 캐스팅
-    ATransformation_actor* HeldMagnet = Cast<ATransformation_actor>(HeldActor);
-    if (!HeldMagnet) return;
+	const bool bHoldingMagnet = HeldActor->ActorHasTag(TEXT("Magnet"));
+	const bool bHoldingMetal = HeldActor->ActorHasTag(TEXT("Metal"));
+	if (!bHoldingMagnet && !bHoldingMetal)
+		return;
 
-    const FVector Center = GetActorLocation();
+	ATransformation_actor *HeldMagnet = bHoldingMagnet ? Cast<ATransformation_actor>(HeldActor) : nullptr;
 
-    // 스캔 범위 디버그
-    DrawDebugSphere(GetWorld(), Center, MagnetScanRange, 16, FColor::Blue, false, 0.f);
+	const FVector Center = GetActorLocation();
 
-    if (GEngine)
-        GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan,
-            FString::Printf(TEXT("들고 있음: Magnet | 스캔 범위: %.0f"), MagnetScanRange));
+	// 철 크기 비례 스케일
+	const float SizeScale = bHoldingMetal
+								? FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.5f, 2.0f)
+								: 1.0f;
 
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(HeldMagnetism), false, this);
-    Params.AddIgnoredActor(HeldActor);
+	// 디버그
+	DrawDebugSphere(GetWorld(), Center, MagnetScanRange, 16, FColor::Blue, false, 0.f);
+	if (GEngine)
+		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan,
+										 FString::Printf(TEXT("들고 있음: %s | 스캔 범위: %.0f | SizeScale: %.2f"),
+														 bHoldingMagnet ? TEXT("Magnet") : TEXT("Metal"), MagnetScanRange, SizeScale));
 
-    TArray<FOverlapResult> Hits;
-    GetWorld()->OverlapMultiByObjectType(Hits, Center, FQuat::Identity,
-        FCollisionObjectQueryParams::AllObjects,
-        FCollisionShape::MakeSphere(MagnetScanRange), Params);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HeldMagnetism), false, this);
+	Params.AddIgnoredActor(HeldActor);
 
-    int32 MetalCount = 0;
-    int32 MagnetCount = 0;
+	TArray<FOverlapResult> Hits;
+	GetWorld()->OverlapMultiByObjectType(Hits, Center, FQuat::Identity,
+										 FCollisionObjectQueryParams::AllObjects,
+										 FCollisionShape::MakeSphere(MagnetScanRange), Params);
 
-    for (const FOverlapResult& Hit : Hits)
-    {
-        AActor* OtherActor = Hit.GetActor();
-        if (!OtherActor || OtherActor == this) continue;
+	int32 MetalCount = 0;
+	int32 MagnetCount = 0;
 
-        UPrimitiveComponent* PrimComp = Hit.GetComponent();
-        if (!PrimComp || !PrimComp->IsSimulatingPhysics()) continue;
+	for (const FOverlapResult &Hit : Hits)
+	{
+		AActor *OtherActor = Hit.GetActor();
+		if (!OtherActor || OtherActor == this)
+			continue;
 
-        const FVector OtherLoc = OtherActor->GetActorLocation();
-        const FVector ToCenter = Center - OtherLoc;
-        const float Dist = ToCenter.Size();
-        if (Dist < 1.f) continue;
+		// 변경 - Metal 케이스에서는 WakeRigidBody로 깨우므로 체크 완화
+		UPrimitiveComponent *PrimComp = Hit.GetComponent();
+		if (!PrimComp)
+			continue;
+		if (!PrimComp->IsSimulatingPhysics())
+		{
+			// Magnet 태그면 깨워서 진행
+			if (OtherActor->ActorHasTag(TEXT("Magnet")))
+				PrimComp->WakeRigidBody();
+			else
+				continue;
+		}
 
-        const FVector Dir = ToCenter / Dist;
-        const float SafeDist = FMath::Max(Dist, 10.f);
+		const FVector OtherLoc = OtherActor->GetActorLocation();
+		const FVector ToCenter = Center - OtherLoc;
+		const float Dist = ToCenter.Size();
+		if (Dist < 1.f)
+			continue;
 
-        // ── Metal: 무조건 인력 ──
-        if (OtherActor->ActorHasTag(TEXT("Metal")))
-        {
-            float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
-            ForceMag *= PrimComp->GetMass();
+		const FVector Dir = ToCenter / Dist;
+		const float SafeDist = FMath::Max(Dist, 10.f);
 
-            // 속도 댐핑
-            const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
-            const float VelToward = FVector::DotProduct(CurVel, Dir);
-            if (VelToward > MagnetMaxVelocity * 0.5f)
-                ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
+		// ── Magnet 들고 있을 때 ──
+		if (bHoldingMagnet)
+		{
+			// Metal → 무조건 인력
+			if (OtherActor->ActorHasTag(TEXT("Metal")))
+			{
+				float ForceMag = MagnetForceStrength * SizeScale * 3000.f;
+				ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
 
-            PrimComp->AddForce(Dir * ForceMag, NAME_None, false);
+				const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
+				const float VelToward = FVector::DotProduct(CurVel, Dir);
+				if (VelToward > MagnetMaxVelocity * 0.5f)
+					ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
 
-            DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
-            DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
-                FString::Printf(TEXT("[ATTRACT] Metal | dist:%.0f | force:%.0f"), Dist, ForceMag),
-                nullptr, FColor::Green, 0.f, true);
+				PrimComp->AddForce(Dir * ForceMag, NAME_None, false);
 
-            MetalCount++;
-        }
+				DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
+				DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
+								FString::Printf(TEXT("[ATTRACT] Metal | dist:%.0f | force:%.0f"), Dist, ForceMag),
+								nullptr, FColor::Green, 0.f, true);
 
-        // ── Magnet: 극성 계산 ──
-        else if (OtherActor->ActorHasTag(TEXT("Magnet")))
-        {
-            ATransformation_actor* OtherMagnet = Cast<ATransformation_actor>(OtherActor);
-            if (!OtherMagnet) continue;
+				MetalCount++;
+			}
+			// Magnet → 극성 계산
+			else if (OtherActor->ActorHasTag(TEXT("Magnet")))
+			{
+				ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
+				if (!OtherMagnet || !HeldMagnet)
+					continue;
 
-            // 극성 계산
-            const FVector MyNorth = HeldMagnet->GetNorthPoleWorldDir();
-            const FVector DirToOther = -Dir; // 캐릭터 → 상대 방향
-            const FVector OtherNorth = OtherMagnet->GetNorthPoleWorldDir();
+				const FVector MyNorth = HeldMagnet->GetNorthPoleWorldDir();
+				const FVector DirToOther = -Dir;
+				const FVector OtherNorth = OtherMagnet->GetNorthPoleWorldDir();
 
-            const float MyPole    = FVector::DotProduct(MyNorth, DirToOther);
-            const float OtherPole = FVector::DotProduct(OtherNorth, -DirToOther);
-            const float Polarity  = -(MyPole * OtherPole); // 양수=인력 / 음수=척력
+				const float MyPole = FVector::DotProduct(MyNorth, DirToOther);
+				const float OtherPole = FVector::DotProduct(OtherNorth, -DirToOther);
+				const float Polarity = -(MyPole * OtherPole);
 
-            float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
-            ForceMag *= PrimComp->GetMass();
+				float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
+				ForceMag *= PrimComp->GetMass();
 
-            // 인력이면 캐릭터 방향, 척력이면 반대 방향
-            const FVector ForceDir = Dir * FMath::Sign(Polarity);
+				const FVector ForceDir = Dir * FMath::Sign(Polarity);
 
-            // 속도 댐핑
-            const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
-            const float VelToward = FVector::DotProduct(CurVel, ForceDir);
-            if (VelToward > MagnetMaxVelocity * 0.5f)
-                ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
+				const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
+				const float VelToward = FVector::DotProduct(CurVel, ForceDir);
+				if (VelToward > MagnetMaxVelocity * 0.5f)
+					ForceMag *= FMath::Clamp(1.f - (VelToward / MagnetMaxVelocity), 0.1f, 1.f);
 
-            PrimComp->AddForce(ForceDir * ForceMag, NAME_None, false);
+				PrimComp->AddForce(ForceDir * ForceMag, NAME_None, false);
 
-            // 디버그 - 인력이면 초록, 척력이면 빨강
-            const FColor LineColor = Polarity > 0.f ? FColor::Green : FColor::Red;
-            const FString Label = Polarity > 0.f ? TEXT("[ATTRACT]") : TEXT("[REPEL]");
-            DrawDebugLine(GetWorld(), Center, OtherLoc, LineColor, false, 0.f, 0, 2.f);
-            DrawDebugString(GetWorld(), OtherLoc + FVector(0,0,40.f),
-                FString::Printf(TEXT("%s Magnet | dist:%.0f | force:%.0f | polarity:%.2f"),
-                    *Label, Dist, ForceMag, Polarity),
-                nullptr, LineColor, 0.f, true);
+				const FColor LineColor = Polarity > 0.f ? FColor::Green : FColor::Red;
+				const FString Label = Polarity > 0.f ? TEXT("[ATTRACT]") : TEXT("[REPEL]");
+				DrawDebugLine(GetWorld(), Center, OtherLoc, LineColor, false, 0.f, 0, 2.f);
+				DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
+								FString::Printf(TEXT("%s Magnet | dist:%.0f | force:%.0f | polarity:%.2f"),
+												*Label, Dist, ForceMag, Polarity),
+								nullptr, LineColor, 0.f, true);
 
-            MagnetCount++;
-        }
-    }
+				MagnetCount++;
+			}
+		}
 
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Green,
-            FString::Printf(TEXT("감지된 Metal: %d개"), MetalCount));
-        GEngine->AddOnScreenDebugMessage(3, 0.f, FColor::Magenta,
-            FString::Printf(TEXT("감지된 Magnet: %d개"), MagnetCount));
-    }
+		// ── Metal 들고 있을 때 → 주변 Magnet 인력 (살짝살짝 + 크기 비례) ──
+		else if (bHoldingMetal)
+{
+    if (!OtherActor->ActorHasTag(TEXT("Magnet")))
+        continue;
+
+    ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
+    if (!OtherMagnet)
+        continue;
+
+    float ForceMag = MagnetForceStrength * SizeScale * 300000.f;
+    ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
+
+    PrimComp->WakeRigidBody();
+	PrimComp->AddImpulse(Dir * 100.f, NAME_None, true);  // 마지막 true가 핵심
+
+    DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
+    DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
+                    FString::Printf(TEXT("[ATTRACT] Magnet | dist:%.0f | force:%.0f"), Dist, ForceMag),
+                    nullptr, FColor::Green, 0.f, true);
+
+    MagnetCount++;
+}
+	}
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(2, 0.f, FColor::Green,
+										 FString::Printf(TEXT("감지된 Metal: %d개"), MetalCount));
+		GEngine->AddOnScreenDebugMessage(3, 0.f, FColor::Magenta,
+										 FString::Printf(TEXT("감지된 Magnet: %d개"), MagnetCount));
+	}
 }
