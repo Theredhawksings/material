@@ -15,6 +15,9 @@
 #include "Components/MeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 // ============================================================================
 //  Constructor
@@ -164,6 +167,11 @@ ATransformation_actor::ATransformation_actor()
         if (PM_Magnet.Succeeded())       Spec.PhysMat = PM_Magnet.Object;
         FormSpecs.Add(Spec);
     }
+
+    static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SteamFX(
+    TEXT("/Game/modeling/Effect/Smoke.Smoke"));
+    if (SteamFX.Succeeded())
+        SteamEffect = SteamFX.Object;
 }
 
 // ============================================================================
@@ -447,21 +455,27 @@ void ATransformation_actor::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
 
     // ── Ice ──
-    if (CurrentForm == EBlockForm::Ice && bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
+if (CurrentForm == EBlockForm::Ice && bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
+{
+    const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+    const float ReceivedPowerW = CalcReceivedPower(DistCm);
+
+    if (ReceivedPowerW > 0.0f)
     {
-        const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-        const float ReceivedPowerW = CalcReceivedPower(DistCm);
+        SetStencilSafe(CachedStencilValue, true);
+        EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
+        MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+        ApplyIceMeltVisual(MeltAlpha);
 
-        if (ReceivedPowerW > 0.0f)
-        {
-            SetStencilSafe(CachedStencilValue, true);
-            EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
-            MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
-            ApplyIceMeltVisual(MeltAlpha);
-
-            if (MeltAlpha >= 1.0f && bDestroyWhenMelted) { Destroy(); return; }
-        }
+        if (MeltAlpha >= 1.0f && bDestroyWhenMelted) { DestroySteamEffect(); Destroy(); return; }
     }
+}
+
+// ★ Ice 폼이면 가열 여부와 무관하게 매 프레임 수증기 상태 갱신
+if (CurrentForm == EBlockForm::Ice)
+{
+    UpdateSteamEffect();
+}
 
     // ── Wood ──
     if (CurrentForm == EBlockForm::Wood)
@@ -847,7 +861,11 @@ void ATransformation_actor::EnterIceMode()
         MeshComp->SetMaterial(0, IceMID);
 }
 
-void ATransformation_actor::ExitIceMode() { IceMID = nullptr; }
+void ATransformation_actor::ExitIceMode()
+{
+    IceMID = nullptr;
+    DestroySteamEffect();  // 얼음 폼 종료 시 수증기 제거
+}
 
 void ATransformation_actor::RecalcIceMassAndEnergy()
 {
@@ -874,7 +892,11 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
     const FVector NewScale = FMath::Lerp(BaseScaleBeforeMelt, BaseScaleBeforeMelt * FMath::Clamp(MinScaleRatio, 0.f, 1.f), A);
     MeshComp->SetWorldScale3D(NewScale);
     if (IceMID) IceMID->SetScalarParameterValue(MeltParamName, A);
-    if (NewScale.GetMax() <= MinScaleRatio) Destroy();
+    if (NewScale.GetMax() <= MinScaleRatio)
+    {
+        DestroySteamEffect(); 
+        Destroy();
+    }
 }
 
 // ============================================================================
@@ -1661,4 +1683,83 @@ void ATransformation_actor::OnRubberHit(UPrimitiveComponent* HitComp, AActor* Ot
     OtherComp->SetPhysicsLinearVelocity(NewVel);
 
     CurrentBounceMultiplier = FMath::Max(CurrentBounceMultiplier * RubberBounceDecay, 0.1f);
+}
+
+void ATransformation_actor::UpdateSteamEffect()
+{
+    if (!MeshComp) return;
+
+    if (MeltAlpha >= 0.98f || IsActorBeingDestroyed())
+    {
+        DestroySteamEffect();
+        return;
+    }
+
+    // ★ 지금 실제로 가열받는 중인지 확인
+    bool bActivelyHeating = false;
+    if (bHeating && CurrentFire)
+    {
+        const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+        bActivelyHeating = (CalcReceivedPower(DistCm) > 0.f);
+    }
+
+    // 녹는 중(MeltAlpha>0.05) + 지금도 가열받는 중일 때만 수증기
+    if (MeltAlpha > 0.05f && bActivelyHeating)
+    {
+        if (!SteamComponent)
+            SpawnSteamEffect();
+
+        if (SteamComponent)
+        {
+            const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
+            SteamComponent->SetRelativeLocation(FVector(0.f, 0.f, BoxExtent.Z));
+            SteamComponent->SetVariableFloat(
+                FName(TEXT("SpawnRate")),
+                FMath::Lerp(10.f, 100.f, MeltAlpha));
+        }
+    }
+    else
+    {
+        // 가열 안 받으면 수증기 끔
+        DestroySteamEffect();
+    }
+}
+
+void ATransformation_actor::SpawnSteamEffect()
+{
+    if (!SteamEffect || !MeshComp) return;
+    if (SteamComponent) return;
+
+    // ★ 액터가 죽는 중이거나 거의 다 녹았으면 수증기 새로 만들지 않음
+    if (IsActorBeingDestroyed() || MeltAlpha >= 0.98f) return;
+
+    const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
+    SteamComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+        SteamEffect, MeshComp, NAME_None,
+        FVector(0.f, 0.f, BoxExtent.Z), FRotator::ZeroRotator,
+        EAttachLocation::KeepRelativeOffset,
+        false, true, ENCPoolMethod::None, true);
+}
+
+void ATransformation_actor::DestroySteamEffect()
+{
+    if (SteamComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됨, 수증기 제거"));
+        SteamComponent->Deactivate();
+        SteamComponent->DeactivateImmediate();
+        SteamComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+        SteamComponent->DestroyComponent();
+        SteamComponent = nullptr;
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됐지만 SteamComponent가 이미 null"));
+    }
+}
+
+void ATransformation_actor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    DestroySteamEffect();
+    Super::EndPlay(EndPlayReason);
 }

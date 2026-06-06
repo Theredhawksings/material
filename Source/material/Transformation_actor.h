@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "TimerManager.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
 #include "Transformation_actor.generated.h"
 
 class UStaticMeshComponent;
@@ -459,5 +461,14 @@ private:
 
     float CurrentBounceMultiplier = RubberBounceMultiplier; 
     
-
+    UPROPERTY(EditAnywhere, Category = "Ice|Visual")
+    TObjectPtr<UNiagaraSystem> SteamEffect = nullptr;
+ 
+    UPROPERTY(Transient)
+    TObjectPtr<UNiagaraComponent> SteamComponent = nullptr;
+ 
+    void UpdateSteamEffect();
+    void SpawnSteamEffect();
+    void DestroySteamEffect();
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 };
