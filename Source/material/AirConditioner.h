@@ -1,13 +1,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "Temperature.h"
 #include "Components/BoxComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "AirConditioner.generated.h"
 
 UCLASS()
-class MATERIAL_API AAirConditioner : public AActor
+class MATERIAL_API AAirConditioner : public ATemperature
 {
     GENERATED_BODY()
 
@@ -24,16 +23,20 @@ public:
     bool bIsRunning = false;
 
     // ── 에디터에서 상시 활성화 여부 설정 ──
-    // true  → 게임 시작하자마자 무조건 ON (트리거 필요 없음)
-    // false → TransformPowerTrigger 또는 DetectionBox 로만 ON 가능
+    // true  → 게임 시작하자마자 무조건 ON (스위치 불필요)
+    // false → PowerTrigger 가 ActivateAircon() 불러줘야 ON
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner")
     bool bAlwaysOn = false;
+
+    // ── 에어컨 작동 시 올라가는 가열 온도 ──
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner")
+    float HeatTemperature = 600.0f;
 
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
 
-    // ── 감지 박스 Overlap 이벤트 ──
+    // ── 얼음 감지 박스 (디버깅 용도) ──
     UFUNCTION()
     void OnDetectionOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -44,9 +47,6 @@ protected:
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 private:
-    UPROPERTY(VisibleAnywhere, Category = "Components")
-    TObjectPtr<UStaticMeshComponent> MeshComp;
-
     UPROPERTY(EditAnywhere, Category = "Components")
     TObjectPtr<UBoxComponent> DetectionBox;
 };

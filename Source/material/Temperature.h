@@ -85,7 +85,7 @@ protected:
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
-private:
+	// ★ private → protected 로 변경 (자식 클래스 AAirConditioner 에서 접근 가능하도록)
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> Root;
 
@@ -95,6 +95,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USphereComponent> HeatSphere;
 
+private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> HeatMID = nullptr;
 
