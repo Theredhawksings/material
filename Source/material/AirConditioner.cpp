@@ -31,14 +31,11 @@ void AAirConditioner::BeginPlay()
 {
     Super::BeginPlay();
 
-    DetectionBox->OnComponentBeginOverlap.AddDynamic(this, &AAirConditioner::OnDetectionOverlapBegin);
-    DetectionBox->OnComponentEndOverlap.AddDynamic(this, &AAirConditioner::OnDetectionOverlapEnd);
-
-    TArray<AActor*> OverlappingActors;
-    DetectionBox->GetOverlappingActors(OverlappingActors);
-    for (AActor* Actor : OverlappingActors)
+    // ── bAlwaysOn 이면 시작하자마자 ON ──
+    if (bAlwaysOn)
     {
-        OnDetectionOverlapBegin(DetectionBox, Actor, nullptr, 0, false, FHitResult());
+        ActivateAircon();
+        return;
     }
 
     if (GEngine)
@@ -52,66 +49,12 @@ void AAirConditioner::Tick(float DeltaTime)
 
     if (GEngine)
     {
-        TArray<AActor*> OverlappingActors;
-        DetectionBox->GetOverlappingActors(OverlappingActors);
-
         FString DebugMsg = FString::Printf(
-            TEXT("=== 에어컨 상태 ===\n작동 중: %s\n감지된 액터 수: %d\n"),
+            TEXT("=== 에어컨 상태 ===\n작동 중: %s\n상시 활성화: %s\n"),
             bIsRunning ? TEXT("ON") : TEXT("OFF"),
-            OverlappingActors.Num());
-
-        for (AActor* Actor : OverlappingActors)
-        {
-            if (!Actor) continue;
-            DebugMsg += FString::Printf(TEXT("▶ %s\n"), *Actor->GetName());
-
-            if (Actor->Tags.Num() > 0)
-            {
-                DebugMsg += TEXT("  태그: ");
-                for (FName Tag : Actor->Tags)
-                    DebugMsg += Tag.ToString() + TEXT(", ");
-                DebugMsg += TEXT("\n");
-            }
-            else
-            {
-                DebugMsg += TEXT("  태그: 없음\n");
-            }
-        }
+            bAlwaysOn ? TEXT("ON") : TEXT("OFF"));
 
         GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Cyan, DebugMsg);
-    }
-}
-
-void AAirConditioner::OnDetectionOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-    bool bFromSweep, const FHitResult& SweepResult)
-{
-    if (!OtherActor || OtherActor == this) return;
-
-    if (GEngine)
-        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow,
-            FString::Printf(TEXT("[에어컨] 감지: %s"), *OtherActor->GetName()));
-
-    if (OtherActor->ActorHasTag(TEXT("Ice")))
-    {
-        ActivateAircon();
-    }
-    else
-    {
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red,
-                TEXT("[에어컨] Ice 태그 없음 - 무시"));
-    }
-}
-
-void AAirConditioner::OnDetectionOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-    if (!OtherActor || OtherActor == this) return;
-
-    if (OtherActor->ActorHasTag(TEXT("Ice")))
-    {
-        DeactivateAircon();
     }
 }
 
@@ -134,6 +77,14 @@ void AAirConditioner::ActivateAircon()
 
 void AAirConditioner::DeactivateAircon()
 {
+    // ── bAlwaysOn 이면 끄지 않음 ──
+    if (bAlwaysOn)
+    {
+        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange,
+            TEXT("[에어컨] 상시 활성화 모드 - 끄기 불가"));
+        return;
+    }
+
     if (!bIsRunning)
     {
         if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange,
