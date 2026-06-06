@@ -14,7 +14,6 @@ class MATERIAL_API AAirConditioner : public AActor
 public:
     AAirConditioner();
 
-    // TransformPowerTrigger가 호출할 함수
     UFUNCTION(BlueprintCallable, Category = "AirConditioner")
     void ActivateAircon();
 
@@ -28,12 +27,19 @@ protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
 
+    UFUNCTION()
+    void OnDetectionOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+        bool bFromSweep, const FHitResult& SweepResult);
+
+    UFUNCTION()
+    void OnDetectionOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 private:
-    // ── 에어컨 메시 (C++에서 에셋 지정) ──
     UPROPERTY(VisibleAnywhere, Category = "Components")
     TObjectPtr<UStaticMeshComponent> MeshComp;
 
-    // ── 감지 박스 (에디터에서 위치·크기 자유 조정) ──
     UPROPERTY(EditAnywhere, Category = "Components")
     TObjectPtr<UBoxComponent> DetectionBox;
 };
