@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
-#include "Battery.h"
+#include "AirConditioner.h"
 #include "TransformPowerTrigger.generated.h"
 
 UCLASS()
@@ -14,15 +14,16 @@ class MATERIAL_API ATransformPowerTrigger : public AActor
 public:
     ATransformPowerTrigger();
 
+    // ── 에어컨 참조 (에디터에서 지정) ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
-    TObjectPtr<ABATTERY> TargetBattery;
+    TObjectPtr<AAirConditioner> TargetAircon;
 
+    // ── KeyTag 그대로 유지 ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trigger Targets")
     FName KeyTag = TEXT("PowerKey");
 
 protected:
     virtual void BeginPlay() override;
-
     virtual void Tick(float DeltaTime) override;
 
     UPROPERTY(VisibleAnywhere, Category = "Components")
