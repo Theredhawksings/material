@@ -402,6 +402,9 @@ void AWire::RefreshConnectedActors()
         TArray<AActor*> Overlapping;
         ConnectionSphere->GetOverlappingActors(Overlapping);
 
+        UE_LOG(LogTemp, Warning, TEXT("[%s] 시작점 감지 수: %d"), *GetName(), Overlapping.Num());
+
+
         for (AActor* A : Overlapping)
         {
             if (!A || A == this) continue;
@@ -422,15 +425,21 @@ void AWire::RefreshConnectedActors()
                 }
             }
             else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-            {
-                // ★ SourceWire 체크 복원
-                if (SourceWire != nullptr)
-                    continue;
+        {
+            // ★ 블럭 감지 로그
+            ATransformation_actor* Block = Cast<ATransformation_actor>(A);
+            UE_LOG(LogTemp, Warning, TEXT("  시작점 블럭: %s Electrified:%d V:%.2f SourceWire:%d"),
+                *A->GetName(),
+                Block ? (Block->IsElectrified() ? 1 : 0) : -1,
+                Block ? Block->GetEffectiveVoltage() : -1.f,
+                SourceWire != nullptr ? 1 : 0);
 
-                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                    if (!UpstreamBlock && Block->IsElectrified() && Block->GetEffectiveVoltage() > 0.f)
-                        UpstreamBlock = Block;
-            }
+            if (SourceWire != nullptr)
+                continue;
+
+            if (Block && !UpstreamBlock && Block->IsElectrified() && Block->GetEffectiveVoltage() > 0.f)
+                UpstreamBlock = Block;
+         }
         }
     }
 
@@ -444,12 +453,33 @@ void AWire::RefreshConnectedActors()
 
     SetPoweredByMetal(bFoundPower);
 
-    if (bIsBatterySource && bPoweredFinal)
+if (bIsBatterySource && bPoweredFinal)
+{
+    TriggerCircuitSolve();
+
+    // ★ 배터리 소스도 끝점 블럭 직접 스캔
+    if (ConnectionSphereEnd)
     {
-        TriggerCircuitSolve();
-        ApplyPower();
-        return;
+        TArray<AActor*> Overlapping;
+        ConnectionSphereEnd->GetOverlappingActors(Overlapping);
+        for (AActor* A : Overlapping)
+        {
+            if (!A || A == this) continue;
+            if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                    ConnectedActors.AddUnique(Block);
+        }
     }
+
+    for (AActor* Target : ConnectedActors)
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
+        {
+            C->ClearPower();
+            C->ReceivePower(EffectiveVoltage, EffectiveCurrent);
+        }
+    ApplyPower();
+    return;
+}
 
     if (!bPoweredFinal)
     {
@@ -513,19 +543,19 @@ else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
     }
 
     if (ConnectionSphereEnd)
+{
+    TArray<AActor*> Overlapping;
+    ConnectionSphereEnd->GetOverlappingActors(Overlapping);
+    for (AActor* A : Overlapping)
     {
-        TArray<AActor*> Overlapping;
-        ConnectionSphereEnd->GetOverlappingActors(Overlapping);
-        for (AActor* A : Overlapping)
-        {
-            if (!A || A == this) continue;
-            if (AWire* DownWire = Cast<AWire>(A))
-                ConnectedWires.AddUnique(DownWire);
-            else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                    ConnectedActors.AddUnique(Block);
-        }
+        if (!A || A == this) continue;
+        if (AWire* DownWire = Cast<AWire>(A))
+            ConnectedWires.AddUnique(DownWire);
+        else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                ConnectedActors.AddUnique(Block);
     }
+}
 
     for (AActor* Target : ConnectedActors)
         if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
@@ -627,12 +657,29 @@ void AWire::UpdateConnectionPoint()
             Spline->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local));
         ConnectionSphere->SetSphereRadius(OverlapRadius);
     }
-    if (ConnectionSphereEnd)
+if (ConnectionSphereEnd)
+{
+    TArray<AActor*> Overlapping;
+    ConnectionSphereEnd->GetOverlappingActors(Overlapping);
+
+    UE_LOG(LogTemp, Warning, TEXT("[%s] 끝점 감지 수: %d"), *GetName(), Overlapping.Num());
+
+    for (AActor* A : Overlapping)
     {
-        ConnectionSphereEnd->SetRelativeLocation(
-            Spline->GetLocationAtSplinePoint(NumPoints - 1, ESplineCoordinateSpace::Local));
-        ConnectionSphereEnd->SetSphereRadius(OverlapRadius);
+        if (!A || A == this) continue;
+
+        UE_LOG(LogTemp, Warning, TEXT("  끝점에 닿음: %s (Metal:%d Copper:%d)"),
+            *A->GetName(),
+            A->ActorHasTag(FName("Metal")) ? 1 : 0,
+            A->ActorHasTag(FName("Copper")) ? 1 : 0);
+
+        if (AWire* DownWire = Cast<AWire>(A))
+            ConnectedWires.AddUnique(DownWire);
+        else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                ConnectedActors.AddUnique(Block);
     }
+}
 }
 
 void AWire::ApplyPower()

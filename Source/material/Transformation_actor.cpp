@@ -366,7 +366,6 @@ bool ATransformation_actor::HasSourcePoweredWire() const
 
 void ATransformation_actor::RefreshConnectedWires()
 {
-
     if (!IsConductive() || !MeshComp)
     {
         WiresEnergizedByMetal.Empty();
@@ -402,55 +401,23 @@ void ATransformation_actor::RefreshConnectedWires()
 
     ConnectedWires.Empty();
 
-    bool bHasInternalVoltage = (StoredVoltage > 0.0f);
-    bool bAnyPowerFound = bHasInternalVoltage;
-
+    // 연결된 전선 목록만 수집 (전원 판단은 StoredVoltage로)
     for (const FOverlapResult &H : Hits)
     {
         if (AWire *Wire = Cast<AWire>(H.GetActor()))
-        {
             ConnectedWires.AddUnique(Wire);
-            if (Wire->IsSourcePowered())
-            {
-                bAnyPowerFound = true;
-                continue;
-            }
-
-            if (Wire->IsPowered())
-            {
-                for (AActor *Other : Wire->GetConnectedActors())
-                {
-                    if (ATransformation_actor *OtherBlock = Cast<ATransformation_actor>(Other))
-                    {
-                        if (OtherBlock == this)
-                            continue;
-                        if (OtherBlock->IsElectrified() && OtherBlock->HasSourcePoweredWire())
-                        {
-                            bAnyPowerFound = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
     }
+
+    // ★ 전원 판단을 StoredVoltage 기준으로 - 타이머가 전압 안 건드림
+    const bool bAnyPowerFound = (StoredVoltage > 0.f);
 
     const bool bStateChanged = (bElectrified != bAnyPowerFound);
     if (bStateChanged)
-    {
         SetElectrified(bAnyPowerFound);
-    }
 
-    if (!bAnyPowerFound)
-    {
-        StoredVoltage = 0.f;
-        StoredCurrent = 0.f;
-    }
-
-    // ★ 핵심 수정: 전기 상태든 아니든, 전기가 있으면 매번 "현재 연결된 전선 집합"을 동기화
+    // 전기가 있으면 연결된 전선들에 전기 전달
     if (bElectrified)
     {
-        // 이번 프레임에 연결된 전선들에 전기 전달 (이미 켜진 건 SetPoweredByMetal 내부에서 early return)
         TSet<TWeakObjectPtr<AWire>> Current;
         for (AWire *Wire : ConnectedWires)
         {
