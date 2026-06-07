@@ -47,7 +47,6 @@ void AMoveStage1_2::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AAc
 
 void AMoveStage1_2::LoadNextLevel()
 {
-    // 스폰 위치를 옵션 문자열로 전달
     FString Options = FString::Printf(
         TEXT("?SpawnX=%.1f?SpawnY=%.1f?SpawnZ=%.1f?SpawnPitch=%.1f?SpawnYaw=%.1f?SpawnRoll=%.1f"),
         SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z,
