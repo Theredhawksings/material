@@ -137,14 +137,9 @@ bool AMainStage1_Platform1::IsConditionMet() const
 {
     if (!TrackedActor) return false;
 
-    const bool bIsConductive = TrackedActor->ActorHasTag(FName("Metal"))
-                            || TrackedActor->ActorHasTag(FName("Copper"));
-    const bool bHasElectricity = TrackedActor->IsElectrified();
     const float V = TrackedActor->GetEffectiveVoltage();
 
-    return bIsConductive && bHasElectricity
-        && V >= RequiredVoltage - VoltageTolerance
-        && V <= RequiredVoltage + VoltageTolerance;
+    return FMath::IsNearlyEqual(V, RequiredVoltage, 0.1f);
 }
 
 void AMainStage1_Platform1::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor,
