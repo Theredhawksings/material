@@ -319,7 +319,7 @@ public:
     FVector GetSouthPoleWorldDir() const;
 
 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
-float MetalResistance = 0.5f;
+float MetalResistance = 0.6f;
 
 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
 float CopperResistance = 0.1f;
