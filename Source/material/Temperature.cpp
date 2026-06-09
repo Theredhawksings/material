@@ -200,14 +200,12 @@ void ATemperature::UpdateVisuals()
 	}
 
 	if (bUseStencil)
-	{
-		MeshComp->SetRenderCustomDepth(true);
-
-		const float Ratio = FMath::Clamp(Temperature / FMath::Max(MaxStencilTemperature, 1.f), 0.f, 1.f);
-		const int32 StencilValue = FMath::RoundToInt(Ratio * 255.f);
-
-		MeshComp->SetCustomDepthStencilValue(StencilValue);
-	}
+{
+    const float Ratio = FMath::Clamp(Temperature / FMath::Max(MaxStencilTemperature, 1.f), 0.f, 1.f);
+    const int32 StencilValue = FMath::RoundToInt(Ratio * 255.f);
+    MeshComp->SetCustomDepthStencilValue(StencilValue);
+    MeshComp->SetRenderCustomDepth(Temperature > 1.f);  // ★ 1도 이상이면 ON, 0이면 OFF
+}
 }
 
 void ATemperature::ApplyDebugVisibility()

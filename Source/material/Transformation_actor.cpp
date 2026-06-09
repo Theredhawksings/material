@@ -1123,7 +1123,7 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
     const int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
 
     if (CurrentForm == EBlockForm::Magnet)
-        SetStencilSafe(StencilValue, true);
+        SetStencilSafe(StencilValue, StencilValue > 0); // 열 없으면 pass OFF
     else
         SetStencilSafe(StencilValue, StencilValue > 0);
 
@@ -1429,26 +1429,21 @@ void ATransformation_actor::EnterMagnetMode()
 
         if (SpawnedArrowEffect && MeshComp)
         {
-            // 1. 큐브에 상대적(Relative)으로 부착하여, 큐브 스케일이 변하면 화살표도 자동으로 변하게 만듭니다.
             SpawnedArrowEffect->AttachToComponent(MeshComp, FAttachmentTransformRules::KeepRelativeTransform);
 
-            // 2. 메시의 '원본 로컬 크기(바운딩 박스)'를 가져옵니다.
             FVector MinBounds, MaxBounds;
             MeshComp->GetLocalBounds(MinBounds, MaxBounds);
 
-            // 3. 위치 자동 맞춤: 큐브의 실제 꼭대기 높이(MaxBounds.Z)에 약간의 여백(10.f)을 띄웁니다.
-            // 이제 큐브가 길쭉하든 납작하든 무조건 큐브 정수리에 딱 붙습니다.
             float TopZ = MaxBounds.Z - 50.f;
             SpawnedArrowEffect->SetActorRelativeLocation(FVector(0.f, 0.f, TopZ));
-
-            // 4. 각도 고정 (항상 위를 향하도록)
             SpawnedArrowEffect->SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
 
-            // 5. 크기 자동 맞춤: 큐브의 가로 크기(X, Y 중 큰 값)를 기준으로 화살표 스케일을 계산합니다.
-            // 기본 큐브 반경인 50.f를 기준으로 잡고, 화살표가 너무 튀지 않게 0.6배(60%) 사이즈로 자동 보정합니다.
-            float AutoScale = (FMath::Max(MaxBounds.X, MaxBounds.Y) / 50.f) * 0.6f;
-
-            SpawnedArrowEffect->SetActorRelativeScale3D(FVector(AutoScale));
+            // X축(긴 방향) 기준으로 화살표 스케일 계산
+            // MaxBounds는 half-extent이므로 실제 길이 = MaxBounds * 2
+            float ScaleX = (MaxBounds.X / 50.f) * 0.5f;
+            float ScaleY = (MaxBounds.Y / 50.f) * 0.5f;
+            float ScaleZ = (MaxBounds.Z / 50.f) * 0.3f;
+            SpawnedArrowEffect->SetActorRelativeScale3D(FVector(ScaleX, ScaleY, ScaleZ));
         }
 
         RefreshArrowVisibility();
