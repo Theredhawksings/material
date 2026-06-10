@@ -39,7 +39,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Physics")
     float HeatSimTimeScale = 1.0f;
 
-    // ── 가열 디버그 표시 여부 ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Debug")
     bool bDebugHeat = false;
 
@@ -48,5 +47,8 @@ protected:
     virtual void Tick(float DeltaTime) override;
 
 private:
+    UPROPERTY(VisibleAnywhere, Category = "Components")
+    TObjectPtr<UStaticMeshComponent> WireframeMeshComp;
+
     void HeatNearbyTemperatureBlocks(float DeltaTime);
 };

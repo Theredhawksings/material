@@ -8,6 +8,7 @@ AAirConditioner::AAirConditioner()
 {
     PrimaryActorTick.bCanEverTick = true;
 
+    // ── 본체 메시 ──
     static ConstructorHelpers::FObjectFinder<UStaticMesh> MeshFinder(
         TEXT("/Game/modeling/Object/air_condition/air_conditioning.air_conditioning"));
     if (MeshFinder.Succeeded() && MeshComp)
@@ -23,6 +24,22 @@ AAirConditioner::AAirConditioner()
         MeshComp->SetCollisionProfileName(TEXT("BlockAll"));
         MeshComp->SetRelativeScale3D(FVector(300.f, 300.f, 300.f));
     }
+
+    // ★ wireframe 메시 컴포넌트 추가
+    WireframeMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WireframeMeshComp"));
+    WireframeMeshComp->SetupAttachment(MeshComp);
+    WireframeMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    WireframeMeshComp->SetRelativeScale3D(FVector(1.f, 1.f, 1.f));
+
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> WireMeshFinder(
+        TEXT("/Game/modeling/Object/air_condition/wireframe.wireframe"));
+    if (WireMeshFinder.Succeeded())
+        WireframeMeshComp->SetStaticMesh(WireMeshFinder.Object);
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WireMatFinder(
+        TEXT("/Game/modeling/Object/air_condition/M_Air_condition_wire.M_Air_condition_wire"));
+    if (WireMatFinder.Succeeded())
+        WireframeMeshComp->SetMaterial(0, WireMatFinder.Object);
 
     Temperature = 0.f;
     CoolRate = 0.f;
@@ -48,6 +65,15 @@ void AAirConditioner::Tick(float DeltaTime)
     if (bIsRunning)
         HeatNearbyTemperatureBlocks(DeltaTime);
 
+    // ★ WireframeMeshComp stencil 동기화
+    if (WireframeMeshComp)
+    {
+        const float Ratio = FMath::Clamp(Temperature / FMath::Max(MaxStencilTemperature, 1.f), 0.f, 1.f);
+        const int32 StencilValue = FMath::RoundToInt(Ratio * 255.f);
+        WireframeMeshComp->SetCustomDepthStencilValue(StencilValue);
+        WireframeMeshComp->SetRenderCustomDepth(Temperature > 1.f);
+    }
+
     if (GEngine)
     {
         FString DebugMsg = FString::Printf(
@@ -71,18 +97,16 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
     {
         if (!Actor || Actor == this) continue;
 
-        // ── ATemperature 블록만 대상 ──
         ATemperature* TempBlock = Cast<ATemperature>(Actor);
         if (!TempBlock) continue;
+        if (TempBlock->IsA<AAirConditioner>()) continue;
 
-        // ── Stefan-Boltzmann 복사열 기반 수열량 (W) ──
         const float ReceivedW = GetReceivedPowerW(
             TempBlock->GetActorLocation(),
             BlockReceiverAreaM2);
 
         if (ReceivedW <= 0.f) continue;
 
-        // ── ΔT = (P * Δt * TimeScale) / (m * c) ──
         const float DeltaT = (ReceivedW * DeltaTime * HeatSimTimeScale)
                            / (BlockMassKg * BlockSpecificHeatJPerKgK);
 
