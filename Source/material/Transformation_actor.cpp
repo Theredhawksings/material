@@ -480,12 +480,11 @@ void ATransformation_actor::Tick(float DeltaTime)
             MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
             ApplyIceMeltVisual(MeltAlpha);
 
-            if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
-            {
-                DestroySteamEffect();
-                Destroy();
-                return;
-            }
+if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
+{
+    BeginDelayedDestroy();  // ★ 기존 3줄 대신
+    return;
+}
         }
     }
 
@@ -862,7 +861,7 @@ void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
     ApplyIceMeltVisual(MeltAlpha);
 
     if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
-        Destroy();
+        BeginDelayedDestroy(); 
 }
 
 void ATransformation_actor::StopHeating()
@@ -978,11 +977,10 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
     MeshComp->SetWorldScale3D(NewScale);
     if (IceMID)
         IceMID->SetScalarParameterValue(MeltParamName, A);
-    if (NewScale.GetMax() <= MinScaleRatio)
-    {
-        DestroySteamEffect();
-        Destroy();
-    }
+   if (NewScale.GetMax() <= MinScaleRatio)
+{
+    BeginDelayedDestroy();  // ★ 기존 3줄 대신
+} 
 }
 
 // ============================================================================
@@ -1842,7 +1840,10 @@ void ATransformation_actor::UpdateSteamEffect()
     if (!MeshComp)
         return;
 
-    if (MeltAlpha >= 0.98f || IsActorBeingDestroyed())
+    if (bPendingDelayedDestroy)   // ★ 지연 파괴 중엔 손대지 않음
+        return;
+
+    if (IsActorBeingDestroyed())
     {
         DestroySteamEffect();
         return;
@@ -1890,7 +1891,7 @@ void ATransformation_actor::SpawnSteamEffect()
         return;
 
     // ★ 액터가 죽는 중이거나 거의 다 녹았으면 수증기 새로 만들지 않음
-    if (IsActorBeingDestroyed() || MeltAlpha >= 0.98f)
+    if (IsActorBeingDestroyed())
         return;
 
     const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
@@ -1905,21 +1906,89 @@ void ATransformation_actor::DestroySteamEffect()
 {
     if (SteamComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됨, 수증기 제거"));
-        SteamComponent->Deactivate();
-        SteamComponent->DeactivateImmediate();
+        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됨, 수증기 서서히 감쇠 시작"));
+        
+        // ★ Immediate 계열 함수를 절대 사용하지 않습니다!
+        // 새로운 입자 생성을 중단하고 기존 입자는 유지하는 완만한 비활성화
+        SteamComponent->Deactivate(); 
+        
+        // 월드에 이펙트 잔상이 남도록 분리
         SteamComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-        SteamComponent->DestroyComponent();
+        
         SteamComponent = nullptr;
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됐지만 SteamComponent가 이미 null"));
     }
 }
 
 void ATransformation_actor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    // 액터가 죽을 때 수증기를 '강제 파괴'하지 않고 감쇠 비활성화만 유도합니다.
     DestroySteamEffect();
     Super::EndPlay(EndPlayReason);
+}
+
+void ATransformation_actor::BeginDelayedDestroy()
+{
+    if (bPendingDelayedDestroy)
+        return;
+    bPendingDelayedDestroy = true;
+
+    // 1. 죽는 순간 수증기가 없으면 즉석 생성
+    if (!SteamComponent && SteamEffect && MeshComp)
+    {
+        const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
+        SteamComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+            SteamEffect, MeshComp, NAME_None,
+            FVector(0.f, 0.f, BoxExtent.Z), FRotator::ZeroRotator,
+            EAttachLocation::KeepRelativeOffset,
+            false, true, ENCPoolMethod::None, true);
+    }
+
+    if (SteamComponent)
+    {
+        // 2. 수증기를 블럭 메쉬에서 분리
+        SteamComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+
+        // 3. 다 녹기 직전의 연기 양을 그대로 유지
+        SteamComponent->SetVariableFloat(FName(TEXT("SpawnRate")), 
+            FMath::Lerp(10.f, 100.f, MeltAlpha));
+    }
+
+    // 4. 블럭 본체만 숨김 및 물리 차단
+    if (MeshComp)
+    {
+        MeshComp->SetVisibility(false, false);
+        MeshComp->SetSimulatePhysics(false);
+        MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    // 5. 실시간 상태 갱신(Tick) 정지
+    SetActorTickEnabled(false);
+
+    // ========================================================================
+    // ★ 시간 조절 파트 (원하는 대로 초 단위 수정 가능)
+    // ========================================================================
+    
+    // [타이머 1] 블럭이 사라진 후, 연기를 빵빵하게 '유지'할 시간 (기존 1.5초 -> 0.6초로 단축)
+    const float SteamHoldTime = 0.6f; 
+
+    GetWorld()->GetTimerManager().SetTimer(ResidualStopHandle,
+        FTimerDelegate::CreateWeakLambda(this, [this]()
+        {
+            if (SteamComponent)
+            {
+                // 유지 시간이 끝났으므로 새로운 연기 생성 중단 -> 남은 연기는 자연 소멸
+                SteamComponent->Deactivate();
+                SteamComponent = nullptr; 
+            }
+        }), SteamHoldTime, false);
+
+    // [타이머 2] 연기가 스르륵 다 사라진 후 액터를 완전히 파괴할 시간
+    // 유지 시간(0.6초) + 입자가 공중에서 사라지는 시간(약 1.4초) = 총 2.0초 뒤 파괴
+    const float TotalDestroyDelay = SteamHoldTime + 1.4f; 
+
+    GetWorld()->GetTimerManager().SetTimer(ResidualKillHandle,
+        FTimerDelegate::CreateWeakLambda(this, [this]()
+        {
+            Destroy(); 
+        }), TotalDestroyDelay, false);
 }

@@ -471,4 +471,9 @@ private:
     void SpawnSteamEffect();
     void DestroySteamEffect();
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+   bool bPendingDelayedDestroy = false;
+    void BeginDelayedDestroy();
+    FTimerHandle ResidualStopHandle;
+    FTimerHandle ResidualKillHandle;
 };
