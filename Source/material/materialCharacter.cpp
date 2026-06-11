@@ -1134,7 +1134,7 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 		if (!OtherActor || OtherActor == this)
 			continue;
 
-		// 변경 - Metal 케이스에서는 WakeRigidBody로 깨우므로 체크 완화
+		// Metal 케이스에서는 WakeRigidBody로 깨우므로 체크 완화
 		UPrimitiveComponent *PrimComp = Hit.GetComponent();
 		if (!PrimComp)
 			continue;
@@ -1162,7 +1162,7 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 			// Metal → 무조건 인력
 			if (OtherActor->ActorHasTag(TEXT("Metal")))
 			{
-				float ForceMag = MagnetForceStrength * SizeScale * 3000.f;
+				float ForceMag = MagnetForceStrength * SizeScale * 800.f;  // ★ 3000 → 800
 				ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
 
 				const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
@@ -1194,7 +1194,7 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 				const float OtherPole = FVector::DotProduct(OtherNorth, -DirToOther);
 				const float Polarity = -(MyPole * OtherPole);
 
-				float ForceMag = (MagnetForceStrength * 5000.f) / SafeDist;
+				float ForceMag = (MagnetForceStrength * 1500.f) / SafeDist;  // ★ 5000 → 1500
 				ForceMag *= PrimComp->GetMass();
 
 				const FVector ForceDir = Dir * FMath::Sign(Polarity);
@@ -1220,27 +1220,27 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 
 		// ── Metal 들고 있을 때 → 주변 Magnet 인력 (살짝살짝 + 크기 비례) ──
 		else if (bHoldingMetal)
-{
-    if (!OtherActor->ActorHasTag(TEXT("Magnet")))
-        continue;
+		{
+			if (!OtherActor->ActorHasTag(TEXT("Magnet")))
+				continue;
 
-    ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
-    if (!OtherMagnet)
-        continue;
+			ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
+			if (!OtherMagnet)
+				continue;
 
-    float ForceMag = MagnetForceStrength * SizeScale * 300000.f;
-    ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
+			float ForceMag = MagnetForceStrength * SizeScale * 300000.f;
+			ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
 
-    PrimComp->WakeRigidBody();
-	PrimComp->AddImpulse(Dir * 100.f, NAME_None, true);  // 마지막 true가 핵심
+			PrimComp->WakeRigidBody();
+			PrimComp->AddImpulse(Dir * 40.f, NAME_None, true);  // ★ 100 → 40
 
-    DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
-    DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
-                    FString::Printf(TEXT("[ATTRACT] Magnet | dist:%.0f | force:%.0f"), Dist, ForceMag),
-                    nullptr, FColor::Green, 0.f, true);
+			DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
+			DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
+							FString::Printf(TEXT("[ATTRACT] Magnet | dist:%.0f | force:%.0f"), Dist, ForceMag),
+							nullptr, FColor::Green, 0.f, true);
 
-    MagnetCount++;
-}
+			MagnetCount++;
+		}
 	}
 
 	if (GEngine)
