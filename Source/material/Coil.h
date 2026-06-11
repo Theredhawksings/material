@@ -122,4 +122,11 @@ private:
 	void UpdateFieldRadius();
 	void DebugVisualize();
 	void ApplyDebugVisibility();
+
+	// 코일과 함께 움직일 액터들 (에디터에서 지정)
+	UPROPERTY(EditAnywhere, Category = "Coil|Attached")
+	TArray<TObjectPtr<AActor>> AttachedActors;
+
+	// 각 액터의 코일 기준 상대 위치 저장용
+	TArray<FVector> AttachedOffsets;	
 };

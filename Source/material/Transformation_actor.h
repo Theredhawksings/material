@@ -101,6 +101,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "CameraSystem", meta = (WorldContext = "WorldContextObject"))
     static void SetGlobalMagneticCameraState(const UObject* WorldContextObject, bool bIsCameraOn);
 
+    void AddFormHeat(float DeltaC) { FormTemperatureC += DeltaC; }
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;

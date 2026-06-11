@@ -71,6 +71,16 @@ void ACoil::BeginPlay()
 	DetectionZone->SetBoxExtent(DetectionBoxExtent);
 	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
 	BaseCoilLocation = GetActorLocation();
+	// 부착 액터들의 상대 오프셋 기록
+AttachedOffsets.Empty();
+for (AActor* A : AttachedActors)
+{
+    if (A)
+        AttachedOffsets.Add(A->GetActorLocation() - BaseCoilLocation);
+    else
+        AttachedOffsets.Add(FVector::ZeroVector);
+}
+
 	CoilMesh->SetSimulatePhysics(false);
 
 	ApplyDebugVisibility();
@@ -194,11 +204,25 @@ void ACoil::ApplyOscillation(float DeltaTime)
 		SetActorLocation(NewLoc, false);
 
 		MagneticFieldSphere->SetWorldLocation(BaseCoilLocation);
+
+		// ★ 부착 액터들도 같은 위치 관계 유지하며 이동
+		for (int32 i = 0; i < AttachedActors.Num(); ++i)
+		{
+			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
+				AttachedActors[i]->SetActorLocation(NewLoc + AttachedOffsets[i], false);
+		}
 	}
 	else
 	{
 		OscillationTime = 0.f;
 		SetActorLocation(BaseCoilLocation, false);
+
+		// ★ 멈출 때도 원위치로
+		for (int32 i = 0; i < AttachedActors.Num(); ++i)
+		{
+			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
+				AttachedActors[i]->SetActorLocation(BaseCoilLocation + AttachedOffsets[i], false);
+		}
 	}
 }
 
@@ -323,14 +347,20 @@ void ACoil::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 
 void ACoil::UpdateCircuit()
 {
-    for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+    // EMF 없을 때만 끄기 (매 틱 껐다켰다 금지)
+    if (!bCoilActive || CurrentEMF <= 0.f)
     {
-        if (AWire* W = Cast<AWire>(WirePtr.Get()))
-            W->SetPowered(false);
+        for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+        {
+            if (AWire* W = Cast<AWire>(WirePtr.Get()))
+            {
+                W->SetBatterySource(false);
+                W->SetPowered(false);
+            }
+        }
+        ConnectedWires.Empty();
+        return;
     }
-    ConnectedWires.Empty();
-
-    if (!bCoilActive || CurrentEMF <= 0.f) return;
 
     FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilCircuit), false);
     QParams.AddIgnoredActor(this);
@@ -346,8 +376,16 @@ void ACoil::UpdateCircuit()
         AWire* Wire = Cast<AWire>(H.GetActor());
         if (!Wire) continue;
 
-        Wire->SetPowered(true);
+        if (ConnectedWires.Contains(Wire))
+        {
+            Wire->SetBatteryVoltage(CurrentEMF);  // 이미 연결됨 → 전압만 갱신
+            continue;
+        }
+
+        Wire->SetBatterySource(true);
         Wire->SetBatteryVoltage(CurrentEMF);
+        Wire->SetPowered(true);
+        Wire->RefreshConnectedActors();   // ★ 타이머 안 기다리고 즉시 회로 풀기
         ConnectedWires.Add(Wire);
     }
 }

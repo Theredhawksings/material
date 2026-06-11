@@ -5,6 +5,7 @@
 #include "InductionPlate.generated.h"
 
 class UStaticMeshComponent;
+class ATransformation_actor;
 
 UCLASS()
 class MATERIAL_API AInductionPlate : public AActor
@@ -14,21 +15,26 @@ class MATERIAL_API AInductionPlate : public AActor
 public:
 	AInductionPlate();
 
-	UFUNCTION(BlueprintCallable, Category = "InductionPlate")
-	float GetTemperature() const { return TemperatureC; }
 	void ReceiveInductionHeat(float EnergyJ);
+
+	float GetTemperature() const { return TemperatureC; }
 
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
-private:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "InductionPlate", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Plate")
 	TObjectPtr<UStaticMeshComponent> PlateMesh;
 
-	UPROPERTY(BlueprintReadOnly, Category = "InductionPlate", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Plate", meta = (AllowPrivateAccess = "true"))
 	float TemperatureC = 20.f;
 
-	UPROPERTY(EditAnywhere, Category = "InductionPlate|Debug")
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float HeatTransferRadius = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float HeatTransferRate = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category = "Plate|Debug")
 	bool bDebugDraw = true;
 };
