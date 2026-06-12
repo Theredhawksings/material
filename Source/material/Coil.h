@@ -113,8 +113,7 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Induction")
 	float InductionHeatingRate = 0.5f;
-
-	void ApplyInductionHeating(float DeltaTime);
+	
 	void UpdateCircuit();
 	void DetectMagnets();
 	void ApplyOscillation(float DeltaTime);

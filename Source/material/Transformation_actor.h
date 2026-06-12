@@ -320,14 +320,16 @@ public:
     FVector GetNorthPoleWorldDir() const;
     FVector GetSouthPoleWorldDir() const;
 
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
-float MetalResistance = 0.6f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
+    float MetalResistance = 0.6f;
 
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
-float CopperResistance = 0.1f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Electrical")
+    float CopperResistance = 0.1f;
 
-UPROPERTY(VisibleAnywhere, Category = "Electrical")
-float BlockResistance = 0.f;
+    UPROPERTY(VisibleAnywhere, Category = "Electrical")
+    float BlockResistance = 0.f;
+
+    bool IsDemagnetized() const { return bDemagnetized; }
 
 private:
     // ── 전기 (Metal + Copper 공용) ──

@@ -37,4 +37,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Plate|Debug")
 	bool bDebugDraw = true;
+
+	// 전선 끝점이 이 반경 안에 있어야 "연결됨"으로 인정
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float WireConnectRadius = 80.f;
+
+	// 전력(V*I) → 온도 변환 비율
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float WireHeatingRate = 2.0f;
 };
