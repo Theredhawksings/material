@@ -23,10 +23,17 @@ public:
 	int32 GetMagnetCount() const { return DetectedMagnets.Num(); }
 
 	UFUNCTION(BlueprintCallable, Category = "Coil")
-	void ToggleCoil();
+	bool IsCoilActive() const { return bCoilActive; }
 
 	UFUNCTION(BlueprintCallable, Category = "Coil")
-	bool IsCoilActive() const { return bCoilActive; }
+	void SetCoilActive(bool bNewActive);
+
+	// 코일 영구 정지 (다시 못 켬)
+	UFUNCTION(BlueprintCallable, Category = "Coil")
+	void ShutdownCoil();
+
+	UFUNCTION(BlueprintCallable, Category = "Coil")
+	bool IsShutdown() const { return bShutdown; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -55,6 +62,9 @@ private:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	bool bCoilActive = true;
+
+	// 영구 정지 플래그
+	bool bShutdown = false;
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FVector DetectionBoxExtent = FVector(60.f, 30.f, 30.f);
@@ -113,7 +123,14 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Induction")
 	float InductionHeatingRate = 0.5f;
-	
+
+	// 코일과 함께 움직일 액터들 (에디터에서 지정)
+	UPROPERTY(EditAnywhere, Category = "Coil|Attached")
+	TArray<TObjectPtr<AActor>> AttachedActors;
+
+	// 각 액터의 코일 기준 상대 위치 저장용
+	TArray<FVector> AttachedOffsets;
+
 	void UpdateCircuit();
 	void DetectMagnets();
 	void ApplyOscillation(float DeltaTime);
@@ -121,14 +138,5 @@ private:
 	void UpdateFieldRadius();
 	void DebugVisualize();
 	void ApplyDebugVisibility();
-
-	// 코일과 함께 움직일 액터들 (에디터에서 지정)
-	UPROPERTY(EditAnywhere, Category = "Coil|Attached")
-	TArray<TObjectPtr<AActor>> AttachedActors;
-
-	// 각 액터의 코일 기준 상대 위치 저장용
-	TArray<FVector> AttachedOffsets;	
-
-	UFUNCTION(BlueprintCallable, Category = "Coil")
-	void SetCoilActive(bool bNewActive);
+	void ShutdownConnectedWires();
 };

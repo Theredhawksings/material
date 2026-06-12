@@ -85,15 +85,6 @@ void ACoil::BeginPlay()
 	CoilMesh->SetSimulatePhysics(false);
 
 	ApplyDebugVisibility();
-
-	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-	{
-		EnableInput(PC);
-		if (InputComponent)
-		{
-			InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ACoil::ToggleCoil);
-		}
-	}
 }
 
 void ACoil::Tick(float DeltaTime)
@@ -122,16 +113,8 @@ void ACoil::Tick(float DeltaTime)
 		OscillationTime = 0.f;
 		SetActorLocation(BaseCoilLocation, false);
 
-		// ★ 꺼진 동안 전선이 켜져있으면 정리 (안전망)
-		for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
-		{
-			if (AWire* W = Cast<AWire>(WirePtr.Get()))
-			{
-				W->SetBatterySource(false);
-				W->SetPowered(false);
-			}
-		}
-		ConnectedWires.Empty();
+		// 꺼진 동안 전선이 켜져있으면 정리 (안전망)
+		ShutdownConnectedWires();
 
 		DebugVisualize();
 		return;
@@ -145,13 +128,9 @@ void ACoil::Tick(float DeltaTime)
 	UpdateCircuit();
 }
 
-void ACoil::ToggleCoil()
-{
-	SetCoilActive(!bCoilActive);
-}
-
 void ACoil::SetCoilActive(bool bNewActive)
 {
+	if (bShutdown && bNewActive) return;   // ★ 영구 정지 후엔 ON 불가
 	if (bCoilActive == bNewActive) return;
 	bCoilActive = bNewActive;
 	UE_LOG(LogTemp, Log, TEXT("Coil [%s] -> %s"), *GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
@@ -159,17 +138,33 @@ void ACoil::SetCoilActive(bool bNewActive)
 	// 꺼질 때 전선 즉시 정리
 	if (!bCoilActive)
 	{
-		for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
-		{
-			if (AWire* W = Cast<AWire>(WirePtr.Get()))
-			{
-				W->SetBatterySource(false);
-				W->SetPowered(false);
-			}
-		}
-		ConnectedWires.Empty();
+		ShutdownConnectedWires();
 		CurrentEMF = 0.f;
 	}
+}
+
+void ACoil::ShutdownCoil()
+{
+	if (bShutdown) return;
+	bShutdown = true;
+
+	// 강제 OFF + 전선 정리
+	SetCoilActive(false);
+
+	UE_LOG(LogTemp, Log, TEXT("Coil [%s] SHUTDOWN - 영구 정지"), *GetName());
+}
+
+void ACoil::ShutdownConnectedWires()
+{
+	for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+	{
+		if (AWire* W = Cast<AWire>(WirePtr.Get()))
+		{
+			W->SetBatterySource(false);
+			W->SetPowered(false);
+		}
+	}
+	ConnectedWires.Empty();
 }
 
 void ACoil::DetectMagnets()
@@ -238,7 +233,7 @@ void ACoil::ApplyOscillation(float DeltaTime)
 
 		MagneticFieldSphere->SetWorldLocation(BaseCoilLocation);
 
-		// ★ 부착 액터들도 같은 위치 관계 유지하며 이동
+		// 부착 액터들도 같은 위치 관계 유지하며 이동
 		for (int32 i = 0; i < AttachedActors.Num(); ++i)
 		{
 			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
@@ -250,7 +245,7 @@ void ACoil::ApplyOscillation(float DeltaTime)
 		OscillationTime = 0.f;
 		SetActorLocation(BaseCoilLocation, false);
 
-		// ★ 멈출 때도 원위치로
+		// 멈출 때도 원위치로
 		for (int32 i = 0; i < AttachedActors.Num(); ++i)
 		{
 			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
@@ -305,7 +300,8 @@ void ACoil::DebugVisualize()
 			FColor(40, 40, 40), false, 0.f, 0, 2.f);
 
 		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
-			TEXT("Coil OFF (Press F)"), nullptr, FColor::Silver, 0.f, true);
+			bShutdown ? TEXT("Coil DISABLED") : TEXT("Coil OFF"),
+			nullptr, FColor::Silver, 0.f, true);
 		return;
 	}
 
@@ -383,15 +379,7 @@ void ACoil::UpdateCircuit()
     // EMF 없을 때만 끄기 (매 틱 껐다켰다 금지)
     if (!bCoilActive || CurrentEMF <= 0.f)
     {
-        for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
-        {
-            if (AWire* W = Cast<AWire>(WirePtr.Get()))
-            {
-                W->SetBatterySource(false);
-                W->SetPowered(false);
-            }
-        }
-        ConnectedWires.Empty();
+        ShutdownConnectedWires();
         return;
     }
 
@@ -418,7 +406,7 @@ void ACoil::UpdateCircuit()
         Wire->SetBatterySource(true);
         Wire->SetBatteryVoltage(CurrentEMF);
         Wire->SetPowered(true);
-        Wire->RefreshConnectedActors();   // ★ 타이머 안 기다리고 즉시 회로 풀기
+        Wire->RefreshConnectedActors();   // 타이머 안 기다리고 즉시 회로 풀기
         ConnectedWires.Add(Wire);
     }
 }
