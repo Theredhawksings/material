@@ -6,8 +6,6 @@
 
 class UBoxComponent;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMagnetCheckPassed);
-
 UCLASS()
 class MATERIAL_API AMagnetCheckZone : public AActor
 {
@@ -15,10 +13,6 @@ class MATERIAL_API AMagnetCheckZone : public AActor
 
 public:
 	AMagnetCheckZone();
-
-	// 문 블루프린트에서 이 이벤트에 바인딩 → 문 열기 (한 번만 발사됨)
-	UPROPERTY(BlueprintAssignable, Category = "CheckZone")
-	FOnMagnetCheckPassed OnCheckPassed;
 
 	UFUNCTION(BlueprintCallable, Category = "CheckZone")
 	bool IsSatisfied() const { return bSatisfied; }
@@ -36,8 +30,33 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "CheckZone")
 	FName MagnetTag = TEXT("Magnet");
 
+	// ── 문 설정 (MainStage1_Platform1과 동일 방식) ──
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	TObjectPtr<AActor> LeftDoorActor;
+
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	TObjectPtr<AActor> RightDoorActor;
+
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	FVector OpenDirection = FVector(0.f, 1.f, 0.f);
+
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	float OpenDistance = 200.f;
+
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	float OpenSpeed = 1.f;
+
 	UPROPERTY(EditAnywhere, Category = "CheckZone|Debug")
 	bool bDebugDraw = true;
 
+private:
 	bool bSatisfied = false;
+	bool bIsOpening = false;
+	bool bIsOpen = false;
+	float CurrentTime = 0.f;
+
+	FVector LeftStartLocation;
+	FVector LeftTargetLocation;
+	FVector RightStartLocation;
+	FVector RightTargetLocation;
 };
