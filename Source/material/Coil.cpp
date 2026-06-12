@@ -71,15 +71,16 @@ void ACoil::BeginPlay()
 	DetectionZone->SetBoxExtent(DetectionBoxExtent);
 	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
 	BaseCoilLocation = GetActorLocation();
+
 	// 부착 액터들의 상대 오프셋 기록
-AttachedOffsets.Empty();
-for (AActor* A : AttachedActors)
-{
-    if (A)
-        AttachedOffsets.Add(A->GetActorLocation() - BaseCoilLocation);
-    else
-        AttachedOffsets.Add(FVector::ZeroVector);
-}
+	AttachedOffsets.Empty();
+	for (AActor* A : AttachedActors)
+	{
+		if (A)
+			AttachedOffsets.Add(A->GetActorLocation() - BaseCoilLocation);
+		else
+			AttachedOffsets.Add(FVector::ZeroVector);
+	}
 
 	CoilMesh->SetSimulatePhysics(false);
 
@@ -120,6 +121,18 @@ void ACoil::Tick(float DeltaTime)
 		CurrentEMF = 0.f;
 		OscillationTime = 0.f;
 		SetActorLocation(BaseCoilLocation, false);
+
+		// ★ 꺼진 동안 전선이 켜져있으면 정리 (안전망)
+		for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+		{
+			if (AWire* W = Cast<AWire>(WirePtr.Get()))
+			{
+				W->SetBatterySource(false);
+				W->SetPowered(false);
+			}
+		}
+		ConnectedWires.Empty();
+
 		DebugVisualize();
 		return;
 	}
@@ -134,8 +147,29 @@ void ACoil::Tick(float DeltaTime)
 
 void ACoil::ToggleCoil()
 {
-	bCoilActive = !bCoilActive;
+	SetCoilActive(!bCoilActive);
+}
+
+void ACoil::SetCoilActive(bool bNewActive)
+{
+	if (bCoilActive == bNewActive) return;
+	bCoilActive = bNewActive;
 	UE_LOG(LogTemp, Log, TEXT("Coil [%s] -> %s"), *GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
+
+	// 꺼질 때 전선 즉시 정리
+	if (!bCoilActive)
+	{
+		for (const TWeakObjectPtr<AActor>& WirePtr : ConnectedWires)
+		{
+			if (AWire* W = Cast<AWire>(WirePtr.Get()))
+			{
+				W->SetBatterySource(false);
+				W->SetPowered(false);
+			}
+		}
+		ConnectedWires.Empty();
+		CurrentEMF = 0.f;
+	}
 }
 
 void ACoil::DetectMagnets()
@@ -388,4 +422,3 @@ void ACoil::UpdateCircuit()
         ConnectedWires.Add(Wire);
     }
 }
-

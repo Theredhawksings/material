@@ -128,4 +128,7 @@ private:
 
 	// 각 액터의 코일 기준 상대 위치 저장용
 	TArray<FVector> AttachedOffsets;	
+
+	UFUNCTION(BlueprintCallable, Category = "Coil")
+	void SetCoilActive(bool bNewActive);
 };
