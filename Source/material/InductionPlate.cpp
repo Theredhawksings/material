@@ -26,102 +26,129 @@ void AInductionPlate::BeginPlay()
 
 void AInductionPlate::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 
-	// ────────────────────────────────────────────
-	//  열화상 스텐실 (온도 → 0~255)
-	// ────────────────────────────────────────────
-	if (PlateMesh)
-	{
-		float TempRatio = FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f);
-		int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
-		PlateMesh->SetRenderCustomDepth(StencilVal > 0);
-		PlateMesh->SetCustomDepthStencilValue(StencilVal);
-	}
+    // 1. 열화상 스텐실 실시간 업데이트
+    if (PlateMesh)
+    {
+        float TempRatio = FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f);
+        int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
+        
+        // 0보다 크면 켜고, 0이면 꺼서 실시간으로 낮아지도록 반영
+        PlateMesh->SetRenderCustomDepth(StencilVal > 0);
+        PlateMesh->SetCustomDepthStencilValue(StencilVal);
+    }
 
-	// ────────────────────────────────────────────
-	//  ★ 연결된 전선에서 전력 받아 가열 (P = V * I)
-	//  전선 시작점/끝점이 WireConnectRadius 안에 있어야 연결로 인정
-	// ────────────────────────────────────────────
-	{
-		TArray<FOverlapResult> Hits;
-		FCollisionQueryParams Q(SCENE_QUERY_STAT(PlateWireSense), false);
-		Q.AddIgnoredActor(this);
+    // 2. 전선 연결 및 가열 로직 (기존 유지)
+    int32 ConnectedWireCount = 0;
+    float LastPowerW = 0.f;
+    float LastEnergyAdded = 0.f;
+    bool bIsHeating = false; // 가열 중인지 체크하기 위한 변수
 
-		GetWorld()->OverlapMultiByObjectType(
-			Hits,
-			GetActorLocation(),
-			FQuat::Identity,
-			FCollisionObjectQueryParams::AllObjects,
-			FCollisionShape::MakeSphere(WireConnectRadius * 2.f),  // 넉넉히 스캔
-			Q);
+    {
+        TArray<FOverlapResult> Hits;
+        FCollisionQueryParams Q(SCENE_QUERY_STAT(PlateWireSense), false);
+        Q.AddIgnoredActor(this);
 
-		for (const FOverlapResult& H : Hits)
-		{
-			AWire* Wire = Cast<AWire>(H.GetActor());
-			if (!Wire) continue;
-			if (!Wire->IsPowered() || Wire->GetEffectiveVoltage() <= 0.f) continue;
+        GetWorld()->OverlapMultiByObjectType(
+            Hits, GetActorLocation(), FQuat::Identity,
+            FCollisionObjectQueryParams::AllObjects,
+            FCollisionShape::MakeSphere(WireConnectRadius * 2.f), Q);
 
-			// 전선의 시작점 또는 끝점이 플레이트 근처에 있어야 "연결"로 인정
-			const float DistStart = FVector::Dist(Wire->GetStartPointLocation(), GetActorLocation());
-			const float DistEnd   = FVector::Dist(Wire->GetEndPointLocation(),   GetActorLocation());
-			if (FMath::Min(DistStart, DistEnd) > WireConnectRadius) continue;
+        TSet<AWire*> ProcessedWires;
+        for (const FOverlapResult& H : Hits)
+        {
+            AWire* Wire = Cast<AWire>(H.GetActor());
+            if (!Wire || ProcessedWires.Contains(Wire)) continue;
+            ProcessedWires.Add(Wire);
 
-			// 전력 → 가열
-			const float PowerW = Wire->GetEffectiveVoltage() * Wire->GetEffectiveCurrent();
-			ReceiveInductionHeat(PowerW * WireHeatingRate * DeltaTime);
-		}
-	}
+            const bool bPow = Wire->IsPowered();
+            const float V = Wire->GetEffectiveVoltage();
+            const float I = Wire->GetEffectiveCurrent();
+            const float DistStart = FVector::Dist(Wire->GetStartPointLocation(), GetActorLocation());
+            const float DistEnd   = FVector::Dist(Wire->GetEndPointLocation(),   GetActorLocation());
+            const float MinDist = FMath::Min(DistStart, DistEnd);
 
-	// ────────────────────────────────────────────
-	//  뜨거우면 위에 있는 Metal / Magnet 블록에 열 전달
-	// ────────────────────────────────────────────
-	if (TemperatureC > 20.f)
-	{
-		TArray<FOverlapResult> Hits;
-		FCollisionQueryParams Q(SCENE_QUERY_STAT(PlateHeat), false);
-		Q.AddIgnoredActor(this);
+            if (!bPow || V <= 0.f || MinDist > WireConnectRadius) continue;
 
-		GetWorld()->OverlapMultiByObjectType(
-			Hits,
-			GetActorLocation(),
-			FQuat::Identity,
-			FCollisionObjectQueryParams::AllObjects,
-			FCollisionShape::MakeSphere(HeatTransferRadius),
-			Q);
+            const float PowerW = V * I;
+            const float Energy = PowerW * WireHeatingRate * DeltaTime;
+            
+            ReceiveInductionHeat(Energy);
+            bIsHeating = true; // 열을 공급받고 있음!
 
-		for (const FOverlapResult& H : Hits)
-		{
-			ATransformation_actor* Block = Cast<ATransformation_actor>(H.GetActor());
-			if (!Block) continue;
+            ConnectedWireCount++;
+            LastPowerW = PowerW;
+            LastEnergyAdded = FMath::Min(Energy, PlateMaxRisePerCall);
+        }
+    }
 
-			// ★ Metal과 Magnet 둘 다 가열 대상 (자석 올리면 자성 소실로 이어짐)
-			if (!Block->ActorHasTag(TEXT("Metal")) && !Block->ActorHasTag(TEXT("Magnet")))
-				continue;
+    // 3. 자석 / 철 블록으로 열 전달 (감지 위치 및 디버그 보완)
+    if (TemperatureC > 20.f)
+    {
+        TArray<FOverlapResult> Hits;
+        FCollisionQueryParams Q(SCENE_QUERY_STAT(PlateHeat), false);
+        Q.AddIgnoredActor(this);
 
-			const float Energy = (TemperatureC - 20.f) * HeatTransferRate * DeltaTime;
-			Block->AddFormHeat(Energy);
-		}
-	}
-
-	// ────────────────────────────────────────────
-	//  자연 냉각
-	// ────────────────────────────────────────────
-	if (TemperatureC > 20.f)
-		TemperatureC = FMath::Max(TemperatureC - 2.f * DeltaTime, 20.f);
+        // 피봇이 바닥일 경우를 대비해 살짝 위쪽을 중심으로 구체 생성
+        FVector DetectionCenter = GetActorLocation() + FVector(0.f, 0.f, 20.f);
 
 #if ENABLE_DRAW_DEBUG
-	if (bDebugDraw)
-	{
-		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 40.f),
-			FString::Printf(TEXT("Plate: %.0f C"), TemperatureC),
-			nullptr, FColor::White, 0.f, true);
-	}
+        // 에디터에서 열 전달 감지 범위를 시각적으로 확인 (녹색 구체)
+        if (bDebugDraw)
+        {
+            DrawDebugSphere(GetWorld(), DetectionCenter, HeatTransferRadius, 16, FColor::Green, false, -1.f, 0, 0.5f);
+        }
+#endif
+
+        GetWorld()->OverlapMultiByObjectType(
+            Hits, DetectionCenter, FQuat::Identity,
+            FCollisionObjectQueryParams::AllObjects,
+            FCollisionShape::MakeSphere(HeatTransferRadius), Q);
+
+        TSet<ATransformation_actor*> HeatedBlocks;
+
+        for (const FOverlapResult& H : Hits)
+        {
+            ATransformation_actor* Block = Cast<ATransformation_actor>(H.GetActor());
+            if (!Block || HeatedBlocks.Contains(Block)) continue;
+
+            // 태그가 대소문자를 타거나 누락되었는지 체크하기 위해 디버그 로그 추천
+            if (!Block->ActorHasTag(TEXT("Metal")) && !Block->ActorHasTag(TEXT("Magnet")))
+                continue;
+
+            // 정상 감지됨 -> 열 전달
+            float Energy = (TemperatureC - 20.f) * HeatTransferRate * DeltaTime;
+            Energy = FMath::Min(Energy, BlockMaxRisePerCall);
+            Block->AddFormHeat(Energy);
+
+            HeatedBlocks.Add(Block);
+        }
+    }
+
+    // 4. 자연 냉각 (전선으로 가열 중이 아닐 때만 식도록 조건 제어 가능)
+    // 만약 가열 중에도 식어야 한다면 조건문을 지우되, PlateCoolingRatePerSec 값을 낮춰보세요.
+    if (!bIsHeating && TemperatureC > 20.f)
+    {
+        TemperatureC = FMath::Max(TemperatureC - PlateCoolingRatePerSec * DeltaTime, 20.f);
+    }
+
+#if ENABLE_DRAW_DEBUG
+    if (bDebugDraw && GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Yellow,
+            FString::Printf(TEXT("[Plate] Temp:%.1f | 연결전선:%d | P=V*I:%.2f | 스텐실 값:%d"),
+                TemperatureC, ConnectedWireCount, LastPowerW, FMath::RoundToInt(FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f) * 255.f)));
+    }
 #endif
 }
 
 void AInductionPlate::ReceiveInductionHeat(float EnergyJ)
 {
 	if (EnergyJ <= 0.f) return;
+
+	// 한 번에 올라갈 수 있는 온도 상한 (급상승 방지)
+	EnergyJ = FMath::Min(EnergyJ, PlateMaxRisePerCall);
+
 	TemperatureC += EnergyJ;
 }

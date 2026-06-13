@@ -6,7 +6,6 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
-class USphereComponent;
 
 UCLASS()
 class MATERIAL_API ACoil : public AActor
@@ -17,10 +16,13 @@ public:
 	ACoil();
 
 	UFUNCTION(BlueprintCallable, Category = "Coil")
-	bool HasMagnetInside() const { return DetectedMagnets.Num() > 0; }
+	bool HasMagnetInside() const { return MagnetsInside.Num() > 0; }
 
 	UFUNCTION(BlueprintCallable, Category = "Coil")
-	int32 GetMagnetCount() const { return DetectedMagnets.Num(); }
+	int32 GetMagnetCount() const { return MagnetsInside.Num(); }
+
+	UFUNCTION(BlueprintCallable, Category = "Coil")
+	bool IsGenerating() const { return CurrentEMF > 0.f; }
 
 	UFUNCTION(BlueprintCallable, Category = "Coil")
 	bool IsCoilActive() const { return bCoilActive; }
@@ -28,7 +30,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Coil")
 	void SetCoilActive(bool bNewActive);
 
-	// 코일 영구 정지 (다시 못 켬)
 	UFUNCTION(BlueprintCallable, Category = "Coil")
 	void ShutdownCoil();
 
@@ -44,99 +45,73 @@ protected:
 #endif
 
 private:
+	// ── 컴포넌트 ──
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStaticMeshComponent> CoilMesh;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UBoxComponent> DetectionZone;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<USphereComponent> MagneticFieldSphere;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UBoxComponent> BottomBlocker;
-
-	// 인게임에서 실제 보이는 판 메시
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coil", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UStaticMeshComponent> BottomPlateMesh;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil", meta = (AllowPrivateAccess = "true"))
-	bool bCoilActive = true;
-
-	// 영구 정지 플래그
-	bool bShutdown = false;
-
+	// ── 자석 감지 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FVector DetectionBoxExtent = FVector(60.f, 30.f, 30.f);
 
 	UPROPERTY(EditAnywhere, Category = "Coil|Detection")
 	FName MagnetTag = TEXT("Magnet");
 
-	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
-	float MagneticFieldRadius = 100.f;
-
-	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
-	float FieldRadiusPerMagnet = 50.f;
-
-	UPROPERTY(EditAnywhere, Category = "Coil|MagneticField")
+	// 코일이 자석 당기는 힘
+	UPROPERTY(EditAnywhere, Category = "Coil|MagneticForce")
 	float MagneticForceStrength = 500000.f;
 
-	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
-	float OscillationSpeed = 3.f;
+	// ── EMF 충전/감쇠 (왕복 발전) ──
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	float EMFPerSwing = 10.f;      // 자석 1회 뺄 때 충전량
 
-	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
-	float OscillationAmplitude = 15.f;
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	float EMFDecayRate = 10.f;    // 초당 감쇠량 (멈추면 빨리 식음)
 
-	UPROPERTY(EditAnywhere, Category = "Coil|Oscillation")
-	float SpeedPerExtraMagnet = 1.5f;
+	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
+	float MaxEMF = 50.f;          // 최대 상한
 
 	UPROPERTY(BlueprintReadOnly, Category = "Coil|EMF", meta = (AllowPrivateAccess = "true"))
 	float CurrentEMF = 0.f;
 
-	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
-	int32 CoilWindings = 25;
-
-	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
-	float MagnetFieldStrengthTesla = 0.4f;
-
-	UPROPERTY(EditAnywhere, Category = "Coil|EMF")
-	float CoilInnerDiameterCM = 140.f;
-
-	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
-	bool bDebugDraw = true;
-
-	// 에디터/게임에서 디버그 셰이프(DetectionZone, MagneticFieldSphere, BottomBlocker) 보이기 토글
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil|Debug", meta = (AllowPrivateAccess = "true"))
-	bool bShowDebugShapes = true;
-
-	UPROPERTY()
-	TArray<TWeakObjectPtr<AActor>> DetectedMagnets;
-
-	FVector BaseCoilLocation;
-	float OscillationTime = 0.f;
-
+	// ── 전선 연결 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Circuit")
 	float WireDetectRadius = 200.f;
 
+	// ── 디버그 ──
+	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
+	bool bDebugDraw = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil|Debug", meta = (AllowPrivateAccess = "true"))
+	bool bShowDebugShapes = true;
+
+	// ── 상태 ──
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Coil", meta = (AllowPrivateAccess = "true"))
+	bool bCoilActive = true;
+
+	bool bShutdown = false;
+
+	// 현재 박스 안에 있는 자석들 (당기는 힘/카운트용)
+	UPROPERTY()
+	TArray<TWeakObjectPtr<AActor>> MagnetsInside;
+
+	// 진입/이탈 추적: 직전 프레임에 박스 안에 있던 자석들
+	TSet<TWeakObjectPtr<AActor>> MagnetsInsideLastFrame;
+
+	// 코일에 전기 받는 전선들
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> ConnectedWires;
 
-	UPROPERTY(EditAnywhere, Category = "Coil|Induction")
-	float InductionHeatingRate = 0.5f;
+	FVector BaseCoilLocation;
 
-	// 코일과 함께 움직일 액터들 (에디터에서 지정)
-	UPROPERTY(EditAnywhere, Category = "Coil|Attached")
-	TArray<TObjectPtr<AActor>> AttachedActors;
-
-	// 각 액터의 코일 기준 상대 위치 저장용
-	TArray<FVector> AttachedOffsets;
-
-	void UpdateCircuit();
-	void DetectMagnets();
-	void ApplyOscillation(float DeltaTime);
+	// ── 함수 ──
+	void UpdateMagnetSensing();
+	bool IsActorInsideZone(AActor* Actor) const;
 	void ApplyMagneticForce();
-	void UpdateFieldRadius();
+	void UpdateCircuit();
+	void ShutdownConnectedWires();
 	void DebugVisualize();
 	void ApplyDebugVisibility();
-	void ShutdownConnectedWires();
 };

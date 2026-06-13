@@ -67,6 +67,7 @@ public:
 	TSubclassOf<UTestUI> RadialMenuClass;
 
 	ASyringe* GetAttachedSyringe() const { return AttachedSyringe; }
+	AActor* GetHeldActor() const { return HeldActor; }
 
 protected:
 	virtual void BeginPlay() override;
