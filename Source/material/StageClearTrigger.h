@@ -7,6 +7,7 @@
 
 class AGenerator;
 class AIronSpawner;
+class AAirConditioner;   // ★ 추가
 
 UCLASS()
 class MATERIAL_API AStageClearTrigger : public AActor
@@ -21,6 +22,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage Clear")
     TObjectPtr<AIronSpawner> TargetSpawner;
+
+    // ★ 스테이지 클리어 시 멈출 에어컨
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage Clear")
+    TObjectPtr<AAirConditioner> TargetAircon;
 
 protected:
     virtual void BeginPlay() override;

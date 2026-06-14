@@ -200,6 +200,9 @@ float ATransformation_actor::CalcReceivedPower(float DistCm) const
     if (!CurrentFire)
         return 0.f;
 
+    if (CurrentFire->Temperature <= 1.0f)
+        return 0.f;
+
     if (CurrentFire->MaxHeatDistance > 0.f && DistCm > CurrentFire->MaxHeatDistance)
         return 0.f;
 
@@ -265,6 +268,7 @@ void ATransformation_actor::BeginPlay()
         BaseScaleBeforeMelt = MeshComp->GetComponentScale();
         EnterIceMode();
     }
+    
     else if (CurrentForm == EBlockForm::Wood)
     {
         BaseScaleBeforeBurn = MeshComp->GetComponentScale();
@@ -487,10 +491,51 @@ if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
 }
         }
     }
-
+    
     // ★ Ice 폼이면 가열 여부와 무관하게 매 프레임 수증기 상태 갱신
+// ── Ice ──
     if (CurrentForm == EBlockForm::Ice)
     {
+        // ★ 디버그: 매 프레임 상태 출력 (이거 보고 원인 확정)
+        float DbgDist = -1.f;
+        float DbgRecv = -1.f;
+        if (CurrentFire)
+        {
+            DbgDist = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+            DbgRecv = CalcReceivedPower(DbgDist);
+        }
+        GEngine->AddOnScreenDebugMessage(
+            (int32)GetUniqueID(), 0.f, FColor::Green,
+            FString::Printf(TEXT("[ICE] Alpha=%.4f Accum=%.0f Total=%.0f | bHeating=%d Fire=%d | Dist=%.0f Recv=%.4f | Pending=%d"),
+                MeltAlpha, EnergyAccumJ, TotalMeltEnergyJ,
+                bHeating ? 1 : 0, CurrentFire ? 1 : 0,
+                DbgDist, DbgRecv, bPendingDelayedDestroy ? 1 : 0));
+
+        if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
+        {
+            const float ReceivedPowerW = CalcReceivedPower(DbgDist);
+            if (ReceivedPowerW > 0.0f)
+            {
+                SetStencilSafe(CachedStencilValue, true);
+                EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
+                MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
+                ApplyIceMeltVisual(MeltAlpha);
+            }
+        }
+
+        // ★ 가열 여부와 무관하게 파괴 체크 (블럭 밖으로 분리)
+if (MeshComp && bDestroyWhenMelted && !bPendingDelayedDestroy)
+        {
+            const float BaseMax = FMath::Max(BaseScaleBeforeMelt.GetMax(), 0.0001f);
+            const float CurRatio = MeshComp->GetComponentScale().GetMax() / BaseMax;
+            const float DestroyThreshold = FMath::Clamp(MinScaleRatio, 0.f, 1.f) * 1.1f + 0.01f;  // ★
+            if (CurRatio <= DestroyThreshold)
+            {
+                BeginDelayedDestroy();
+                return;
+            }
+        }
+
         UpdateSteamEffect();
     }
 
@@ -973,16 +1018,18 @@ void ATransformation_actor::ApplyIceMeltVisual(float Alpha01)
     if (!MeshComp)
         return;
     const float A = FMath::Clamp(Alpha01, 0.0f, 1.0f);
-    const FVector NewScale = FMath::Lerp(BaseScaleBeforeMelt, BaseScaleBeforeMelt * FMath::Clamp(MinScaleRatio, 0.f, 1.f), A);
+    const FVector NewScale = FMath::Lerp(BaseScaleBeforeMelt,
+        BaseScaleBeforeMelt * FMath::Clamp(MinScaleRatio, 0.f, 1.f), A);
     MeshComp->SetWorldScale3D(NewScale);
     if (IceMID)
         IceMID->SetScalarParameterValue(MeltParamName, A);
-   if (NewScale.GetMax() <= MinScaleRatio)
-{
-    BeginDelayedDestroy();  // ★ 기존 3줄 대신
-} 
-}
 
+        if (MeltAlpha >= 0.99f && bDestroyWhenMelted && !bPendingDelayedDestroy)
+        {
+            BeginDelayedDestroy();
+            return;
+        }
+}
 // ============================================================================
 //  Wood
 // ============================================================================
@@ -1864,17 +1911,16 @@ void ATransformation_actor::UpdateSteamEffect()
             SpawnSteamEffect();
 
         if (SteamComponent)
-        {
-            const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
-            SteamComponent->SetRelativeLocation(FVector(0.f, 0.f, BoxExtent.Z));
+{
+    FVector LocalMin, LocalMax;
+    MeshComp->GetLocalBounds(LocalMin, LocalMax);   // 스케일 미반영 로컬 크기
+    // 큐브 윗면 중앙에 붙이기 (로컬 공간)
+    SteamComponent->SetRelativeLocation(FVector(0.f, 0.f, LocalMax.Z));
 
-            // ★ 큐브가 회전해도 수증기 컴포넌트는 항상 월드 기준 정방향 고정
-            SteamComponent->SetWorldRotation(FRotator::ZeroRotator);
-
-            SteamComponent->SetVariableFloat(
-                FName(TEXT("SpawnRate")),
-                FMath::Lerp(10.f, 100.f, MeltAlpha));
-        }
+    SteamComponent->SetWorldRotation(FRotator::ZeroRotator);
+    SteamComponent->SetVariableFloat(FName(TEXT("SpawnRate")),
+        FMath::Lerp(10.f, 100.f, MeltAlpha));
+}
     }
     else
     {

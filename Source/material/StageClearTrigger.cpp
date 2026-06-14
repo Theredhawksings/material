@@ -2,6 +2,7 @@
 #include "GameFramework/Character.h"
 #include "Generator.h"
 #include "IronSpawner.h"
+#include "AirConditioner.h"   // ★ 추가
 
 AStageClearTrigger::AStageClearTrigger()
 {
@@ -34,5 +35,12 @@ void AStageClearTrigger::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor
     {
         TargetSpawner->DeactivateSpawner();
     }
+
+    // ★ 에어컨 멈추기
+    if (TargetAircon)
+    {
+        TargetAircon->DeactivateAircon();
+    }
+
     TriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }

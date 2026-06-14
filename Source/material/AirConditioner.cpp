@@ -3,6 +3,8 @@
 #include "Components/SphereComponent.h"
 #include "Engine/Engine.h"
 #include "UObject/ConstructorHelpers.h"
+#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
 
 AAirConditioner::AAirConditioner()
 {
@@ -41,6 +43,35 @@ AAirConditioner::AAirConditioner()
     if (WireMatFinder.Succeeded())
         WireframeMeshComp->SetMaterial(0, WireMatFinder.Object);
 
+    // ★ 연기 이펙트 기본값 (얼음 수증기와 동일한 Smoke 사용)
+    static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SmokeFX(
+        TEXT("/Game/modeling/Effect/Smoke.Smoke"));
+    if (SmokeFX.Succeeded())
+        SmokeEffect = SmokeFX.Object;
+
+    // ★ 연기 노즐 9개 생성 (본체에 부착, 위치는 에디터에서 조정)
+    SmokeComponents.Reserve(NumSmokeNozzles);
+    for (int32 i = 0; i < NumSmokeNozzles; ++i)
+    {
+        const FString CompName = FString::Printf(TEXT("SmokeNozzle_%d"), i);
+        UNiagaraComponent* Nozzle =
+            CreateDefaultSubobject<UNiagaraComponent>(*CompName);
+
+        Nozzle->SetupAttachment(MeshComp);
+        Nozzle->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+        // 기본 위치를 살짝 흩어놓음 (어차피 에디터에서 옮길 예정)
+        Nozzle->SetRelativeLocation(FVector(0.f, 0.f, i * 5.f));
+
+        if (SmokeEffect)
+            Nozzle->SetAsset(SmokeEffect);
+
+        // 시작 시엔 자동 활성화하지 않음
+        Nozzle->bAutoActivate = false;
+
+        SmokeComponents.Add(Nozzle);
+    }
+
     Temperature = 0.f;
     CoolRate = 0.f;
 }
@@ -48,6 +79,9 @@ AAirConditioner::AAirConditioner()
 void AAirConditioner::BeginPlay()
 {
     Super::BeginPlay();
+
+    // 시작 시 연기 전부 꺼두기
+    SetSmokeActive(false);
 
     if (bAlwaysOn)
         ActivateAircon();
@@ -84,6 +118,14 @@ void AAirConditioner::Tick(float DeltaTime)
 
         GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Cyan, DebugMsg);
     }
+
+    if (bShowDebugShapes && HeatSphere)
+{
+    GEngine->AddOnScreenDebugMessage(
+        static_cast<int32>(GetUniqueID()) + 1, 0.f, FColor::Red,
+        FString::Printf(TEXT("[%s] MaxHeatDist: %.1f | SphereR: %.1f"),
+            *GetName(), MaxHeatDistance, HeatSphere->GetScaledSphereRadius()));
+}
 }
 
 void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
@@ -93,13 +135,37 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
     TArray<AActor*> OverlappingActors;
     HeatSphere->GetOverlappingActors(OverlappingActors);
 
+    static const FName StartHeatingName(TEXT("StartHeating"));
+    static const FName IsHeatingName(TEXT("IsHeating"));
+
     for (AActor* Actor : OverlappingActors)
     {
         if (!Actor || Actor == this) continue;
+        if (Actor->IsA<AAirConditioner>()) continue;
 
+        // ★ 얼음(또는 변신 블럭): StartHeating으로 자신을 가열원 등록
+        //    → 얼음 Tick의 CalcReceivedPower가 에어컨까지 거리로 녹는 양 계산
+        if (UFunction* StartFn = Actor->FindFunction(StartHeatingName))
+        {
+            bool bAlreadyHeating = false;
+            if (UFunction* CheckFn = Actor->FindFunction(IsHeatingName))
+            {
+                Actor->ProcessEvent(CheckFn, &bAlreadyHeating);
+            }
+
+            if (!bAlreadyHeating)
+            {
+                struct FArgs { ATemperature* FireRef; };
+                FArgs Args{ this };
+                Actor->ProcessEvent(StartFn, &Args);
+            }
+            // 얼음은 자기 Tick에서 알아서 녹으므로 여기선 추가 가열 불필요
+            continue;
+        }
+
+        // ── 그 외 일반 ATemperature 블럭: 기존 방식대로 직접 온도 주입 ──
         ATemperature* TempBlock = Cast<ATemperature>(Actor);
         if (!TempBlock) continue;
-        if (TempBlock->IsA<AAirConditioner>()) continue;
 
         const float ReceivedW = GetReceivedPowerW(
             TempBlock->GetActorLocation(),
@@ -123,12 +189,34 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
     }
 }
 
+void AAirConditioner::SetSmokeActive(bool bActive)
+{
+    for (UNiagaraComponent* Nozzle : SmokeComponents)
+    {
+        if (!Nozzle) continue;
+
+        if (bActive)
+        {
+            // 얼음 수증기와 동일하게 SpawnRate 변수 세팅
+            Nozzle->SetVariableFloat(FName(TEXT("SpawnRate")), SmokeSpawnRate);
+            Nozzle->Activate(true);
+        }
+        else
+        {
+            // 즉시 끊지 않고 완만하게 비활성화 (남은 입자는 자연 소멸)
+            Nozzle->Deactivate();
+        }
+    }
+}
+
 void AAirConditioner::ActivateAircon()
 {
     if (bIsRunning) return;
 
     bIsRunning = true;
     Temperature = HeatTemperature;
+
+    SetSmokeActive(true);   // ★ 연기 ON
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
         TEXT("[에어컨] 작동 시작 (ON)"));
@@ -141,6 +229,27 @@ void AAirConditioner::DeactivateAircon()
 
     bIsRunning = false;
     Temperature = 0.f;
+
+    SetSmokeActive(false);
+
+    // ★ 범위 안 얼음(및 모든 가열 대상)에게 StopHeating 전송
+    if (HeatSphere)
+    {
+        TArray<AActor*> OverlappingActors;
+        HeatSphere->GetOverlappingActors(OverlappingActors);
+
+        static const FName StopHeatingName(TEXT("StopHeating"));
+        for (AActor* Actor : OverlappingActors)
+        {
+            if (!Actor || Actor == this) continue;
+            if (Actor->IsA<AAirConditioner>()) continue;
+
+            if (UFunction* StopFn = Actor->FindFunction(StopHeatingName))
+            {
+                Actor->ProcessEvent(StopFn, nullptr);
+            }
+        }
+    }
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::White,
         TEXT("[에어컨] 작동 정지 (OFF)"));
