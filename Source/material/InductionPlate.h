@@ -42,7 +42,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
 	float WireConnectRadius = 80.f;
 
-	// 전력(V*I) → 온도 변환 비율
+	// 전력(V*I) → 온도 변환 비율 (낮게)
 	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
-	float WireHeatingRate = 2.0f;
+	float WireHeatingRate = 0.2f;
+
+	// 플레이트가 한 프레임에 오를 최대 온도 (급상승 방지)
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float PlateMaxRisePerCall = 1.0f;
+
+	// 자석/철이 한 프레임에 오를 최대 온도
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float BlockMaxRisePerCall = 1.5f;
+
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float PlateCoolingRatePerSec = 30.f;
 };

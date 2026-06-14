@@ -1,12 +1,10 @@
 #include "Coil.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
-#include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Wire.h"
-#include "InductionPlate.h"
-#include "UObject/ConstructorHelpers.h"
-
+#include "materialCharacter.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
 
 ACoil::ACoil()
@@ -25,43 +23,10 @@ ACoil::ACoil()
 	DetectionZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DetectionZone->SetCollisionResponseToAllChannels(ECR_Overlap);
 	DetectionZone->SetGenerateOverlapEvents(true);
-	DetectionZone->bDrawOnlyIfSelected = !bShowDebugShapes;
 	DetectionZone->ShapeColor = FColor::Cyan;
-	DetectionZone->SetHiddenInGame(!bShowDebugShapes);
-	DetectionZone->SetVisibility(bShowDebugShapes);
-
-	MagneticFieldSphere = CreateDefaultSubobject<USphereComponent>(TEXT("MagneticFieldSphere"));
-	MagneticFieldSphere->SetupAttachment(RootComponent);
-	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
-	MagneticFieldSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	MagneticFieldSphere->SetCollisionResponseToAllChannels(ECR_Overlap);
-	MagneticFieldSphere->SetGenerateOverlapEvents(true);
-	MagneticFieldSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
-	MagneticFieldSphere->ShapeColor = FColor::Blue;
-	MagneticFieldSphere->SetHiddenInGame(!bShowDebugShapes);
-	MagneticFieldSphere->SetVisibility(bShowDebugShapes);
-
-	BottomBlocker = CreateDefaultSubobject<UBoxComponent>(TEXT("BottomBlocker"));
-	BottomBlocker->SetupAttachment(RootComponent);
-	BottomBlocker->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	BottomBlocker->SetCollisionResponseToAllChannels(ECR_Block);
-	BottomBlocker->bDrawOnlyIfSelected = true;   // 에디터에서 선택 안 하면 와이어프레임 안 보임
-	BottomBlocker->ShapeColor = FColor::Red;
-	BottomBlocker->SetVisibility(true);
-	BottomBlocker->SetHiddenInGame(true);        // 인게임에서는 와이어프레임 안 보임 (대신 BottomPlateMesh가 보임)
-
-	// 인게임에서 실제로 보이는 판 메시 (BottomBlocker 위치에 부착)
-	BottomPlateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BottomPlateMesh"));
-	BottomPlateMesh->SetupAttachment(BottomBlocker);
-	BottomPlateMesh->SetRelativeLocation(FVector::ZeroVector);
-	BottomPlateMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 충돌은 BottomBlocker가 담당
-
-	// 기본 큐브 메시 자동 로드
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	if (CubeMeshFinder.Succeeded())
-	{
-		BottomPlateMesh->SetStaticMesh(CubeMeshFinder.Object);
-	}
+	DetectionZone->bDrawOnlyIfSelected = false;
+	DetectionZone->SetHiddenInGame(false);
+	DetectionZone->SetVisibility(true);
 }
 
 void ACoil::BeginPlay()
@@ -69,19 +34,7 @@ void ACoil::BeginPlay()
 	Super::BeginPlay();
 
 	DetectionZone->SetBoxExtent(DetectionBoxExtent);
-	MagneticFieldSphere->SetSphereRadius(MagneticFieldRadius);
 	BaseCoilLocation = GetActorLocation();
-
-	// 부착 액터들의 상대 오프셋 기록
-	AttachedOffsets.Empty();
-	for (AActor* A : AttachedActors)
-	{
-		if (A)
-			AttachedOffsets.Add(A->GetActorLocation() - BaseCoilLocation);
-		else
-			AttachedOffsets.Add(FVector::ZeroVector);
-	}
-
 	CoilMesh->SetSimulatePhysics(false);
 
 	ApplyDebugVisibility();
@@ -93,65 +46,178 @@ void ACoil::Tick(float DeltaTime)
 
 	if (!bCoilActive)
 	{
-		for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
-		{
-			if (AActor* Magnet = MagnetPtr.Get())
-			{
-				if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Magnet->GetRootComponent()))
-				{
-					if (Root->IsSimulatingPhysics())
-					{
-						Root->SetPhysicsLinearVelocity(FVector::ZeroVector);
-						Root->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-					}
-				}
-			}
-		}
-
-		DetectedMagnets.Empty();
+		MagnetsInside.Empty();
+		MagnetsInsideLastFrame.Empty();
 		CurrentEMF = 0.f;
-		OscillationTime = 0.f;
-		SetActorLocation(BaseCoilLocation, false);
-
-		// 꺼진 동안 전선이 켜져있으면 정리 (안전망)
 		ShutdownConnectedWires();
-
 		DebugVisualize();
 		return;
 	}
 
-	DetectMagnets();
-	ApplyOscillation(DeltaTime);
-	UpdateFieldRadius();
+	// 자석 넣었다 뺐다 감지 → EMF 충전
+	UpdateMagnetSensing();
+
+	// EMF 감쇠 (흔들기 멈추면 빨리 식음)
+	if (CurrentEMF > 0.f)
+		CurrentEMF = FMath::Max(CurrentEMF - EMFDecayRate * DeltaTime, 0.f);
+
+	// 코일이 자석 당기는 힘 (들고 있는 자석 제외)
 	ApplyMagneticForce();
+
 	DebugVisualize();
 	UpdateCircuit();
 }
 
-void ACoil::SetCoilActive(bool bNewActive)
+// ============================================================================
+//  자석이 DetectionZone 박스 안에 있는지 직접 검사 (충돌 무관, 위치로 판정)
+// ============================================================================
+bool ACoil::IsActorInsideZone(AActor* Actor) const
 {
-	if (bShutdown && bNewActive) return;   // ★ 영구 정지 후엔 ON 불가
-	if (bCoilActive == bNewActive) return;
-	bCoilActive = bNewActive;
-	UE_LOG(LogTemp, Log, TEXT("Coil [%s] -> %s"), *GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
+	if (!Actor || !DetectionZone) return false;
 
-	// 꺼질 때 전선 즉시 정리
-	if (!bCoilActive)
+	const FTransform ZoneXform = DetectionZone->GetComponentTransform();
+	const FVector LocalPos = ZoneXform.InverseTransformPosition(Actor->GetActorLocation());
+	const FVector Extent = DetectionBoxExtent;
+
+	return FMath::Abs(LocalPos.X) <= Extent.X
+		&& FMath::Abs(LocalPos.Y) <= Extent.Y
+		&& FMath::Abs(LocalPos.Z) <= Extent.Z;
+}
+
+// ============================================================================
+//  매 프레임 진입/이탈 판정 → "이탈" 순간에만 충전 (넣었다 뺐다 = 1회 발전)
+// ============================================================================
+void ACoil::UpdateMagnetSensing()
+{
+	if (bShutdown) return;
+
+	// ── 후보 수집 ──
+	TSet<AActor*> Candidates;
+
+	// (A) 플레이어가 손에 든 자석 (충돌 꺼져 있어도 직접 가져옴)
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 	{
-		ShutdownConnectedWires();
-		CurrentEMF = 0.f;
+		if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
+		{
+			if (AActor* Held = PlayerChar->GetHeldActor())
+			{
+				if (Held->ActorHasTag(MagnetTag))
+					Candidates.Add(Held);
+			}
+		}
+	}
+
+	// (B) 주변 자석 (바닥에 놓인 것 등)
+	{
+		FCollisionQueryParams Q(SCENE_QUERY_STAT(CoilMagnetSense), false);
+		Q.AddIgnoredActor(this);
+
+		TArray<FOverlapResult> Hits;
+		GetWorld()->OverlapMultiByObjectType(
+			Hits, DetectionZone->GetComponentLocation(), FQuat::Identity,
+			FCollisionObjectQueryParams::AllObjects,
+			FCollisionShape::MakeSphere(DetectionBoxExtent.GetMax() * 2.f), Q);
+
+		for (const FOverlapResult& H : Hits)
+		{
+			AActor* A = H.GetActor();
+			if (A && A->ActorHasTag(MagnetTag))
+				Candidates.Add(A);
+		}
+	}
+
+	// ── 진입/이탈 판정 ──
+	TSet<TWeakObjectPtr<AActor>> NowInside;
+	MagnetsInside.Empty();
+
+	for (AActor* Mag : Candidates)
+	{
+		const bool bInsideNow = IsActorInsideZone(Mag);
+
+		if (bInsideNow)
+		{
+			NowInside.Add(Mag);
+			MagnetsInside.Add(Mag);   // 당기는 힘/카운트용
+		}
+
+		const bool bWasInside = MagnetsInsideLastFrame.Contains(Mag);
+
+		// ★ 안→밖 (이탈) 순간에만 충전 = 넣었다 빼야 1회 발전
+		if (!bInsideNow && bWasInside)
+		{
+			CurrentEMF = FMath::Min(CurrentEMF + EMFPerSwing, MaxEMF);
+		}
+	}
+
+	MagnetsInsideLastFrame = NowInside;
+}
+
+// ============================================================================
+//  코일이 자석 당기는 힘 (플레이어가 든 자석은 제외)
+// ============================================================================
+void ACoil::ApplyMagneticForce()
+{
+	if (MagnetsInside.Num() == 0) return;
+
+	AActor* HeldByPlayer = nullptr;
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+		if (AmaterialCharacter* PlayerChar = Cast<AmaterialCharacter>(PC->GetPawn()))
+			HeldByPlayer = PlayerChar->GetHeldActor();
+
+	for (const TWeakObjectPtr<AActor>& MagnetPtr : MagnetsInside)
+	{
+		AActor* Magnet = MagnetPtr.Get();
+		if (!Magnet || Magnet == HeldByPlayer) continue;   // 들고 있으면 안 당김
+
+		UPrimitiveComponent* MagnetRoot = Cast<UPrimitiveComponent>(Magnet->GetRootComponent());
+		if (!MagnetRoot || !MagnetRoot->IsSimulatingPhysics()) continue;
+
+		const FVector Direction = GetActorLocation() - Magnet->GetActorLocation();
+		const float Distance = Direction.Size();
+		if (Distance < 1.f) continue;
+
+		const float ForceMag = MagneticForceStrength / (MagnetsInside.Num() * FMath::Max(Distance * Distance, 100.f));
+		MagnetRoot->AddForce(Direction.GetSafeNormal() * ForceMag, NAME_None, true);
 	}
 }
 
-void ACoil::ShutdownCoil()
+// ============================================================================
+//  전선 회로 — EMF 있으면 전압 공급, 없으면 차단
+// ============================================================================
+void ACoil::UpdateCircuit()
 {
-	if (bShutdown) return;
-	bShutdown = true;
+	if (!bCoilActive || CurrentEMF <= 0.f)
+	{
+		ShutdownConnectedWires();
+		return;
+	}
 
-	// 강제 OFF + 전선 정리
-	SetCoilActive(false);
+	FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilCircuit), false);
+	QParams.AddIgnoredActor(this);
 
-	UE_LOG(LogTemp, Log, TEXT("Coil [%s] SHUTDOWN - 영구 정지"), *GetName());
+	TArray<FOverlapResult> Hits;
+	GetWorld()->OverlapMultiByObjectType(
+		Hits, BaseCoilLocation, FQuat::Identity,
+		FCollisionObjectQueryParams::AllObjects,
+		FCollisionShape::MakeSphere(WireDetectRadius), QParams);
+
+	for (const FOverlapResult& H : Hits)
+	{
+		AWire* Wire = Cast<AWire>(H.GetActor());
+		if (!Wire) continue;
+
+		if (ConnectedWires.Contains(Wire))
+		{
+			Wire->SetBatteryVoltage(CurrentEMF);
+			continue;
+		}
+
+		Wire->SetBatterySource(true);
+		Wire->SetBatteryVoltage(CurrentEMF);
+		Wire->SetPowered(true);
+		Wire->RefreshConnectedActors();
+		ConnectedWires.Add(Wire);
+	}
 }
 
 void ACoil::ShutdownConnectedWires()
@@ -167,177 +233,66 @@ void ACoil::ShutdownConnectedWires()
 	ConnectedWires.Empty();
 }
 
-void ACoil::DetectMagnets()
+// ============================================================================
+//  켜기 / 끄기 / 영구 정지
+// ============================================================================
+void ACoil::SetCoilActive(bool bNewActive)
 {
-	DetectedMagnets.Empty();
-	if (!DetectionZone) return;
+	if (bShutdown && bNewActive) return;
+	if (bCoilActive == bNewActive) return;
+	bCoilActive = bNewActive;
+	UE_LOG(LogTemp, Log, TEXT("Coil [%s] -> %s"), *GetName(), bCoilActive ? TEXT("ON") : TEXT("OFF"));
 
-	TArray<FOverlapResult> Hits;
-	FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilDetect), false);
-	QParams.AddIgnoredActor(this);
-
-	GetWorld()->OverlapMultiByObjectType(
-		Hits,
-		BaseCoilLocation,
-		DetectionZone->GetComponentQuat(),
-		FCollisionObjectQueryParams::AllObjects,
-		FCollisionShape::MakeBox(DetectionBoxExtent),
-		QParams
-	);
-
-	for (const FOverlapResult& H : Hits)
+	if (!bCoilActive)
 	{
-		AActor* HitActor = H.GetActor();
-		if (!HitActor || HitActor == this) continue;
-		if (!HitActor->ActorHasTag(MagnetTag)) continue;
-
-		bool bAlreadyAdded = false;
-		for (const TWeakObjectPtr<AActor>& Existing : DetectedMagnets)
-		{
-			if (Existing.Get() == HitActor) { bAlreadyAdded = true; break; }
-		}
-		if (!bAlreadyAdded)
-		{
-			DetectedMagnets.Add(HitActor);
-		}
-	}
-
-	CurrentEMF = 0.f;
-	if (bCoilActive && HasMagnetInside())
-	{
-		const int32 Count = DetectedMagnets.Num();
-		const float ScaledSpeed = OscillationSpeed + (Count - 1) * SpeedPerExtraMagnet;
-		float TotalB = MagnetFieldStrengthTesla * Count;
-		float VelocityFactor = FMath::Abs(FMath::Cos(OscillationTime * ScaledSpeed));
-
-		float RadiusMeters = (CoilInnerDiameterCM / 100.f) / 2.f;
-		float Area = PI * RadiusMeters * RadiusMeters;
-
-		CurrentEMF = CoilWindings * TotalB * Area * ScaledSpeed * VelocityFactor;
+		ShutdownConnectedWires();
+		MagnetsInside.Empty();
+		MagnetsInsideLastFrame.Empty();
+		CurrentEMF = 0.f;
 	}
 }
 
-void ACoil::ApplyOscillation(float DeltaTime)
+void ACoil::ShutdownCoil()
 {
-	if (HasMagnetInside())
-	{
-		OscillationTime += DeltaTime;
-
-		const int32 Count = DetectedMagnets.Num();
-		const float ScaledAmplitude = OscillationAmplitude * Count;
-		const float ScaledSpeed = OscillationSpeed + (Count - 1) * SpeedPerExtraMagnet;
-
-		const float OffsetZ = FMath::Sin(OscillationTime * ScaledSpeed) * ScaledAmplitude;
-		const FVector NewLoc = BaseCoilLocation + FVector(0.f, 0.f, OffsetZ);
-		SetActorLocation(NewLoc, false);
-
-		MagneticFieldSphere->SetWorldLocation(BaseCoilLocation);
-
-		// 부착 액터들도 같은 위치 관계 유지하며 이동
-		for (int32 i = 0; i < AttachedActors.Num(); ++i)
-		{
-			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
-				AttachedActors[i]->SetActorLocation(NewLoc + AttachedOffsets[i], false);
-		}
-	}
-	else
-	{
-		OscillationTime = 0.f;
-		SetActorLocation(BaseCoilLocation, false);
-
-		// 멈출 때도 원위치로
-		for (int32 i = 0; i < AttachedActors.Num(); ++i)
-		{
-			if (AttachedActors[i] && AttachedOffsets.IsValidIndex(i))
-				AttachedActors[i]->SetActorLocation(BaseCoilLocation + AttachedOffsets[i], false);
-		}
-	}
+	if (bShutdown) return;
+	bShutdown = true;
+	SetCoilActive(false);
+	UE_LOG(LogTemp, Log, TEXT("Coil [%s] SHUTDOWN - 영구 정지"), *GetName());
 }
 
-void ACoil::UpdateFieldRadius()
-{
-	const float DynamicRadius = HasMagnetInside()
-		? MagneticFieldRadius + (DetectedMagnets.Num() - 1) * FieldRadiusPerMagnet
-		: MagneticFieldRadius;
-
-	MagneticFieldSphere->SetSphereRadius(DynamicRadius);
-}
-
-void ACoil::ApplyMagneticForce()
-{
-	if (!HasMagnetInside()) return;
-
-	for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
-	{
-		AActor* Magnet = MagnetPtr.Get();
-		if (!Magnet) continue;
-
-		UPrimitiveComponent* MagnetRoot = Cast<UPrimitiveComponent>(Magnet->GetRootComponent());
-		if (!MagnetRoot || !MagnetRoot->IsSimulatingPhysics()) continue;
-
-		const FVector Direction = BaseCoilLocation - Magnet->GetActorLocation();
-		const float Distance = Direction.Size();
-		if (Distance < 1.f) continue;
-
-		const float ForceMag = MagneticForceStrength / (DetectedMagnets.Num() * FMath::Max(Distance * Distance, 100.f));
-		const FVector Force = Direction.GetSafeNormal() * ForceMag;
-
-		MagnetRoot->AddForce(Force, NAME_None, true);
-	}
-}
-
+// ============================================================================
+//  디버그
+// ============================================================================
 void ACoil::DebugVisualize()
 {
 #if ENABLE_DRAW_DEBUG
 	if (!bDebugDraw) return;
 
-	const bool bActive = bCoilActive && HasMagnetInside();
+	const FVector ZoneLoc    = DetectionZone->GetComponentLocation();
+	const FQuat   ZoneQuat   = DetectionZone->GetComponentQuat();
+	const FVector ZoneExtent = DetectionZone->GetScaledBoxExtent();
 
+	FColor ZoneColor;
+	if (!bCoilActive)        ZoneColor = FColor(40, 40, 40);
+	else if (CurrentEMF > 0) ZoneColor = FColor::Green;
+	else                     ZoneColor = FColor::Red;
+
+	DrawDebugBox(GetWorld(), ZoneLoc, ZoneExtent, ZoneQuat, ZoneColor, false, 0.f, 0, 3.f);
+
+	FString Status;
 	if (!bCoilActive)
-	{
-		DrawDebugBox(GetWorld(), BaseCoilLocation,
-			DetectionBoxExtent, DetectionZone->GetComponentQuat(),
-			FColor(40, 40, 40), false, 0.f, 0, 2.f);
+		Status = bShutdown ? TEXT("Coil DISABLED") : TEXT("Coil OFF");
+	else
+		Status = FString::Printf(TEXT("Magnets: %d | EMF: %.1f V"), MagnetsInside.Num(), CurrentEMF);
 
-		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
-			bShutdown ? TEXT("Coil DISABLED") : TEXT("Coil OFF"),
-			nullptr, FColor::Silver, 0.f, true);
-		return;
-	}
-
-	const FColor BoxColor = bActive ? FColor::Green : FColor::Red;
-	DrawDebugBox(GetWorld(), BaseCoilLocation,
-		DetectionBoxExtent, DetectionZone->GetComponentQuat(),
-		BoxColor, false, 0.f, 0, 2.f);
-
-	const float CurrentRadius = MagneticFieldSphere->GetScaledSphereRadius();
-	const FColor SphereColor = bActive ? FColor::Blue : FColor(80, 80, 80);
-	DrawDebugSphere(GetWorld(), BaseCoilLocation,
-		CurrentRadius, 24, SphereColor, false, 0.f, 0, 1.f);
-
-	if (bActive)
-	{
-		DrawDebugString(GetWorld(), BaseCoilLocation + FVector(0.f, 0.f, 60.f),
-			FString::Printf(TEXT("Magnets: %d | EMF: %.2f V | N: %d"),
-				DetectedMagnets.Num(), CurrentEMF, CoilWindings),
-			nullptr, FColor::Green, 0.f, true);
-	}
-
-	for (const TWeakObjectPtr<AActor>& MagnetPtr : DetectedMagnets)
-	{
-		if (AActor* M = MagnetPtr.Get())
-		{
-			DrawDebugDirectionalArrow(GetWorld(),
-				M->GetActorLocation(), BaseCoilLocation,
-				20.f, FColor::Yellow, false, 0.f, 0, 2.f);
-		}
-	}
+	DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 80.f),
+		Status, nullptr,
+		(bCoilActive && CurrentEMF > 0) ? FColor::Green : FColor::Yellow, 0.f, true);
 #endif
 }
 
 void ACoil::ApplyDebugVisibility()
 {
-	// DetectionZone 가시성
 	if (DetectionZone)
 	{
 		DetectionZone->SetHiddenInGame(!bShowDebugShapes);
@@ -345,17 +300,6 @@ void ACoil::ApplyDebugVisibility()
 		DetectionZone->bDrawOnlyIfSelected = !bShowDebugShapes;
 		DetectionZone->MarkRenderStateDirty();
 	}
-
-	// MagneticFieldSphere 가시성
-	if (MagneticFieldSphere)
-	{
-		MagneticFieldSphere->SetHiddenInGame(!bShowDebugShapes);
-		MagneticFieldSphere->SetVisibility(bShowDebugShapes);
-		MagneticFieldSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
-		MagneticFieldSphere->MarkRenderStateDirty();
-	}
-
-	// BottomBlocker는 항상 보이므로 여기서 제어하지 않음
 }
 
 #if WITH_EDITOR
@@ -368,45 +312,9 @@ void ACoil::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 		: NAME_None;
 
 	if (PropName == GET_MEMBER_NAME_CHECKED(ACoil, bShowDebugShapes))
-	{
 		ApplyDebugVisibility();
-	}
+
+	if (PropName == GET_MEMBER_NAME_CHECKED(ACoil, DetectionBoxExtent) && DetectionZone)
+		DetectionZone->SetBoxExtent(DetectionBoxExtent);
 }
 #endif
-
-void ACoil::UpdateCircuit()
-{
-    // EMF 없을 때만 끄기 (매 틱 껐다켰다 금지)
-    if (!bCoilActive || CurrentEMF <= 0.f)
-    {
-        ShutdownConnectedWires();
-        return;
-    }
-
-    FCollisionQueryParams QParams(SCENE_QUERY_STAT(CoilCircuit), false);
-    QParams.AddIgnoredActor(this);
-
-    TArray<FOverlapResult> Hits;
-    GetWorld()->OverlapMultiByObjectType(
-        Hits, BaseCoilLocation, FQuat::Identity,
-        FCollisionObjectQueryParams::AllObjects,
-        FCollisionShape::MakeSphere(WireDetectRadius), QParams);
-
-    for (const FOverlapResult& H : Hits)
-    {
-        AWire* Wire = Cast<AWire>(H.GetActor());
-        if (!Wire) continue;
-
-        if (ConnectedWires.Contains(Wire))
-        {
-            Wire->SetBatteryVoltage(CurrentEMF);  // 이미 연결됨 → 전압만 갱신
-            continue;
-        }
-
-        Wire->SetBatterySource(true);
-        Wire->SetBatteryVoltage(CurrentEMF);
-        Wire->SetPowered(true);
-        Wire->RefreshConnectedActors();   // 타이머 안 기다리고 즉시 회로 풀기
-        ConnectedWires.Add(Wire);
-    }
-}

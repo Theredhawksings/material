@@ -402,7 +402,7 @@ void AWire::RefreshConnectedActors()
         TArray<AActor*> Overlapping;
         ConnectionSphere->GetOverlappingActors(Overlapping);
 
-        UE_LOG(LogTemp, Warning, TEXT("[%s] 시작점 감지 수: %d"), *GetName(), Overlapping.Num());
+        //UE_LOG(LogTemp, Warning, TEXT("[%s] 시작점 감지 수: %d"), *GetName(), Overlapping.Num());
 
 
         for (AActor* A : Overlapping)
@@ -428,11 +428,11 @@ void AWire::RefreshConnectedActors()
         {
             // ★ 블럭 감지 로그
             ATransformation_actor* Block = Cast<ATransformation_actor>(A);
-            UE_LOG(LogTemp, Warning, TEXT("  시작점 블럭: %s Electrified:%d V:%.2f SourceWire:%d"),
+            /*UE_LOG(LogTemp, Warning, TEXT("  시작점 블럭: %s Electrified:%d V:%.2f SourceWire:%d"),
                 *A->GetName(),
                 Block ? (Block->IsElectrified() ? 1 : 0) : -1,
                 Block ? Block->GetEffectiveVoltage() : -1.f,
-                SourceWire != nullptr ? 1 : 0);
+                SourceWire != nullptr ? 1 : 0);*/
 
             if (SourceWire != nullptr)
                 continue;
@@ -662,16 +662,16 @@ if (ConnectionSphereEnd)
     TArray<AActor*> Overlapping;
     ConnectionSphereEnd->GetOverlappingActors(Overlapping);
 
-    UE_LOG(LogTemp, Warning, TEXT("[%s] 끝점 감지 수: %d"), *GetName(), Overlapping.Num());
+    //UE_LOG(LogTemp, Warning, TEXT("[%s] 끝점 감지 수: %d"), *GetName(), Overlapping.Num());
 
     for (AActor* A : Overlapping)
     {
         if (!A || A == this) continue;
 
-        UE_LOG(LogTemp, Warning, TEXT("  끝점에 닿음: %s (Metal:%d Copper:%d)"),
-            *A->GetName(),
+        /*UE_LOG(LogTemp, Warning, TEXT("  끝점에 닿음: %s (Metal:%d Copper:%d)"),
+            A->GetName(),
             A->ActorHasTag(FName("Metal")) ? 1 : 0,
-            A->ActorHasTag(FName("Copper")) ? 1 : 0);
+            A->ActorHasTag(FName("Copper")) ? 1 : 0);*/
 
         if (AWire* DownWire = Cast<AWire>(A))
             ConnectedWires.AddUnique(DownWire);
@@ -715,28 +715,25 @@ void AWire::ApplyPower()
 
 void AWire::UpdateWireVisual()
 {
-
-    if (!bPoweredFinal)
-    {
-        for (UMaterialInstanceDynamic* MID : SegmentMIDs)
-            if (MID) MID->SetScalarParameterValue(WireHeatParamName, 0.f);
-        return;
-    }
-
-    const float Alpha     = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
+    // ★ 전원 여부와 무관하게 항상 온도 기준으로 스텐실 계산
     const float TempRatio = FMath::Clamp(
         (WireTemperatureC - AmbientTemperatureC) / (MaxWireTemperatureC - AmbientTemperatureC),
         0.f, 1.f);
     const int32 StencilVal = FMath::RoundToInt(TempRatio * 255.f);
+    const float Alpha = FMath::Clamp(WireTemperatureC * WireTempVisualScale, 0.f, 1.f);
 
-    if (StencilVal == CachedWireStencilValue && FMath::Abs(Alpha - CachedWireHeatAlpha) < 0.001f) return;
     CachedWireHeatAlpha    = Alpha;
     CachedWireStencilValue = StencilVal;
 
     for (UMaterialInstanceDynamic* MID : SegmentMIDs)
         if (MID) MID->SetScalarParameterValue(WireHeatParamName, Alpha);
+
     for (USplineMeshComponent* Mesh : SegmentMeshes)
-        if (Mesh) Mesh->SetCustomDepthStencilValue(StencilVal);
+        if (Mesh)
+        {
+            Mesh->SetRenderCustomDepth(StencilVal > 0);   // 식으면 자동으로 꺼짐
+            Mesh->SetCustomDepthStencilValue(StencilVal);
+        }
 }
 
 void AWire::ApplyDebugVisibility()
