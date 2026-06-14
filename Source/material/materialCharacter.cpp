@@ -18,6 +18,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Sound/SoundBase.h"
+#include "Components/AudioComponent.h"
 #include "Blueprint/UserWidget.h"
 
 AmaterialCharacter::AmaterialCharacter()
@@ -150,6 +152,28 @@ AmaterialCharacter::AmaterialCharacter()
 		if (AnimAsset.Succeeded())
 			*Loader.Target = AnimAsset.Object;
 	}
+	struct FSoundLoader
+	{
+		const TCHAR *Path;
+		TObjectPtr<USoundBase> *Target;
+	};
+	const FSoundLoader SoundAssets[] = {
+		{TEXT("SoundWave'/Game/Sound/sound_jumping.sound_jumping'"),   &JumpSound},
+		{TEXT("SoundWave'/Game/Sound/sound_shooting.sound_shooting'"), &ShootSound},
+		{TEXT("SoundWave'/Game/Sound/sound_touch_pad.sound_touch_pad'"), &TouchPadSound},
+		{TEXT("SoundWave'/Game/Sound/sound_walking.sound_walking'"),   &WalkSound},
+	};
+	for (const FSoundLoader &Loader : SoundAssets)
+	{
+		ConstructorHelpers::FObjectFinder<USoundBase> SoundAsset(Loader.Path);
+		if (SoundAsset.Succeeded())
+			*Loader.Target = SoundAsset.Object;
+	}
+
+	// 걷기 루프용 오디오 컴포넌트 (재생/정지 제어 위해 컴포넌트로)
+	WalkAudioComp = CreateDefaultSubobject<UAudioComponent>(TEXT("WalkAudioComp"));
+	WalkAudioComp->SetupAttachment(RootComponent);
+	WalkAudioComp->bAutoActivate = false; // 시작 시 자동 재생 X
 
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_DefaultAsset(
 		TEXT("InputMappingContext'/Game/Input/IMC_Default.IMC_Default'"));
@@ -343,7 +367,13 @@ void AmaterialCharacter::Look(const FInputActionValue &Value)
 	AddControllerPitchInput(Axis.Y);
 }
 
-void AmaterialCharacter::JumpStarted() { Jump(); }
+void AmaterialCharacter::JumpStarted()
+{
+	Jump();
+	if (JumpSound)
+		UGameplayStatics::PlaySound2D(this, JumpSound);
+}
+
 void AmaterialCharacter::JumpStopped() { StopJumping(); }
 
 void AmaterialCharacter::ChangeForm()
@@ -361,8 +391,17 @@ void AmaterialCharacter::ChangeForm()
 	{
 		GetMesh()->PlayAnimation(UseEAnim, false);
 		bIsPickingUp = true;
+
+		// 애니 재생 후 0.2초 뒤에 터치패드 사운드
+		FTimerHandle TouchSoundHandle;
+		GetWorld()->GetTimerManager().SetTimer(TouchSoundHandle, [this]()
+		{
+			if (TouchPadSound)
+				UGameplayStatics::PlaySound2D(this, TouchPadSound);
+		}, 0.2f, false);
+
 		GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-											   &AmaterialCharacter::OnUseEAnimFinished, UseEAnim->GetPlayLength(), false);
+			&AmaterialCharacter::OnUseEAnimFinished, UseEAnim->GetPlayLength(), false);
 	}
 	else
 	{
@@ -411,29 +450,15 @@ void AmaterialCharacter::HoldPressed()
 
 void AmaterialCharacter::OnLeftClick()
 {
-	if (bRadialMenuOpen)
-	{
-		CloseRadialMenu(true);
-		return;
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[Click] 진입 menuOpen=%d paused=%d captured=%d loaded=%d"),
+		bRadialMenuOpen, bGamePaused, bMouseCaptured, bHasLoadedForm);
 
-	static bool bIsProcessing = false;
-	if (bIsProcessing)
-		return;
-	bIsProcessing = true;
+	if (bRadialMenuOpen) { CloseRadialMenu(true); return; }
 
 	APlayerController *PC = Cast<APlayerController>(GetController());
-	if (!PC)
-	{
-		bIsProcessing = false;
-		return;
-	}
+	if (!PC) return;
 
-	if (bGamePaused)
-	{
-		PC->SetPause(false);
-		bGamePaused = false;
-	}
+	if (bGamePaused) { PC->SetPause(false); bGamePaused = false; }
 
 	if (!bMouseCaptured)
 	{
@@ -441,9 +466,19 @@ void AmaterialCharacter::OnLeftClick()
 		FInputModeGameOnly InputMode;
 		PC->SetInputMode(InputMode);
 		bMouseCaptured = true;
+		UE_LOG(LogTemp, Warning, TEXT("[Click] 마우스 재캡처만 함 - 이번 클릭은 발사 안 함"));
+		return;
 	}
 
-	bIsProcessing = false;
+	if (bHasLoadedForm)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Click] 발사!"));
+		FireMaterialShot();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Click] 장전된 것 없음"));
+	}
 }
 
 bool AmaterialCharacter::TryPickup()
@@ -749,6 +784,20 @@ void AmaterialCharacter::UpdateAnimation()
 	if (bWasHolding != bHolding || bMoving != bIsPlayingWalk)
 	{
 		PlayAnimIfValid(GetAnimForState(bMoving, bHolding), true);
+
+		if (WalkAudioComp && WalkSound)
+		{
+			if (bMoving && !bIsPlayingWalk)        // 멈춤 → 이동: 재생 시작
+			{
+				WalkAudioComp->SetSound(WalkSound);
+				WalkAudioComp->Play();
+			}
+			else if (!bMoving && bIsPlayingWalk)   // 이동 → 멈춤: 정지
+			{
+				WalkAudioComp->Stop();
+			}
+		}
+
 		bWasHolding = bHolding;
 		bIsPlayingWalk = bMoving;
 	}
@@ -947,8 +996,7 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 
 	RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
 
-	APlayerController *PC = Cast<APlayerController>(GetController());
-	if (PC)
+	if (APlayerController *PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = false;
 		FInputModeGameOnly InputMode;
@@ -956,54 +1004,19 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 		bMouseCaptured = true;
 	}
 
-	if (bConfirm && FollowCamera)
+	// 확정 클릭이면 현재 가리키는 머터리얼을 "장전"만 한다 (대상 적용은 발사 때)
+	if (bConfirm)
 	{
-		const FVector Start = GetActorLocation() + FVector(0.f, 0.f, 60.f);
-		const FVector TraceDir = FollowCamera->GetForwardVector();
-		const FVector End = Start + (TraceDir * InteractRange);
-		FHitResult Hit;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(ChangeForm), false, this);
-
-		bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-													 ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params);
-
-		FColor DrawColor = bHit ? FColor::Green : FColor::Red;
-
-		DrawDebugSphere(GetWorld(), Start, InteractSphereRadius, 12, FColor::Blue, false, 3.0f);
-		DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 3.0f);
-		DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 3.0f, 0, 2.0f);
-
-		if (bHit && Hit.GetActor())
+		EBlockForm SelForm;
+		if (RadialMenuWidget->GetSelectedForm(SelForm))
 		{
-			DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.0f, FColor::Yellow, false, 3.0f);
-
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-												 FString::Printf(TEXT("충돌한 물체: %s"), *Hit.GetActor()->GetName()));
-			}
+			LoadedForm = SelForm;
+			bHasLoadedForm = true;
+			UE_LOG(LogTemp, Warning, TEXT("[RadialMenu] 머터리얼 장전: %d"), (int32)SelForm);
 		}
-
-		if (bHit)
+		else
 		{
-			if (ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor()))
-			{
-				RadialMenuWidget->TargetActor = TransformActor;
-
-				if (UseLeftAnim && GetMesh())
-				{
-					GetMesh()->PlayAnimation(UseLeftAnim, false);
-					bIsPickingUp = true;
-					bRadialMenuOpen = false;
-					GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
-														   &AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
-					return;
-				}
-				else
-				{
-					RadialMenuWidget->ConfirmSelection();
-				}
-			}
+			UE_LOG(LogTemp, Warning, TEXT("[RadialMenu] 데드존/미선택 - 장전 안 됨"));
 		}
 	}
 
@@ -1020,10 +1033,10 @@ void AmaterialCharacter::OnUseEAnimFinished()
 
 void AmaterialCharacter::OnUseLeftAnimFinished()
 {
-	if (RadialMenuWidget)
+	if (PendingShotTarget)
 	{
-		RadialMenuWidget->ConfirmSelection();
-		RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+		ApplyLoadedFormTo(PendingShotTarget);
+		PendingShotTarget = nullptr;
 	}
 
 	bRadialMenuOpen = false;
@@ -1250,4 +1263,109 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 		GEngine->AddOnScreenDebugMessage(3, 0.f, FColor::Magenta,
 										 FString::Printf(TEXT("감지된 Magnet: %d개"), MagnetCount));
 	}
+}
+
+void AmaterialCharacter::FireMaterialShot()
+{
+	if (!bHasLoadedForm || !FollowCamera)
+		return;
+	if (bIsPickingUp || bIsUsingSyringe)
+		return;
+
+	// ★ 조금 더 높은 위치에서 발사
+	const FVector Start = GetActorLocation() + FVector(0.f, 0.f, ShootHeightOffset);
+	const FVector TraceDir = FollowCamera->GetForwardVector();
+	const FVector End = Start + (TraceDir * InteractRange);
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(MaterialShot), false, this);
+	const bool bHit = GetWorld()->SweepSingleByChannel(
+		Hit, Start, End, FQuat::Identity, ECC_Visibility,
+		FCollisionShape::MakeSphere(InteractSphereRadius), Params);
+
+	// 디버그(판정 확인용)
+	const FColor DrawColor = bHit ? FColor::Green : FColor::Red;
+	DrawDebugSphere(GetWorld(), Start, 10.f, 12, FColor::White, false, 2.0f);
+	DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 2.0f);
+	DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 2.0f, 0, 2.0f);
+
+	if (!bHit)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] NO HIT"));
+		return;
+	}
+
+	ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor());
+	if (!TransformActor)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] HIT but not Transformation_actor: %s"),
+			   *Hit.GetActor()->GetName());
+		return;
+	}
+
+	DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.f, FColor::Yellow, false, 2.0f);
+	PendingShotTarget = TransformActor;
+
+
+	// 발사 애니메이션 → 끝나는 시점에 적용
+if (UseLeftAnim && GetMesh())
+	{
+		GetMesh()->PlayAnimation(UseLeftAnim, false);
+		bIsPickingUp = true;
+
+		// 애니 재생 시작 후 0.3초 뒤에 사운드 + 머터리얼 적용
+		FTimerHandle ShotApplyHandle;
+		GetWorld()->GetTimerManager().SetTimer(ShotApplyHandle, [this]()
+		{
+			if (ShootSound)
+				UGameplayStatics::PlaySound2D(this, ShootSound);
+			if (PendingShotTarget)
+			{
+				ApplyLoadedFormTo(PendingShotTarget);
+				PendingShotTarget = nullptr;
+			}
+		}, 0.3f, false);
+
+		// 애니 끝나면 상태 복구만
+		GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
+			&AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
+	}
+	else
+	{
+		ApplyLoadedFormTo(PendingShotTarget);
+		PendingShotTarget = nullptr;
+	}
+}
+
+FName AmaterialCharacter::FormToTag(EBlockForm Form)
+{
+	switch (Form)
+	{
+	case EBlockForm::Rubber: return TEXT("Rubber");
+	case EBlockForm::Metal:  return TEXT("Metal");
+	case EBlockForm::Ice:    return TEXT("Ice");
+	case EBlockForm::Wood:   return TEXT("Wood");
+	case EBlockForm::Magnet: return TEXT("Magnet");
+	case EBlockForm::Copper: return TEXT("Copper");
+	default:                 return NAME_None;
+	}
+}
+
+void AmaterialCharacter::ApplyLoadedFormTo(ATransformation_actor *Target)
+{
+	if (!Target || !bHasLoadedForm)
+		return;
+	if (Target->GetCurrentForm() == LoadedForm)
+		return;
+
+	const FName Tag = FormToTag(LoadedForm);
+	if (Tag.IsNone())
+		return;
+
+	// 게이지 0이면 적용 막고 싶으면 아래 주석 해제
+	// if (GetGaugeByTag(Tag) <= 0) return;
+
+	Target->SetForm(LoadedForm);
+	DecreaseGaugeForMaterial(Tag);
+	UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] 적용 %s -> %s"), *Target->GetName(), *Tag.ToString());
 }

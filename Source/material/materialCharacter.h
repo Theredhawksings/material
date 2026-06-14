@@ -118,7 +118,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Pickup") TArray<FName> PickupTags;
 	UPROPERTY(EditAnywhere, Category = "Pickup") FName HoldSocketName = TEXT("hand_RSocket");
 	UPROPERTY(EditAnywhere, Category = "Equipment") FName ArmSocketName2 = TEXT("hand_LSocket");
-	UPROPERTY(EditAnywhere, Category = "Pickup") float PickupRange = 500.f;
+	UPROPERTY(EditAnywhere, Category = "Pickup") float PickupRange = 400.f;
 	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldDistance = 85.f; 
 	UPROPERTY(EditAnywhere, Category = "Pickup") float HoldHeight = 65.f;   
 	UPROPERTY(EditAnywhere, Category = "Pickup|Offset") FVector HoldExtraLocalOffset_Idle = FVector::ZeroVector;
@@ -240,4 +240,26 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetScanRange = 300.f;
 	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetForceStrength = 150.f;
 	UPROPERTY(EditAnywhere, Category = "Magnetism") float MagnetMaxVelocity = 80.f;
+
+	// 머터리얼 장전(저장) 상태
+	EBlockForm LoadedForm = EBlockForm::Ice;
+	bool bHasLoadedForm = false;
+
+	UPROPERTY()
+	TObjectPtr<ATransformation_actor> PendingShotTarget = nullptr;
+
+	// ★ 발사 레이저 시작 높이 (값 키우면 더 위에서 쏨)
+	UPROPERTY(EditAnywhere, Category = "Material Shoot")
+	float ShootHeightOffset = 120.f;
+
+	void FireMaterialShot();
+	void ApplyLoadedFormTo(ATransformation_actor* Target);
+	static FName FormToTag(EBlockForm Form);
+
+	UPROPERTY() TObjectPtr<USoundBase> JumpSound;
+	UPROPERTY() TObjectPtr<USoundBase> ShootSound;
+	UPROPERTY() TObjectPtr<USoundBase> TouchPadSound;
+	UPROPERTY() TObjectPtr<USoundBase> WalkSound;
+
+	UPROPERTY() TObjectPtr<UAudioComponent> WalkAudioComp; 
 };

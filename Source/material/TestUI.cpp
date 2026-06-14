@@ -118,3 +118,11 @@ void UTestUI::ConfirmSelection()
     TargetActor->SetForm(NewForm);
     Player->DecreaseGaugeForMaterial(Tag);
 }
+
+bool UTestUI::GetSelectedForm(EBlockForm& OutForm) const
+{
+	if (PreviousIndex < 0 || PreviousIndex > 5)
+		return false;
+	OutForm = IndexToForm(PreviousIndex);
+	return true;
+}
