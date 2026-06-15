@@ -6,6 +6,7 @@
 #include "Generator.generated.h"
 
 class UStaticMeshComponent;
+class UBoxComponent;
 class AWire;
 class AMagnet;
 
@@ -17,7 +18,6 @@ class MATERIAL_API AGenerator : public AActor
 public:
     AGenerator();
 
-    // ★ CoilGun이 직접 읽을 수 있도록 public으로
     UFUNCTION(BlueprintCallable, Category = "Generator")
     float GetCurrentEMF() const { return CurrentEMF; }
 
@@ -25,7 +25,7 @@ public:
     bool IsCurrentPositive() const { return bCurrentPositive; }
 
     UFUNCTION(BlueprintCallable, Category = "Generator")
-    void ActivateGenerator() { bGeneratorActive = true; }
+    void ActivateGenerator()   { bGeneratorActive = true;  }
 
     UFUNCTION(BlueprintCallable, Category = "Generator")
     void DeactivateGenerator() { bGeneratorActive = false; }
@@ -38,14 +38,38 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "Generator")
     TObjectPtr<USceneComponent> Root;
 
+    // 회전하는 발전기 본체. AssignedWires를 여기에 붙여서 같이 돌림.
     UPROPERTY(VisibleAnywhere, Category = "Generator")
     TObjectPtr<UStaticMeshComponent> GeneratorMesh;
+
+    // ★ 출력 박스: 에디터에서 도넛 옆으로 위치 이동 가능.
+    //   이 박스 안에 전선의 시작점(ConnectionSphere)이 들어오면
+    //   발전기 전기값을 그 전선으로 중계함.
+    UPROPERTY(VisibleAnywhere, Category = "Generator|OutputBox")
+    TObjectPtr<UBoxComponent> OutputBox;
+
+    // ★ 체크박스: ON + 발전 중일 때 OutputBox가 전기를 중계함
+    UPROPERTY(EditAnywhere, Category = "Generator|OutputBox")
+    bool bCoilOutputEnabled = true;
+
+    // ★ 발전기 본체에 붙어서 같이 회전하는 전선들 (발전기 입력 전선)
+    //   이 전선들에는 발전기가 직접 전기를 공급함
+    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
+    TArray<TObjectPtr<AWire>> AssignedWires;
+
+    // true면 AssignedWires를 GeneratorMesh에 부착해 같이 회전
+    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
+    bool bRotateConnectedWires = true;
 
     UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
     float MagnetDetectRadius = 1500.f;
 
     UPROPERTY(EditAnywhere, Category = "Generator|Coil")
     float RotationSpeed = 180.f;
+
+    // 회전축 마스크 (기본 Yaw)
+    UPROPERTY(EditAnywhere, Category = "Generator|Coil")
+    FRotator SpinAxisMask = FRotator(0.f, 1.f, 0.f);
 
     UPROPERTY(EditAnywhere, Category = "Generator|EMF")
     int32 CoilWindings = 100;
@@ -55,12 +79,6 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Generator|EMF")
     float MinEMFThreshold = 0.1f;
-
-    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
-    float WireDetectRadius = 200.f;
-
-    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
-    FVector WireDetectOffset = FVector::ZeroVector;
 
     UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
     float CurrentEMF = 0.f;
@@ -80,8 +98,9 @@ private:
     UPROPERTY()
     TObjectPtr<AMagnet> SouthMagnet;
 
+    // OutputBox에서 현재 전기를 받고 있는 전선 목록 (자동 관리)
     UPROPERTY()
-    TArray<TObjectPtr<AWire>> ConnectedWires;
+    TArray<TObjectPtr<AWire>> BoxPoweredWires;
 
     void DetectMagnets();
     void UpdateEMF(float DeltaTime);
