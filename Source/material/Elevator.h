@@ -7,18 +7,81 @@
 #include "Elevator.generated.h"
 
 class UBoxComponent;
+class UStaticMeshComponent;
+class USceneComponent;
+
+UENUM()
+enum class EElevatorState : uint8
+{
+    Idle,
+    DoorOpening,
+    Boarding,
+    DoorClosing,
+    Done,
+    ArrivalOpening,
+    Disabled // [추가] 영구 정지 상태
+};
 
 UCLASS()
 class MATERIAL_API AElevator : public AActor
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	AElevator();
+    AElevator();
+    virtual void Tick(float DeltaTime) override;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Move")
+    FVector DestinationLocation = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Door")
+    float DoorClosedYaw = 0.f;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Door")
+    float DoorOpenYaw = 90.f;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Door")
+    float DoorMoveDuration = 1.5f;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Timing")
+    float BoardingTime = 3.f;
+
+    // [수정] 엘리베이터 이동 시간 (기존 TeleportDelay) -> 여유 있게 3초로 변경
+    UPROPERTY(EditAnywhere, Category = "Elevator|Timing")
+    float TravelTime = 3.0f;
+
+    // 디버그 메시지 on/off
+    UPROPERTY(EditAnywhere, Category = "Elevator|Debug")
+    bool bDebug = true;
 
 protected:
-	virtual void BeginPlay() override;
+    virtual void BeginPlay() override;
 
-	UPROPERTY(VisibleAnywhere, Category = "Elevator")
-	TObjectPtr<UBoxComponent> TriggerBox;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> SceneRoot;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Door1;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> DoorL;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> DoorR;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UBoxComponent> TriggerBox;
+
+    UFUNCTION()
+    void OnTriggerBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+        bool bFromSweep, const FHitResult& SweepResult);
+
+    void CloseDoors();
+    void TeleportPlayer();
+    void SetDoorYaw(float Yaw);
+
+    // 화면 + 로그 출력 헬퍼
+    void DebugMsg(const FString& Msg, const FColor& Color = FColor::Green);
+
+    EElevatorState State = EElevatorState::Idle;
+    float PhaseElapsed = 0.f;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> Passenger;
+
+    FTimerHandle BoardTimer;
+    FTimerHandle TeleportTimer;
 };
