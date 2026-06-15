@@ -43,6 +43,7 @@ AMagnet::AMagnet()
 void AMagnet::BeginPlay()
 {
     Super::BeginPlay();
+    UE_LOG(LogTemp, Warning, TEXT("[Magnet] BeginPlay 진입! bShowFieldArrows=%d"), bShowFieldArrows ? 1 : 0);
 
     if (bAutoComputeStrength)
     {
@@ -69,17 +70,15 @@ void AMagnet::BeginPlay()
     // ★ Arrow 스폰 (1초 딜레이)
     if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
     {
-        FTimerHandle SpawnTimer;
-        GetWorldTimerManager().SetTimer(SpawnTimer, [this]()
-        {
-            SpawnArrowEffect();
-        }, 1.0f, false);
+        SpawnArrowEffect();
     }
 }
 
 // ★ Arrow 스폰 로직 함수로 분리
 void AMagnet::SpawnArrowEffect()
 {
+    UE_LOG(LogTemp, Warning, TEXT("[Magnet] SpawnArrowEffect 호출! Arrow=%d"), SpawnedArrowEffect ? 1 : 0);
+
     if (!IsValid(this) || bDemagnetized || !ArrowEffectClass) return;
 
     const FQuat MagnetQuat = GetActorRotation().Quaternion();
@@ -89,6 +88,10 @@ void AMagnet::SpawnArrowEffect()
     AActor* Arrow = GetWorld()->SpawnActorDeferred<AActor>(
         ArrowEffectClass, SpawnTransform, this, nullptr,
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+    UE_LOG(LogTemp, Warning, TEXT("[Magnet] SpawnActorDeferred 결과: Arrow=%d, Class=%s"),
+    Arrow ? 1 : 0,
+    ArrowEffectClass ? *ArrowEffectClass->GetName() : TEXT("NULL"));
 
     if (!Arrow) return;
 
@@ -110,19 +113,52 @@ void AMagnet::SpawnArrowEffect()
 
     UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
 
-    // 모든 컴포넌트 Movable 강제 설정
+    // 모든 컴포넌트 Movable + 자기장 카메라용 Custom Depth Stencil 적용
     TArray<USceneComponent*> AllComps;
     Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
     AllComps.Add(Arrow->GetRootComponent());
+
     for (USceneComponent* Comp : AllComps)
     {
         Comp->SetMobility(EComponentMobility::Movable);
+
+        // ★ Transformation_actor와 동일: 포스트 프로세스가 감지하는 스텐실 값
+        if (UPrimitiveComponent* PrimC = Cast<UPrimitiveComponent>(Comp))
+        {
+            PrimC->SetRenderCustomDepth(true);
+            PrimC->SetCustomDepthStencilValue(255);
+            PrimC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
     }
 
-    SpawnedArrowEffect = Arrow;
-    SpawnedArrowEffect->SetActorHiddenInGame(true); // 기본 숨김
-}
+SpawnedArrowEffect = Arrow;
 
+    // ★ 메시에 부착 + 스케일/위치를 큐브 바운드 기준으로 잡기
+    if (SpawnedArrowEffect && MagnetMesh)
+    {
+        SpawnedArrowEffect->AttachToComponent(
+            MagnetMesh, FAttachmentTransformRules::KeepRelativeTransform);
+
+        FVector MinBounds, MaxBounds;
+        MagnetMesh->GetLocalBounds(MinBounds, MaxBounds);
+
+        // ── 위치: 큐브 높이에 비례해서 아래로 ──
+        const float HalfHeight = (MaxBounds.Z - MinBounds.Z) * 0.5f;
+        const float PosZ = -HalfHeight * ArrowDownRatio;   // 비율 기반, 고정값 없음
+        SpawnedArrowEffect->SetActorRelativeLocation(FVector(0.f, 0.f, PosZ));
+        SpawnedArrowEffect->SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
+
+        // ── 스케일: 큐브 크기 비례 ──
+        const float ScaleX = (MaxBounds.X / 50.f) * ArrowScaleMul;
+        const float ScaleY = (MaxBounds.Y / 50.f) * ArrowScaleMul;
+        const float ScaleZ = (MaxBounds.Z / 50.f) * ArrowScaleMul;
+        SpawnedArrowEffect->SetActorRelativeScale3D(FVector(ScaleX, ScaleY, ScaleZ));
+    }
+
+    RefreshArrowVisibility();
+
+    //SpawnedArrowEffect->SetActorHiddenInGame(false);
+}
 // ★ Arrow 위치/회전 동기화
 void AMagnet::SyncArrowTransform()
 {
@@ -207,7 +243,6 @@ void AMagnet::Tick(float DeltaTime)
 
     if (OverlappingMetals.Num() == 0)
     {
-        SyncArrowTransform();
         return;
     }
 
@@ -289,9 +324,6 @@ void AMagnet::Tick(float DeltaTime)
 
     if (bEnableInduction)
         ApplyInducedMagnetism();
-
-    // ★ Arrow 동기화
-    SyncArrowTransform();
 }
 
 // ★ N/S 극 방향 반환
@@ -560,4 +592,39 @@ void AMagnet::SetAllArrowsVisible(bool bVisible)
             }
         }
     }
+}
+
+// 레벨의 모든 자석을 찾아 카메라 상태 전달
+void AMagnet::SetGlobalMagnetCameraState(const UObject* WorldContextObject, bool bIsCameraOn)
+{
+    if (!WorldContextObject || !WorldContextObject->GetWorld())
+        return;
+
+    TArray<AActor*> FoundMagnets;
+    UGameplayStatics::GetAllActorsOfClass(
+        WorldContextObject->GetWorld(), AMagnet::StaticClass(), FoundMagnets);
+
+    for (AActor* Actor : FoundMagnets)
+    {
+        if (AMagnet* Mag = Cast<AMagnet>(Actor))
+            Mag->SetMagneticCameraState(bIsCameraOn);
+    }
+}
+
+void AMagnet::SetMagneticCameraState(bool bIsCameraOn)
+{
+    bIsMagneticCameraOn = bIsCameraOn;
+    UE_LOG(LogTemp, Warning, TEXT("[Magnet] CameraState=%d, Arrow=%d"),
+        bIsCameraOn ? 1 : 0, SpawnedArrowEffect ? 1 : 0);
+    RefreshArrowVisibility();
+}
+
+void AMagnet::RefreshArrowVisibility()
+{
+    if (!SpawnedArrowEffect)
+        return;
+
+    // 카메라 켜짐 + 소자 안 됨 → 표시
+    const bool bShouldShow = bIsMagneticCameraOn && !bDemagnetized;
+    SpawnedArrowEffect->SetActorHiddenInGame(!bShouldShow);
 }

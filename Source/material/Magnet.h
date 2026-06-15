@@ -39,6 +39,11 @@ public:
     float GetStrength() const { return Strength; }
     bool IsDemagnetized() const { return bDemagnetized; }
 
+    UFUNCTION(BlueprintCallable, Category = "Magnet|Camera", meta = (WorldContext = "WorldContextObject"))
+    static void SetGlobalMagnetCameraState(const UObject* WorldContextObject, bool bIsCameraOn);
+
+    void SetMagneticCameraState(bool bIsCameraOn);   // 개별 자석용
+
 protected:
     virtual void BeginPlay() override;
 
@@ -196,4 +201,14 @@ private:
     static constexpr float MaxForceClamp = 6e7f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;
+
+    bool bIsMagneticCameraOn = false;
+
+    void RefreshArrowVisibility();
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
+    float ArrowScaleMul = 0.2f;   // 화살표 크기 (작을수록 작아짐)
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Visual", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+    float ArrowDownRatio = 1.0f;  
 };
