@@ -38,22 +38,18 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "Generator")
     TObjectPtr<USceneComponent> Root;
 
-    // 회전하는 발전기 본체. AssignedWires를 여기에 붙여서 같이 돌림.
     UPROPERTY(VisibleAnywhere, Category = "Generator")
     TObjectPtr<UStaticMeshComponent> GeneratorMesh;
 
-    // ★ 출력 박스: 에디터에서 도넛 옆으로 위치 이동 가능.
-    //   이 박스 안에 전선의 시작점(ConnectionSphere)이 들어오면
-    //   발전기 전기값을 그 전선으로 중계함.
+    // 에디터에서 도넛 옆으로 위치 이동. 박스 안 전선에 전기 중계.
     UPROPERTY(VisibleAnywhere, Category = "Generator|OutputBox")
     TObjectPtr<UBoxComponent> OutputBox;
 
-    // ★ 체크박스: ON + 발전 중일 때 OutputBox가 전기를 중계함
+    // 체크박스 ON + 발전 중 + 정방향일 때 OutputBox가 전기를 중계
     UPROPERTY(EditAnywhere, Category = "Generator|OutputBox")
     bool bCoilOutputEnabled = true;
 
-    // ★ 발전기 본체에 붙어서 같이 회전하는 전선들 (발전기 입력 전선)
-    //   이 전선들에는 발전기가 직접 전기를 공급함
+    // 발전기 본체에 붙어서 같이 회전하는 전선들
     UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
     TArray<TObjectPtr<AWire>> AssignedWires;
 
@@ -64,8 +60,9 @@ private:
     UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
     float MagnetDetectRadius = 1500.f;
 
+    // 자석 1쌍일 때 기본 회전속도. 쌍이 늘수록 자동으로 줄어듦.
     UPROPERTY(EditAnywhere, Category = "Generator|Coil")
-    float RotationSpeed = 180.f;
+    float BaseRotationSpeed = 180.f;
 
     // 회전축 마스크 (기본 Yaw)
     UPROPERTY(EditAnywhere, Category = "Generator|Coil")
@@ -80,11 +77,24 @@ private:
     UPROPERTY(EditAnywhere, Category = "Generator|EMF")
     float MinEMFThreshold = 0.1f;
 
+    // 불균형 페널티 강도 (0이면 페널티 없음, 1이면 최대 진동)
+    UPROPERTY(EditAnywhere, Category = "Generator|EMF")
+    float ImbalancePenaltyScale = 1.f;
+
     UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
     float CurrentEMF = 0.f;
 
     UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
     float RotationAngle = 0.f;
+
+    UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
+    float CurrentRotationSpeed = 180.f;
+
+    UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
+    int32 EffectivePairs = 0;
+
+    UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
+    float ImbalanceRatio = 0.f;
 
     UPROPERTY(VisibleAnywhere, Category = "Generator|EMF")
     bool bCurrentPositive = true;
@@ -93,14 +103,15 @@ private:
     bool bDebugDraw = true;
 
     UPROPERTY()
-    TObjectPtr<AMagnet> NorthMagnet;
+    TArray<TObjectPtr<AMagnet>> NorthMagnets;
 
     UPROPERTY()
-    TObjectPtr<AMagnet> SouthMagnet;
+    TArray<TObjectPtr<AMagnet>> SouthMagnets;
 
-    // OutputBox에서 현재 전기를 받고 있는 전선 목록 (자동 관리)
     UPROPERTY()
     TArray<TObjectPtr<AWire>> BoxPoweredWires;
+
+    float ImbalanceNoiseTime = 0.f;
 
     void DetectMagnets();
     void UpdateEMF(float DeltaTime);

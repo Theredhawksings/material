@@ -37,6 +37,8 @@ public:
     bool IsNorthPole() const { return bIsNorthPole; }
 
     float GetStrength() const { return Strength; }
+    float GetDecayExponent() const { return MagneticDecayExponent; }  
+    float GetReferenceDistance() const { return ReferenceDistance; } 
     bool IsDemagnetized() const { return bDemagnetized; }
 
     UFUNCTION(BlueprintCallable, Category = "Magnet|Camera", meta = (WorldContext = "WorldContextObject"))
