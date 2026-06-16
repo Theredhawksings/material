@@ -25,26 +25,28 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Magnet|Visual")
     static void SetAllArrowsVisible(bool bVisible);
 
-    // ★ 추가: N/S 극 방향 반환
     UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
     FVector GetNorthPoleWorldDir() const;
 
     UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
     FVector GetSouthPoleWorldDir() const;
 
-    // ★ 추가: Generator가 읽을 수 있도록 public으로
     UFUNCTION(BlueprintCallable, Category = "Magnet|Polarity")
     bool IsNorthPole() const { return bIsNorthPole; }
 
     float GetStrength() const { return Strength; }
-    float GetDecayExponent() const { return MagneticDecayExponent; }  
-    float GetReferenceDistance() const { return ReferenceDistance; } 
+    float GetDecayExponent() const { return MagneticDecayExponent; }
+    float GetReferenceDistance() const { return ReferenceDistance; }
     bool IsDemagnetized() const { return bDemagnetized; }
+
+    // ★ 발판용 강제 소자 / 복구 (public)
+    void ForceDemagnetize();
+    void Restore();
 
     UFUNCTION(BlueprintCallable, Category = "Magnet|Camera", meta = (WorldContext = "WorldContextObject"))
     static void SetGlobalMagnetCameraState(const UObject* WorldContextObject, bool bIsCameraOn);
 
-    void SetMagneticCameraState(bool bIsCameraOn);   // 개별 자석용
+    void SetMagneticCameraState(bool bIsCameraOn);
 
 protected:
     virtual void BeginPlay() override;
@@ -100,12 +102,11 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
     float InitialImpulseStrength = 200.f;
 
-    // ★ 추가: 회전 방향
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
     bool bRotateClockwise = true;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Physics")
-    float RotationSpeed = 0.f; // 0이면 회전 안 함
+    float RotationSpeed = 0.f;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Induction")
     bool bEnableInduction = true;
@@ -137,7 +138,6 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Electro")
     bool bElectroActive = false;
 
-    // ★ 추가: N/S 극 설정
     UPROPERTY(EditAnywhere, Category = "Magnet|Polarity")
     bool bIsNorthPole = true;
 
@@ -190,7 +190,6 @@ private:
     float TimeSinceLastRefresh = 0.f;
     float BaseStrength = 0.f;
 
-    // ★ 추가: Arrow 스폰 함수 분리
     void SpawnArrowEffect();
     void SyncArrowTransform();
     void UpdateArrowVisibility();
@@ -209,8 +208,8 @@ private:
     void RefreshArrowVisibility();
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual")
-    float ArrowScaleMul = 0.2f;   // 화살표 크기 (작을수록 작아짐)
+    float ArrowScaleMul = 0.2f;
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual", meta = (ClampMin = "0.0", ClampMax = "2.0"))
-    float ArrowDownRatio = 1.0f;  
+    float ArrowDownRatio = 1.0f;
 };

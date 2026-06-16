@@ -67,14 +67,12 @@ void AMagnet::BeginPlay()
         RefreshOverlappingMetals();
     }
 
-    // ★ Arrow 스폰 (1초 딜레이)
     if (bShowFieldArrows && !bDemagnetized && ArrowEffectClass)
     {
         SpawnArrowEffect();
     }
 }
 
-// ★ Arrow 스폰 로직 함수로 분리
 void AMagnet::SpawnArrowEffect()
 {
     UE_LOG(LogTemp, Warning, TEXT("[Magnet] SpawnArrowEffect 호출! Arrow=%d"), SpawnedArrowEffect ? 1 : 0);
@@ -90,12 +88,11 @@ void AMagnet::SpawnArrowEffect()
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
     UE_LOG(LogTemp, Warning, TEXT("[Magnet] SpawnActorDeferred 결과: Arrow=%d, Class=%s"),
-    Arrow ? 1 : 0,
-    ArrowEffectClass ? *ArrowEffectClass->GetName() : TEXT("NULL"));
+        Arrow ? 1 : 0,
+        ArrowEffectClass ? *ArrowEffectClass->GetName() : TEXT("NULL"));
 
     if (!Arrow) return;
 
-    // Power, X, Y 프로퍼티 설정
     auto SetFloatProp = [Arrow](const TCHAR* PropName, float Value)
     {
         if (FProperty* Prop = Arrow->GetClass()->FindPropertyByName(PropName))
@@ -113,7 +110,6 @@ void AMagnet::SpawnArrowEffect()
 
     UGameplayStatics::FinishSpawningActor(Arrow, SpawnTransform);
 
-    // 모든 컴포넌트 Movable + 자기장 카메라용 Custom Depth Stencil 적용
     TArray<USceneComponent*> AllComps;
     Arrow->GetRootComponent()->GetChildrenComponents(true, AllComps);
     AllComps.Add(Arrow->GetRootComponent());
@@ -122,7 +118,6 @@ void AMagnet::SpawnArrowEffect()
     {
         Comp->SetMobility(EComponentMobility::Movable);
 
-        // ★ Transformation_actor와 동일: 포스트 프로세스가 감지하는 스텐실 값
         if (UPrimitiveComponent* PrimC = Cast<UPrimitiveComponent>(Comp))
         {
             PrimC->SetRenderCustomDepth(true);
@@ -131,9 +126,8 @@ void AMagnet::SpawnArrowEffect()
         }
     }
 
-SpawnedArrowEffect = Arrow;
+    SpawnedArrowEffect = Arrow;
 
-    // ★ 메시에 부착 + 스케일/위치를 큐브 바운드 기준으로 잡기
     if (SpawnedArrowEffect && MagnetMesh)
     {
         SpawnedArrowEffect->AttachToComponent(
@@ -142,13 +136,11 @@ SpawnedArrowEffect = Arrow;
         FVector MinBounds, MaxBounds;
         MagnetMesh->GetLocalBounds(MinBounds, MaxBounds);
 
-        // ── 위치: 큐브 높이에 비례해서 아래로 ──
         const float HalfHeight = (MaxBounds.Z - MinBounds.Z) * 0.5f;
-        const float PosZ = -HalfHeight * ArrowDownRatio;   // 비율 기반, 고정값 없음
+        const float PosZ = -HalfHeight * ArrowDownRatio;
         SpawnedArrowEffect->SetActorRelativeLocation(FVector(0.f, 0.f, PosZ));
         SpawnedArrowEffect->SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
 
-        // ── 스케일: 큐브 크기 비례 ──
         const float ScaleX = (MaxBounds.X / 50.f) * ArrowScaleMul;
         const float ScaleY = (MaxBounds.Y / 50.f) * ArrowScaleMul;
         const float ScaleZ = (MaxBounds.Z / 50.f) * ArrowScaleMul;
@@ -156,10 +148,8 @@ SpawnedArrowEffect = Arrow;
     }
 
     RefreshArrowVisibility();
-
-    //SpawnedArrowEffect->SetActorHiddenInGame(false);
 }
-// ★ Arrow 위치/회전 동기화
+
 void AMagnet::SyncArrowTransform()
 {
     if (!SpawnedArrowEffect) return;
@@ -175,7 +165,6 @@ void AMagnet::SyncArrowTransform()
     }
 }
 
-// ★ Arrow 가시성 업데이트 (소자 여부 반영)
 void AMagnet::UpdateArrowVisibility()
 {
     if (!SpawnedArrowEffect) return;
@@ -186,7 +175,6 @@ void AMagnet::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // ★ 회전 처리
     if (RotationSpeed > 0.f)
     {
         const float RotDir = bRotateClockwise ? 1.f : -1.f;
@@ -221,7 +209,6 @@ void AMagnet::Tick(float DeltaTime)
 #if ENABLE_DRAW_DEBUG
     if (bDebugDraw)
     {
-        // ★ N/S 극 방향 표시
         const FVector NorthDir = GetNorthPoleWorldDir();
         DrawDebugDirectionalArrow(GetWorld(),
             GetActorLocation(),
@@ -246,35 +233,34 @@ void AMagnet::Tick(float DeltaTime)
         return;
     }
 
-    const FVector MagnetLoc             = MagnetMesh->GetComponentLocation();
-    const FVector MagnetForward         = MagnetMesh->GetForwardVector();
-    const bool    bMagnetSimulating     = MagnetMesh->IsSimulatingPhysics();
+    const FVector MagnetLoc               = MagnetMesh->GetComponentLocation();
+    const FVector MagnetForward           = MagnetMesh->GetForwardVector();
+    const bool    bMagnetSimulating       = MagnetMesh->IsSimulatingPhysics();
     const float   StrengthTimesMultiplier = Strength * ForceMultiplier;
 
-    // 유효하지 않은 항목 제거
     for (auto It = OverlappingMetals.CreateIterator(); It; ++It)
     {
         UPrimitiveComponent* Comp = It->Get();
         if (!IsValid(Comp)) { It.RemoveCurrent(); continue; }
 
-    AActor* OwnerActor = Comp->GetOwner();
-    if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) { It.RemoveCurrent(); }
+        AActor* OwnerActor = Comp->GetOwner();
+        if (!OwnerActor || !OwnerActor->ActorHasTag(MetalTag)) { It.RemoveCurrent(); }
     }
 
     for (UPrimitiveComponent* MetalComp : OverlappingMetals)
     {
         if (!IsValid(MetalComp) || !MetalComp->IsSimulatingPhysics()) continue;
 
-        const FVector MetalLoc   = MetalComp->GetComponentLocation();
-        const FVector ToMagnet   = MagnetLoc - MetalLoc;
-        const float   Distance   = ToMagnet.Size();
+        const FVector MetalLoc = MetalComp->GetComponentLocation();
+        const FVector ToMagnet = MagnetLoc - MetalLoc;
+        const float   Distance = ToMagnet.Size();
 
         if (Distance < MinDistance || Distance > MaxDistance) continue;
 
-        const FVector Dir          = ToMagnet / Distance;
-        const float   DirDot       = FVector::DotProduct(Dir, MagnetForward);
-        const float   DirFactor    = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
-        const float   SafeDist     = FMath::Max(Distance, MinDistance);
+        const FVector Dir       = ToMagnet / Distance;
+        const float   DirDot    = FVector::DotProduct(Dir, MagnetForward);
+        const float   DirFactor = FMath::Lerp(0.75f, 1.0f, (DirDot + 1.0f) * 0.5f);
+        const float   SafeDist  = FMath::Max(Distance, MinDistance);
 
         float ForceMag = (StrengthTimesMultiplier * DirFactor)
                        / FMath::Pow(SafeDist, MagneticDecayExponent);
@@ -282,7 +268,7 @@ void AMagnet::Tick(float DeltaTime)
         const float MetalMass = MetalComp->GetMass();
         ForceMag *= FMath::Clamp(MetalMass / 5.0f, 0.6f, 2.5f);
 
-        const FVector CurVel          = MetalComp->GetPhysicsLinearVelocity();
+        const FVector CurVel           = MetalComp->GetPhysicsLinearVelocity();
         const float   VelTowardsMagnet = FVector::DotProduct(CurVel, Dir);
 
         float VelocityDamping = 1.0f;
@@ -326,7 +312,6 @@ void AMagnet::Tick(float DeltaTime)
         ApplyInducedMagnetism();
 }
 
-// ★ N/S 극 방향 반환
 FVector AMagnet::GetNorthPoleWorldDir() const
 {
     if (!MagnetMesh) return FVector::ForwardVector;
@@ -342,7 +327,7 @@ FVector AMagnet::GetSouthPoleWorldDir() const
 
 void AMagnet::UpdateElectroBoost()
 {
-    bool  bAnyPowered = false;
+    bool  bAnyPowered  = false;
     float TotalCurrent = 0.f;
 
     TArray<AActor*> NearbyActors;
@@ -440,7 +425,6 @@ void AMagnet::CheckDemagnetize()
             OverlappingMetals.Empty();
             ContactedWires.Empty();
 
-            // ★ Arrow 숨기기 (Destroy 대신 숨김 처리)
             if (SpawnedArrowEffect)
                 SpawnedArrowEffect->SetActorHiddenInGame(true);
 
@@ -526,31 +510,31 @@ void AMagnet::ApplyInducedMagnetism()
         UPrimitiveComponent* MetalA = MetalArray[i];
         if (!IsValid(MetalA) || !MetalA->IsSimulatingPhysics()) continue;
 
-        const FVector MetalALoc    = MetalA->GetComponentLocation();
+        const FVector MetalALoc     = MetalA->GetComponentLocation();
         const float   DistAToMagnet = FVector::Dist(MetalALoc, MagnetLoc);
         if (DistAToMagnet > MinDistanceForInduction) continue;
 
-        const float   InducedStr  = CalculateInducedStrength(DistAToMagnet, Strength);
-        const FVector MagnetToA   = (MetalALoc - MagnetLoc).GetSafeNormal();
+        const float   InducedStr = CalculateInducedStrength(DistAToMagnet, Strength);
+        const FVector MagnetToA  = (MetalALoc - MagnetLoc).GetSafeNormal();
 
         for (int32 j = i + 1; j < Num; ++j)
         {
             UPrimitiveComponent* MetalB = MetalArray[j];
             if (!IsValid(MetalB) || !MetalB->IsSimulatingPhysics()) continue;
 
-            const FVector AtoB    = MetalB->GetComponentLocation() - MetalALoc;
+            const FVector AtoB     = MetalB->GetComponentLocation() - MetalALoc;
             const float   DistAtoB = AtoB.Size();
             if (DistAtoB < 10.f || DistAtoB > InductionRange) continue;
 
-            const FVector Dir        = AtoB / DistAtoB;
-            const float   Alignment  = FVector::DotProduct(Dir, MagnetToA);
+            const FVector Dir       = AtoB / DistAtoB;
+            const float   Alignment = FVector::DotProduct(Dir, MagnetToA);
 
             float ForceMag = (InducedStr * InductionStrengthRatio * FMath::Abs(Alignment))
                            / FMath::Pow(DistAtoB, MagneticDecayExponent);
             ForceMag *= FMath::Clamp(MetalB->GetMass() / 10.0f, 0.5f, 2.0f);
 
-            const FVector VelB    = MetalB->GetPhysicsLinearVelocity();
-            const float   VelToA  = FVector::DotProduct(VelB, Dir);
+            const FVector VelB   = MetalB->GetPhysicsLinearVelocity();
+            const float   VelToA = FVector::DotProduct(VelB, Dir);
             float VelDamp = 1.0f;
             if (VelToA > MaxAttractVelocity * 0.5f)
                 VelDamp = FMath::Clamp(1.0f - (VelToA / MaxAttractVelocity), 0.3f, 1.0f);
@@ -594,7 +578,6 @@ void AMagnet::SetAllArrowsVisible(bool bVisible)
     }
 }
 
-// 레벨의 모든 자석을 찾아 카메라 상태 전달
 void AMagnet::SetGlobalMagnetCameraState(const UObject* WorldContextObject, bool bIsCameraOn)
 {
     if (!WorldContextObject || !WorldContextObject->GetWorld())
@@ -621,10 +604,47 @@ void AMagnet::SetMagneticCameraState(bool bIsCameraOn)
 
 void AMagnet::RefreshArrowVisibility()
 {
-    if (!SpawnedArrowEffect)
-        return;
+    if (!SpawnedArrowEffect) return;
 
-    // 카메라 켜짐 + 소자 안 됨 → 표시
     const bool bShouldShow = bIsMagneticCameraOn && !bDemagnetized;
     SpawnedArrowEffect->SetActorHiddenInGame(!bShouldShow);
+}
+
+// ★ 발판용 강제 소자
+void AMagnet::ForceDemagnetize()
+{
+    if (bDemagnetized) return;
+
+    bDemagnetized  = true;
+    bElectroActive = false;
+    Strength       = 0.f;
+    OverlappingMetals.Empty();
+    ContactedWires.Empty();
+
+    // 자석 메시 숨김
+    if (MagnetMesh)
+        MagnetMesh->SetVisibility(false);
+
+    // Arrow 숨김
+    if (SpawnedArrowEffect)
+        SpawnedArrowEffect->SetActorHiddenInGame(true);
+}
+
+// ★ 발판용 완전 복구
+void AMagnet::Restore()
+{
+    if (!bDemagnetized) return;
+
+    bDemagnetized = false;
+    Strength      = BaseStrength;
+
+    // 자석 메시 복구
+    if (MagnetMesh)
+        MagnetMesh->SetVisibility(true);
+
+    // Arrow 복구 (카메라 상태 반영)
+    RefreshArrowVisibility();
+
+    // 금속 오버랩 다시 감지
+    RefreshOverlappingMetals();
 }
