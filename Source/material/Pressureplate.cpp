@@ -6,7 +6,7 @@
 
 APressurePlate::APressurePlate()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true;
 
     PlateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlateMesh"));
     SetRootComponent(PlateMesh);
@@ -26,6 +26,59 @@ void APressurePlate::BeginPlay()
 
     DetectBox->OnComponentBeginOverlap.AddDynamic(this, &APressurePlate::OnBoxBeginOverlap);
     DetectBox->OnComponentEndOverlap.AddDynamic(this,   &APressurePlate::OnBoxEndOverlap);
+
+    for (const FMagnetSlot& Slot : MagnetSlots)
+    {
+        AMagnet* Magnet = Slot.Magnet.Get();
+        if (!Magnet) continue;
+
+        const FVector Loc = Magnet->GetActorLocation();
+
+        if (Slot.bStartSunken)
+        {
+            // ★ 처음에 내려가 있는 상태
+            // 원래 위치는 위쪽 (현재 위치 + MoveDistance)
+            MagnetOriginalLocations.Add(Loc + FVector(0.f, 0.f, MoveDistance));
+            MagnetTargetLocations.Add(Loc);
+            MagnetMovedStates.Add(true);
+            Magnet->ForceDemagnetize();
+        }
+        else
+        {
+            // ★ 처음에 올라가 있는 상태
+            MagnetOriginalLocations.Add(Loc);
+            MagnetTargetLocations.Add(Loc);
+            MagnetMovedStates.Add(false);
+        }
+    }
+}
+
+void APressurePlate::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    for (int32 i = 0; i < MagnetSlots.Num(); ++i)
+    {
+        AMagnet* Magnet = MagnetSlots[i].Magnet.Get();
+        if (!Magnet) continue;
+
+        const FVector Current = Magnet->GetActorLocation();
+        const FVector Target  = MagnetTargetLocations[i];
+
+        if (FVector::Dist(Current, Target) < 1.f)
+        {
+            Magnet->SetActorLocation(Target);
+
+            // 완전히 내려갔을 때 소자
+            if (MagnetMovedStates[i] && !Magnet->IsDemagnetized())
+                Magnet->ForceDemagnetize();
+
+            continue;
+        }
+
+        const FVector New = FMath::VInterpConstantTo(Current, Target, DeltaTime, MoveSpeed);
+        Magnet->SetActorLocation(New);
+    }
 }
 
 void APressurePlate::OnBoxBeginOverlap(UPrimitiveComponent*, AActor* OtherActor,
@@ -36,21 +89,38 @@ void APressurePlate::OnBoxBeginOverlap(UPrimitiveComponent*, AActor* OtherActor,
     const bool bWasEmpty = OverlappingPlayers.IsEmpty();
     OverlappingPlayers.Add(OtherActor);
 
-    // 처음 진입할 때만 토글
-    if (!bWasEmpty) return;
-    if (!LinkedMagnet) return;
-
-    // ★ 토글: 소자 상태면 복구, 아니면 소자
-    if (LinkedMagnet->IsDemagnetized())
-        LinkedMagnet->Restore();
-    else
-        LinkedMagnet->ForceDemagnetize();
+    if (bWasEmpty)
+        ToggleMagnets();
 }
 
 void APressurePlate::OnBoxEndOverlap(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32)
 {
     if (!Cast<ACharacter>(OtherActor)) return;
-    OverlappingPlayers.Remove(OtherActor);\
-    // 나갈 때는 아무것도 안 함
+    OverlappingPlayers.Remove(OtherActor);
+}
+
+void APressurePlate::ToggleMagnets()
+{
+    for (int32 i = 0; i < MagnetSlots.Num(); ++i)
+    {
+        AMagnet* Magnet = MagnetSlots[i].Magnet.Get();
+        if (!Magnet) continue;
+
+        if (MagnetMovedStates[i])
+        {
+            // 올라오기: 원래 위치로 + 복구
+            Magnet->Restore();
+            MagnetTargetLocations[i] = MagnetOriginalLocations[i];
+            MagnetMovedStates[i]     = false;
+        }
+        else
+        {
+            // 내려가기: MoveDistance만큼 아래로
+            MagnetTargetLocations[i] = MagnetOriginalLocations[i]
+                                     + FVector(0.f, 0.f, -MoveDistance);
+            MagnetMovedStates[i]     = true;
+            // 소자는 완전히 내려간 후 Tick에서 처리
+        }
+    }
 }

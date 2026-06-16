@@ -8,6 +8,21 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class AMagnet;
 
+// ★ 자석 하나의 설정을 묶은 구조체
+USTRUCT(BlueprintType)
+struct FMagnetSlot
+{
+    GENERATED_BODY()
+
+    // 연결할 자석
+    UPROPERTY(EditAnywhere, Category = "MagnetSlot")
+    TObjectPtr<AMagnet> Magnet = nullptr;
+
+    // ★ true = 처음에 내려가 있음, false = 처음에 올라가 있음
+    UPROPERTY(EditAnywhere, Category = "MagnetSlot")
+    bool bStartSunken = false;
+};
+
 UCLASS()
 class MATERIAL_API APressurePlate : public AActor
 {
@@ -18,20 +33,32 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaTime) override;
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "PressurePlate")
     TObjectPtr<UStaticMeshComponent> PlateMesh;
 
-    // 플레이어 감지 콜리전
     UPROPERTY(VisibleAnywhere, Category = "PressurePlate")
     TObjectPtr<UBoxComponent> DetectBox;
 
-    // 에디터에서 연결할 자석 (1:1)
+    // ★ 자석 슬롯 배열 - 에디터에서 자석 지정 + 초기 상태 설정
     UPROPERTY(EditAnywhere, Category = "PressurePlate")
-    TObjectPtr<AMagnet> LinkedMagnet;
+    TArray<FMagnetSlot> MagnetSlots;
 
-    // 현재 발판 위에 있는 액터 수 (여러 명 올라가도 안전하게 처리)
+    // ★ 이동 거리
+    UPROPERTY(EditAnywhere, Category = "PressurePlate")
+    float MoveDistance = 300.f;
+
+    // ★ 이동 속도
+    UPROPERTY(EditAnywhere, Category = "PressurePlate")
+    float MoveSpeed = 80.f;
+
+    // 런타임 상태
+    TArray<FVector> MagnetOriginalLocations;
+    TArray<FVector> MagnetTargetLocations;
+    TArray<bool>    MagnetMovedStates;
+
     TSet<AActor*> OverlappingPlayers;
 
     UFUNCTION()
@@ -42,4 +69,6 @@ private:
     UFUNCTION()
     void OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+    void ToggleMagnets();
 };

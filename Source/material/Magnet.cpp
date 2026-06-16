@@ -621,10 +621,6 @@ void AMagnet::ForceDemagnetize()
     OverlappingMetals.Empty();
     ContactedWires.Empty();
 
-    // 자석 메시 숨김
-    if (MagnetMesh)
-        MagnetMesh->SetVisibility(false);
-
     // Arrow 숨김
     if (SpawnedArrowEffect)
         SpawnedArrowEffect->SetActorHiddenInGame(true);

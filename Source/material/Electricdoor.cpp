@@ -95,7 +95,7 @@ void AElectricDoor::CheckWirePower()
             return;
         }
     }
-}
+}	
 
 void AElectricDoor::OpenDoor()
 {
