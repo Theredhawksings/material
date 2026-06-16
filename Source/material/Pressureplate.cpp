@@ -34,15 +34,13 @@ void APressurePlate::BeginPlay()
 
         const FVector Loc = Magnet->GetActorLocation();
 
-        if (Slot.bStartSunken)
-        {
-            // ★ 처음에 내려가 있는 상태
-            // 원래 위치는 위쪽 (현재 위치 + MoveDistance)
-            MagnetOriginalLocations.Add(Loc + FVector(0.f, 0.f, MoveDistance));
-            MagnetTargetLocations.Add(Loc);
-            MagnetMovedStates.Add(true);
-            Magnet->ForceDemagnetize();
-        }
+if (Slot.bStartSunken)
+{
+    MagnetOriginalLocations.Add(Loc + FVector(0.f, 0.f, MoveDistance));
+    MagnetTargetLocations.Add(Loc);
+    MagnetMovedStates.Add(true);
+    Magnet->ForceDemagnetize(); // ★ 이미 있음
+}
         else
         {
             // ★ 처음에 올라가 있는 상태
