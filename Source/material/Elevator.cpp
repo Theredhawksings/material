@@ -9,6 +9,8 @@
 #include "TimerManager.h"
 #include "Engine/Engine.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Kismet/GameplayStatics.h" // [추가] 사운드 재생용
+#include "Sound/SoundBase.h"        // [추가]
 
 AElevator::AElevator()
 {
@@ -61,6 +63,15 @@ AElevator::AElevator()
         DoorR->SetMaterial(0, DoorMat.Object);
     }
 
+    // --- [추가] 사운드 자동 로드 ---
+    static ConstructorHelpers::FObjectFinder<USoundBase> OpenSnd(
+        TEXT("/Game/Sound/sound_elevator_openning.sound_elevator_openning"));
+    if (OpenSnd.Succeeded()) OpenSound = OpenSnd.Object;
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> CloseSnd(
+        TEXT("/Game/Sound/sound_elevator_closing.sound_elevator_closing"));
+    if (CloseSnd.Succeeded()) CloseSound = CloseSnd.Object;
+
     TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
     TriggerBox->SetupAttachment(SceneRoot);
     TriggerBox->SetBoxExtent(FVector(250.f, 250.f, 120.f));
@@ -101,7 +112,25 @@ void AElevator::SetDoorYaw(float Yaw)
     }
     if (DoorR)
     {
-        DoorR->SetRelativeRotation(FRotator(0.f, -Yaw, 0.f)); 
+        DoorR->SetRelativeRotation(FRotator(0.f, -Yaw, 0.f));
+    }
+}
+
+// [추가] 문 열림 사운드 재생 (타이머에서 호출)
+void AElevator::PlayOpenSound()
+{
+    if (OpenSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, OpenSound, GetActorLocation());
+    }
+}
+
+// [추가] 문 닫힘 사운드 재생 (타이머에서 호출)
+void AElevator::PlayCloseSound()
+{
+    if (CloseSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, CloseSound, GetActorLocation());
     }
 }
 
@@ -122,6 +151,10 @@ void AElevator::OnTriggerBegin(UPrimitiveComponent* /*OverlappedComp*/, AActor* 
     Passenger = OtherActor;
     State = EElevatorState::DoorOpening;
     PhaseElapsed = 0.f;
+
+    // [추가] 문이 움직이기 시작 → 0.3초 뒤 열림 사운드
+    GetWorldTimerManager().SetTimer(SoundTimer, this, &AElevator::PlayOpenSound, SoundDelay, false);
+
     DebugMsg(TEXT(">>> 탑승 확인! 문 열기 시작"), FColor::Green);
 }
 
@@ -129,6 +162,10 @@ void AElevator::CloseDoors()
 {
     State = EElevatorState::DoorClosing;
     PhaseElapsed = 0.f;
+
+    // [추가] 문이 움직이기 시작 → 0.3초 뒤 닫힘 사운드
+    GetWorldTimerManager().SetTimer(SoundTimer, this, &AElevator::PlayCloseSound, SoundDelay, false);
+
     DebugMsg(TEXT(">>> 탑승 완료. 문 닫기 시작"), FColor::Green);
 }
 
@@ -138,7 +175,7 @@ void AElevator::TeleportPlayer()
     {
         // 1. 플레이어 위치 차이 계산 후, 바닥에 끼지 않도록 Z축(높이)을 50.f 정도 띄워줍니다.
         FVector PlayerOffset = Passenger->GetActorLocation() - this->GetActorLocation();
-        PlayerOffset.Z += 50.f; 
+        PlayerOffset.Z += 50.f;
 
         // 2. 엘리베이터 본체 먼저 이동
         this->SetActorLocation(DestinationLocation, false, nullptr, ETeleportType::TeleportPhysics);
@@ -157,12 +194,15 @@ void AElevator::TeleportPlayer()
     // 4. 도착지에서 문 열기 상태로 전환
     State = EElevatorState::ArrivalOpening;
     PhaseElapsed = 0.f;
+
+    // [추가] 도착지에서 문이 움직이기 시작 → 0.3초 뒤 열림 사운드
+    GetWorldTimerManager().SetTimer(SoundTimer, this, &AElevator::PlayOpenSound, SoundDelay, false);
 }
 
 void AElevator::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
+
     // 문이 움직일 때만 시간 누적
     if (State == EElevatorState::DoorOpening || State == EElevatorState::DoorClosing || State == EElevatorState::ArrivalOpening)
     {
@@ -175,9 +215,9 @@ void AElevator::Tick(float DeltaTime)
     {
         const float A = (DoorMoveDuration > 0.f)
             ? FMath::Clamp(PhaseElapsed / DoorMoveDuration, 0.f, 1.f) : 1.f;
-        
+
         SetDoorYaw(FMath::Lerp(DoorClosedYaw, DoorOpenYaw, A));
-        
+
         if (A >= 1.f)
         {
             State = EElevatorState::Boarding;
@@ -190,9 +230,9 @@ void AElevator::Tick(float DeltaTime)
     {
         const float A = (DoorMoveDuration > 0.f)
             ? FMath::Clamp(PhaseElapsed / DoorMoveDuration, 0.f, 1.f) : 1.f;
-        
+
         SetDoorYaw(FMath::Lerp(DoorOpenYaw, DoorClosedYaw, A));
-        
+
         if (A >= 1.f)
         {
             State = EElevatorState::Done;
@@ -202,20 +242,20 @@ void AElevator::Tick(float DeltaTime)
         }
         break;
     }
-    case EElevatorState::ArrivalOpening: 
+    case EElevatorState::ArrivalOpening:
     {
         const float A = (DoorMoveDuration > 0.f)
             ? FMath::Clamp(PhaseElapsed / DoorMoveDuration, 0.f, 1.f) : 1.f;
-        
+
         SetDoorYaw(FMath::Lerp(DoorClosedYaw, DoorOpenYaw, A));
-        
+
         if (A >= 1.f)
         {
             Passenger = nullptr;
-            
+
             // [수정] 다시 Idle로 돌아가지 않고 Disabled 상태로 고정시켜 버립니다!
-            State = EElevatorState::Disabled; 
-            
+            State = EElevatorState::Disabled;
+
             DebugMsg(TEXT("도착지 문 개방 완료! 엘리베이터 영구 정지됨"), FColor::Red);
         }
         break;

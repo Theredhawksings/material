@@ -9,6 +9,7 @@
 class UBoxComponent;
 class UStaticMeshComponent;
 class USceneComponent;
+class USoundBase; // [추가]
 
 UENUM()
 enum class EElevatorState : uint8
@@ -50,6 +51,17 @@ public:
     UPROPERTY(EditAnywhere, Category = "Elevator|Timing")
     float TravelTime = 3.0f;
 
+    // --- [추가] 사운드 ---
+    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
+    TObjectPtr<USoundBase> OpenSound;   // 문 열림 사운드
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
+    TObjectPtr<USoundBase> CloseSound;  // 문 닫힘 사운드
+
+    // 문이 움직이기 시작한 뒤 사운드가 나올 때까지의 딜레이(초)
+    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
+    float SoundDelay = 0.3f;
+
     // 디버그 메시지 on/off
     UPROPERTY(EditAnywhere, Category = "Elevator|Debug")
     bool bDebug = true;
@@ -73,6 +85,10 @@ protected:
     void TeleportPlayer();
     void SetDoorYaw(float Yaw);
 
+    // [추가] 사운드 재생 헬퍼 (타이머로 호출됨)
+    void PlayOpenSound();
+    void PlayCloseSound();
+
     // 화면 + 로그 출력 헬퍼
     void DebugMsg(const FString& Msg, const FColor& Color = FColor::Green);
 
@@ -84,4 +100,5 @@ protected:
 
     FTimerHandle BoardTimer;
     FTimerHandle TeleportTimer;
+    FTimerHandle SoundTimer; // [추가] 사운드 딜레이용
 };
