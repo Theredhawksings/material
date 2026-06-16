@@ -1267,66 +1267,43 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 
 void AmaterialCharacter::FireMaterialShot()
 {
-	if (!bHasLoadedForm || !FollowCamera)
-		return;
-	if (bIsPickingUp || bIsUsingSyringe)
-		return;
+	if (!bHasLoadedForm) return;
+	if (bIsPickingUp || bIsUsingSyringe) return;
 
-	// ★ 조금 더 높은 위치에서 발사
-	const FVector Start = GetActorLocation() + FVector(0.f, 0.f, ShootHeightOffset);
-	const FVector TraceDir = FollowCamera->GetForwardVector();
-	const FVector End = Start + (TraceDir * InteractRange);
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC) return;
+
+	FVector  Loc;
+	FRotator Rot;
+	PC->GetPlayerViewPoint(Loc, Rot);
+
+	// 시작점을 왼쪽으로 30 이동
+	const FVector Start = Loc + FRotationMatrix(Rot).GetUnitAxis(EAxis::Y) * -15.f;
+	const FVector End   = Start + Rot.Vector() * InteractRange;
 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(MaterialShot), false, this);
-	const bool bHit = GetWorld()->SweepSingleByChannel(
-		Hit, Start, End, FQuat::Identity, ECC_Visibility,
-		FCollisionShape::MakeSphere(InteractSphereRadius), Params);
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
 
-	// 디버그(판정 확인용)
-	const FColor DrawColor = bHit ? FColor::Green : FColor::Red;
-	DrawDebugSphere(GetWorld(), Start, 10.f, 12, FColor::White, false, 2.0f);
-	DrawDebugSphere(GetWorld(), End, InteractSphereRadius, 12, DrawColor, false, 2.0f);
-	DrawDebugLine(GetWorld(), Start, End, DrawColor, false, 2.0f, 0, 2.0f);
+	DrawDebugLine(GetWorld(), Start, bHit ? Hit.ImpactPoint : End, bHit ? FColor::Green : FColor::Red, false, 2.0f, 0, 2.0f);
 
-	if (!bHit)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] NO HIT"));
-		return;
-	}
+	if (!bHit) return;
 
-	ATransformation_actor *TransformActor = Cast<ATransformation_actor>(Hit.GetActor());
-	if (!TransformActor)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] HIT but not Transformation_actor: %s"),
-			   *Hit.GetActor()->GetName());
-		return;
-	}
+	ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Hit.GetActor());
+	if (!TransformActor) return;
 
-	DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.f, FColor::Yellow, false, 2.0f);
 	PendingShotTarget = TransformActor;
 
-
-	// 발사 애니메이션 → 끝나는 시점에 적용
-if (UseLeftAnim && GetMesh())
+	if (UseLeftAnim && GetMesh())
 	{
 		GetMesh()->PlayAnimation(UseLeftAnim, false);
 		bIsPickingUp = true;
-
-		// 애니 재생 시작 후 0.3초 뒤에 사운드 + 머터리얼 적용
 		FTimerHandle ShotApplyHandle;
 		GetWorld()->GetTimerManager().SetTimer(ShotApplyHandle, [this]()
 		{
-			if (ShootSound)
-				UGameplayStatics::PlaySound2D(this, ShootSound);
-			if (PendingShotTarget)
-			{
-				ApplyLoadedFormTo(PendingShotTarget);
-				PendingShotTarget = nullptr;
-			}
+			if (ShootSound) UGameplayStatics::PlaySound2D(this, ShootSound);
+			if (PendingShotTarget) { ApplyLoadedFormTo(PendingShotTarget); PendingShotTarget = nullptr; }
 		}, 0.3f, false);
-
-		// 애니 끝나면 상태 복구만
 		GetWorld()->GetTimerManager().SetTimer(RadialMenuAnimTimer, this,
 			&AmaterialCharacter::OnUseLeftAnimFinished, UseLeftAnim->GetPlayLength(), false);
 	}
