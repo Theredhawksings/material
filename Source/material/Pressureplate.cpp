@@ -31,12 +31,19 @@ void APressurePlate::BeginPlay()
 void APressurePlate::OnBoxBeginOverlap(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32, bool, const FHitResult&)
 {
-    // 플레이어(캐릭터)만 감지
     if (!Cast<ACharacter>(OtherActor)) return;
 
-    ++OverlapCount;
+    const bool bWasEmpty = OverlappingPlayers.IsEmpty();
+    OverlappingPlayers.Add(OtherActor);
 
-    if (OverlapCount == 1 && LinkedMagnet)
+    // 처음 진입할 때만 토글
+    if (!bWasEmpty) return;
+    if (!LinkedMagnet) return;
+
+    // ★ 토글: 소자 상태면 복구, 아니면 소자
+    if (LinkedMagnet->IsDemagnetized())
+        LinkedMagnet->Restore();
+    else
         LinkedMagnet->ForceDemagnetize();
 }
 
@@ -44,9 +51,6 @@ void APressurePlate::OnBoxEndOverlap(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, int32)
 {
     if (!Cast<ACharacter>(OtherActor)) return;
-
-    OverlapCount = FMath::Max(OverlapCount - 1, 0);
-
-    if (OverlapCount == 0 && LinkedMagnet)
-        LinkedMagnet->Restore();
+    OverlappingPlayers.Remove(OtherActor);\
+    // 나갈 때는 아무것도 안 함
 }

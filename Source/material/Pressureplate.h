@@ -32,7 +32,7 @@ private:
     TObjectPtr<AMagnet> LinkedMagnet;
 
     // 현재 발판 위에 있는 액터 수 (여러 명 올라가도 안전하게 처리)
-    int32 OverlapCount = 0;
+    TSet<AActor*> OverlappingPlayers;
 
     UFUNCTION()
     void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
