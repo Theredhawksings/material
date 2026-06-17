@@ -222,6 +222,8 @@ void ACoilGun::ApplyMagneticForce()
 
 void ACoilGun::ReleaseFire()
 {
+    LoadedIron->SetUseCCD(true);
+    
     if (!LoadedIron || !LoadedIron->IsSimulatingPhysics()) return;
 
     const FVector FireDir    = GetFireWorldDir();

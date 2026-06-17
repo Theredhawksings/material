@@ -281,7 +281,6 @@ void ATransformation_actor::BeginPlay()
 
     MeshComp->SetNotifyRigidBodyCollision(true);
     MeshComp->OnComponentHit.AddDynamic(this, &ATransformation_actor::OnRubberHit);
-    CurrentBounceMultiplier = RubberBounceMultiplier;
 
     GetWorld()->GetTimerManager().SetTimer(
         RefreshTimerHandle, this,
@@ -471,6 +470,16 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    if (MeshComp && ActorHasTag(TEXT("PowerKey")))
+    {
+        GEngine->AddOnScreenDebugMessage((int32)GetUniqueID(), 0.f, FColor::Yellow,
+            FString::Printf(TEXT("[METAL] %s | Sim=%d | Vel=%.0f | Z=%.0f"),
+                *GetName(),
+                MeshComp->IsSimulatingPhysics() ? 1 : 0,
+                MeshComp->GetPhysicsLinearVelocity().Size(),
+                GetActorLocation().Z));
+    }
+
     // ── Ice ──
     if (CurrentForm == EBlockForm::Ice && bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
     {
@@ -617,6 +626,12 @@ if (MeshComp && bDestroyWhenMelted && !bPendingDelayedDestroy)
 void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
     UE_LOG(LogTemp, Warning, TEXT("SetForm 호출: %d -> %d"), (int)CurrentForm, (int)NewForm);
+
+    if (!bCanChangeForm)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SetForm: 이 블럭은 폼 변경이 잠겨 있음 (bCanChangeForm=false)"));
+        return;
+    }
 
     if (CurrentForm == NewForm)
     {
@@ -1860,26 +1875,39 @@ void ATransformation_actor::RefreshArrowVisibility()
     }
 }
 
-void ATransformation_actor::OnRubberHit(UPrimitiveComponent *HitComp, AActor *OtherActor,
-                                        UPrimitiveComponent *OtherComp, FVector NormalImpulse, const FHitResult &Hit)
+void ATransformation_actor::OnRubberHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
     if (CurrentForm != EBlockForm::Rubber)
         return;
-    if (!OtherComp || !OtherComp->IsSimulatingPhysics())
+    if (!OtherActor || OtherActor == this)
+        return;
+    if (Cast<AmaterialCharacter>(OtherActor))
         return;
 
-    FVector Vel = OtherComp->GetPhysicsLinearVelocity();
-    float Speed = FMath::Max(Vel.Size(), 300.f);
+    // 상대의 실제 물리 바디 찾기
+    UPrimitiveComponent* PhysComp = OtherComp;
+    if (!PhysComp || !PhysComp->IsSimulatingPhysics())
+    {
+        if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(OtherActor->GetRootComponent()))
+            if (Root->IsSimulatingPhysics()) PhysComp = Root;
+    }
+    if (!PhysComp || !PhysComp->IsSimulatingPhysics())
+        return;
 
-    FVector BounceDir = Hit.ImpactNormal;
-    FVector NewVel;
-    NewVel.X = Vel.X;
-    NewVel.Y = Vel.Y;
-    NewVel.Z = FMath::Abs(BounceDir.Z) * Speed * CurrentBounceMultiplier;
+    // ★ 조건 없이 무조건 튕김: 충돌면 법선 방향으로 강한 속도 부여
+    FVector N = Hit.ImpactNormal.GetSafeNormal();
 
-    OtherComp->SetPhysicsLinearVelocity(NewVel);
+    // 법선이 상대를 밀어내는 방향이 되도록 보정
+    const FVector ToOther = (OtherActor->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+    if (FVector::DotProduct(N, ToOther) < 0.f)
+        N = -N;
 
-    CurrentBounceMultiplier = FMath::Max(CurrentBounceMultiplier * RubberBounceDecay, 0.1f);
+    // 현재 속도 무시하고 무조건 튕김 속도 부여
+    PhysComp->SetPhysicsLinearVelocity(N * 800.0f);
+
+    UE_LOG(LogTemp, Warning, TEXT("[RubberHit] FORCE BOUNCE %s -> %.0f"),
+        *OtherActor->GetName(), 800.0f);
 }
 
 void ATransformation_actor::UpdateSteamEffect()
@@ -2038,3 +2066,5 @@ void ATransformation_actor::BeginDelayedDestroy()
             Destroy(); 
         }), TotalDestroyDelay, false);
 }
+
+

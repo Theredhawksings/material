@@ -73,6 +73,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void Landed(const FHitResult& Hit) override;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
@@ -262,4 +263,30 @@ private:
 	UPROPERTY() TObjectPtr<USoundBase> WalkSound;
 
 	UPROPERTY() TObjectPtr<UAudioComponent> WalkAudioComp; 
+
+	// ── 빙판 미끄러짐 ──
+	UPROPERTY(EditAnywhere, Category = "Ice Slip") float IceGroundFriction = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Ice Slip") float IceBrakingDeceleration = 0.f;
+
+	float DefaultGroundFriction      = 8.f;
+	float DefaultBrakingDeceleration = 2048.f;
+	uint8 bWasOnIce : 1;
+
+	void UpdateGroundFriction();
+
+	// ── 고무 위 점프(트램펄린) ──
+	UFUNCTION()
+	void OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution    = 0.65f;  // 낙하속도 대비 튕김 비율(<1이면 점점 낮게)
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce       = 1600.f; // 윗면 튕김 최대 속도(과발사 방지)
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberMinFallToBounce       = 200.f;  // 이보다 천천히 떨어지면 안 튕김(정착)
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerSideVelocity    = 700.f;  // 옆면 밀려나는 힘
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerSideUpZ         = 300.f;  // 옆면 튕길 때 살짝 위로
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberSideBounceCooldown    = 0.25f;  // 옆면 연속 튕김 방지 간격
+
+	float LastFallZSpeed    = 0.f;
+	float LastSideBounceTime = -10.f;
+
 };

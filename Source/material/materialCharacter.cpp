@@ -18,6 +18,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Components/CapsuleComponent.h"
 #include "Sound/SoundBase.h"
 #include "Components/AudioComponent.h"
 #include "Blueprint/UserWidget.h"
@@ -290,11 +291,31 @@ void AmaterialCharacter::BeginPlay()
 
 	FSlateApplication::Get().OnApplicationActivationStateChanged().AddUObject(
 		this, &AmaterialCharacter::OnWindowFocusChanged);
+
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+    DefaultGroundFriction      = Move->GroundFriction;
+    DefaultBrakingDeceleration = Move->BrakingDecelerationWalking;
+	}
+	bWasOnIce = false;
+
+	// ★ 고무 옆면 충돌 감지
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetNotifyRigidBodyCollision(true);
+		Capsule->OnComponentHit.AddDynamic(this, &AmaterialCharacter::OnCapsuleHit);
+	}
 }
 
 void AmaterialCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (UCharacterMovementComponent* Move = GetCharacterMovement())
+	{
+		if (Move->IsFalling())
+			LastFallZSpeed = Move->Velocity.Z;
+	}
 
 	if (HeldActor)
 	{
@@ -311,6 +332,7 @@ void AmaterialCharacter::Tick(float DeltaTime)
 		UpdateHeldMagnetism();
 
 	UpdateAnimation();
+	UpdateGroundFriction();
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputComponent)
@@ -1330,19 +1352,110 @@ FName AmaterialCharacter::FormToTag(EBlockForm Form)
 
 void AmaterialCharacter::ApplyLoadedFormTo(ATransformation_actor *Target)
 {
-	if (!Target || !bHasLoadedForm)
-		return;
-	if (Target->GetCurrentForm() == LoadedForm)
+    if (!Target || !bHasLoadedForm)
+        return;
+
+    // ★ 추가: 폼 변경 잠긴 블럭이면 게이지 소모 없이 무시
+    if (!Target->bCanChangeForm)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] 잠긴 블럭 - 게이지 소모 안 함"));
+        return;
+    }
+
+    if (Target->GetCurrentForm() == LoadedForm)
+        return;
+
+    const FName Tag = FormToTag(LoadedForm);
+    if (Tag.IsNone())
+        return;
+
+    Target->SetForm(LoadedForm);
+    DecreaseGaugeForMaterial(Tag);
+    UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] 적용 %s -> %s"), *Target->GetName(), *Tag.ToString());
+}
+
+void AmaterialCharacter::UpdateGroundFriction()
+{
+    UCharacterMovementComponent* Move = GetCharacterMovement();
+    if (!Move) return;
+
+    bool bOnIce = false;
+
+    if (Move->IsMovingOnGround())
+    {
+        // 캐릭터가 현재 밟고 있는 바닥
+        const FHitResult& Floor = Move->CurrentFloor.HitResult;
+        if (AActor* FloorActor = Floor.GetActor())
+        {
+            // 방법 A: 이미 쓰고 있는 태그 시스템 활용 (가장 간단)
+            bOnIce = FloorActor->ActorHasTag(TEXT("Ice"));
+
+            // 방법 B: 폼을 직접 확인하고 싶으면 이걸로 교체
+            // if (ATransformation_actor* T = Cast<ATransformation_actor>(FloorActor))
+            //     bOnIce = (T->GetCurrentForm() == EBlockForm::Ice);
+        }
+    }
+
+    if (bOnIce != bWasOnIce)   // 상태가 바뀔 때만 적용
+    {
+        if (bOnIce)
+        {
+            Move->GroundFriction             = IceGroundFriction;
+            Move->BrakingDecelerationWalking = IceBrakingDeceleration;
+        }
+        else
+        {
+            Move->GroundFriction             = DefaultGroundFriction;
+            Move->BrakingDecelerationWalking = DefaultBrakingDeceleration;
+        }
+        bWasOnIce = bOnIce;
+    }
+}
+
+void AmaterialCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
+	if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
 		return;
 
-	const FName Tag = FormToTag(LoadedForm);
-	if (Tag.IsNone())
+	const float FallSpeed = FMath::Abs(LastFallZSpeed);
+
+	// 너무 살살 내려앉으면 그냥 착지 (무한 통통 방지 → 자연스럽게 멈춤)
+	if (FallSpeed < RubberMinFallToBounce)
 		return;
 
-	// 게이지 0이면 적용 막고 싶으면 아래 주석 해제
-	// if (GetGaugeByTag(Tag) <= 0) return;
+	// 낙하 속도에 비례해 위로 튕김 (높이 떨어질수록 높이 튐 = 진짜 고무/트램펄린)
+	const float BounceUp = FMath::Min(FallSpeed * RubberPlayerRestitution, RubberPlayerMaxBounce);
 
-	Target->SetForm(LoadedForm);
-	DecreaseGaugeForMaterial(Tag);
-	UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] 적용 %s -> %s"), *Target->GetName(), *Tag.ToString());
+	// bXYOverride=false(수평 속도 유지), bZOverride=true(Z만 새 값)
+	LaunchCharacter(FVector(0.f, 0.f, BounceUp), false, true);
+}
+
+void AmaterialCharacter::OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	ATransformation_actor* Block = Cast<ATransformation_actor>(OtherActor);
+	if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
+		return;
+
+	const FVector N = Hit.ImpactNormal;
+
+	// 윗면/밑면(거의 수직 법선)은 Landed가 처리 → 여기선 옆면만
+	if (FMath::Abs(N.Z) > 0.6f)
+		return;
+
+	// 옆면 연속 발동 방지
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastSideBounceTime < RubberSideBounceCooldown)
+		return;
+	LastSideBounceTime = Now;
+
+	// 벽 바깥쪽(수평) + 살짝 위로 튕김
+	FVector Launch = N.GetSafeNormal2D() * RubberPlayerSideVelocity;
+	Launch.Z = RubberPlayerSideUpZ;
+
+	// 옆면은 수평 속도까지 덮어써야 "팅겨나가는" 느낌
+	LaunchCharacter(Launch, true, true);
 }

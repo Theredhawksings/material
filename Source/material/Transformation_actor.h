@@ -96,6 +96,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Pickup")
     bool bFixedInPlace = false;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Block | Form")
+    bool bCanChangeForm = true;
+
     void SetMagneticCameraState(bool bIsCameraOn);
 
     UFUNCTION(BlueprintCallable, Category = "CameraSystem", meta = (WorldContext = "WorldContextObject"))
@@ -454,18 +457,15 @@ private:
     void ApplyFixedPhysics();
 
     UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
-    float RubberBounceMultiplier = 2.5f;
+    float RubberBounceMultiplier = 0.8f;   // 반사 탄성계수 e (0~1, 1=완전탄성, >1=점점 더 튐)
+
+    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+    float RubberMinBounceSpeed = 200.f;    // 이 속도 미만 충돌은 무시 (덜덜 떨림 방지)
 
     UFUNCTION()
     void OnRubberHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+        UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-
-    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
-    float RubberBounceDecay = 0.8f;
-
-    float CurrentBounceMultiplier = RubberBounceMultiplier; 
-    
     UPROPERTY(EditAnywhere, Category = "Ice|Visual")
     TObjectPtr<UNiagaraSystem> SteamEffect = nullptr;
  
@@ -481,4 +481,6 @@ private:
     void BeginDelayedDestroy();
     FTimerHandle ResidualStopHandle;
     FTimerHandle ResidualKillHandle;
+
+    void BouncePlayer(class AmaterialCharacter* Player, const FVector& Normal);
 };
