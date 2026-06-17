@@ -1,6 +1,9 @@
 #include "AirConditioner.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/AudioComponent.h" // ★ 추가
+#include "Sound/SoundBase.h"           // ★ 추가
+#include "TimerManager.h"              // ★ 추가
 #include "Engine/Engine.h"
 #include "UObject/ConstructorHelpers.h"
 #include "NiagaraComponent.h"
@@ -72,6 +75,19 @@ AAirConditioner::AAirConditioner()
         SmokeComponents.Add(Nozzle);
     }
 
+    // ★ 추가: 스모크 사운드 자동 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> SmokeSnd(
+        TEXT("/Game/Sound/sound_gas_injection.sound_gas_injection"));
+    if (SmokeSnd.Succeeded())
+        SmokeSound = SmokeSnd.Object;
+
+    // ★ 추가: 스모크 사운드용 오디오 컴포넌트 생성
+    SmokeAudioComp = CreateDefaultSubobject<UAudioComponent>(TEXT("SmokeAudioComp"));
+    SmokeAudioComp->SetupAttachment(MeshComp);
+    SmokeAudioComp->bAutoActivate = false; // 시작 시 자동 재생 안 함
+    if (SmokeSound)
+        SmokeAudioComp->SetSound(SmokeSound);
+
     Temperature = 0.f;
     CoolRate = 0.f;
 }
@@ -120,12 +136,12 @@ void AAirConditioner::Tick(float DeltaTime)
     }
 
     if (bShowDebugShapes && HeatSphere)
-{
-    GEngine->AddOnScreenDebugMessage(
-        static_cast<int32>(GetUniqueID()) + 1, 0.f, FColor::Red,
-        FString::Printf(TEXT("[%s] MaxHeatDist: %.1f | SphereR: %.1f"),
-            *GetName(), MaxHeatDistance, HeatSphere->GetScaledSphereRadius()));
-}
+    {
+        GEngine->AddOnScreenDebugMessage(
+            static_cast<int32>(GetUniqueID()) + 1, 0.f, FColor::Red,
+            FString::Printf(TEXT("[%s] MaxHeatDist: %.1f | SphereR: %.1f"),
+                *GetName(), MaxHeatDistance, HeatSphere->GetScaledSphereRadius()));
+    }
 }
 
 void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
@@ -144,7 +160,6 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
         if (Actor->IsA<AAirConditioner>()) continue;
 
         // ★ 얼음(또는 변신 블럭): StartHeating으로 자신을 가열원 등록
-        //    → 얼음 Tick의 CalcReceivedPower가 에어컨까지 거리로 녹는 양 계산
         if (UFunction* StartFn = Actor->FindFunction(StartHeatingName))
         {
             bool bAlreadyHeating = false;
@@ -159,7 +174,6 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
                 FArgs Args{ this };
                 Actor->ProcessEvent(StartFn, &Args);
             }
-            // 얼음은 자기 Tick에서 알아서 녹으므로 여기선 추가 가열 불필요
             continue;
         }
 
@@ -207,6 +221,32 @@ void AAirConditioner::SetSmokeActive(bool bActive)
             Nozzle->Deactivate();
         }
     }
+
+    // ★ 추가: 사운드 처리
+    if (bActive)
+    {
+        // 스모크 작동 → 0.3초 뒤 사운드 재생
+        GetWorldTimerManager().SetTimer(
+            SmokeSoundTimer, this, &AAirConditioner::PlaySmokeSound, SmokeSoundDelay, false);
+    }
+    else
+    {
+        // 스모크 꺼짐 → 대기 중인 타이머 취소 + 사운드 정지
+        GetWorldTimerManager().ClearTimer(SmokeSoundTimer);
+        if (SmokeAudioComp && SmokeAudioComp->IsPlaying())
+        {
+            SmokeAudioComp->Stop();
+        }
+    }
+}
+
+// ★ 추가: 스모크 사운드 재생 (타이머에서 호출)
+void AAirConditioner::PlaySmokeSound()
+{
+    if (SmokeAudioComp && SmokeSound)
+    {
+        SmokeAudioComp->Play();
+    }
 }
 
 void AAirConditioner::ActivateAircon()
@@ -216,7 +256,7 @@ void AAirConditioner::ActivateAircon()
     bIsRunning = true;
     Temperature = HeatTemperature;
 
-    SetSmokeActive(true);   // ★ 연기 ON
+    SetSmokeActive(true);   // ★ 연기 ON (+ 0.3초 뒤 사운드)
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
         TEXT("[에어컨] 작동 시작 (ON)"));
@@ -230,7 +270,7 @@ void AAirConditioner::DeactivateAircon()
     bIsRunning = false;
     Temperature = 0.f;
 
-    SetSmokeActive(false);
+    SetSmokeActive(false);  // ★ 연기 OFF (+ 사운드 정지)
 
     // ★ 범위 안 얼음(및 모든 가열 대상)에게 StopHeating 전송
     if (HeatSphere)

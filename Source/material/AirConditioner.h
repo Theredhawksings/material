@@ -6,6 +6,8 @@
 
 class UNiagaraComponent;
 class UNiagaraSystem;
+class UAudioComponent; // ★ 추가
+class USoundBase;      // ★ 추가
 
 UCLASS()
 class MATERIAL_API AAirConditioner : public ATemperature
@@ -53,6 +55,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Smoke")
     float SmokeSpawnRate = 50.f;
 
+    // ★ 추가: 스모크 사운드
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Sound")
+    TObjectPtr<USoundBase> SmokeSound;
+
+    // 스모크 작동 후 사운드가 나올 때까지의 딜레이(초)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Sound")
+    float SmokeSoundDelay = 0.3f;
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -63,9 +73,18 @@ protected:
 
     void SetSmokeActive(bool bActive);
 
+    // ★ 추가: 사운드 재생 헬퍼 (타이머에서 호출)
+    void PlaySmokeSound();
+
 private:
     UPROPERTY(VisibleAnywhere, Category = "Components")
     TObjectPtr<UStaticMeshComponent> WireframeMeshComp;
+
+    // ★ 추가: 스모크 사운드용 오디오 컴포넌트
+    UPROPERTY(VisibleAnywhere, Category = "AirConditioner|Sound")
+    TObjectPtr<UAudioComponent> SmokeAudioComp;
+
+    FTimerHandle SmokeSoundTimer; // ★ 추가: 0.3초 딜레이용
 
     void HeatNearbyTemperatureBlocks(float DeltaTime);
 
