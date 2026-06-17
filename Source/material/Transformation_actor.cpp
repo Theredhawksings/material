@@ -1890,24 +1890,33 @@ void ATransformation_actor::OnRubberHit(UPrimitiveComponent* HitComp, AActor* Ot
     if (!PhysComp || !PhysComp->IsSimulatingPhysics())
     {
         if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(OtherActor->GetRootComponent()))
-            if (Root->IsSimulatingPhysics()) PhysComp = Root;
+            if (Root->IsSimulatingPhysics())
+                PhysComp = Root;
     }
     if (!PhysComp || !PhysComp->IsSimulatingPhysics())
         return;
 
-    // ★ 조건 없이 무조건 튕김: 충돌면 법선 방향으로 강한 속도 부여
-    FVector N = Hit.ImpactNormal.GetSafeNormal();
+    const FVector Vel = PhysComp->GetPhysicsLinearVelocity();
 
-    // 법선이 상대를 밀어내는 방향이 되도록 보정
+    // 충돌면 법선 (상대를 밀어내는 방향으로 보정)
+    FVector N = Hit.ImpactNormal.GetSafeNormal();
     const FVector ToOther = (OtherActor->GetActorLocation() - GetActorLocation()).GetSafeNormal();
     if (FVector::DotProduct(N, ToOther) < 0.f)
         N = -N;
 
-    // 현재 속도 무시하고 무조건 튕김 속도 부여
-    PhysComp->SetPhysicsLinearVelocity(N * 800.0f);
+    const float InSpeed = Vel.Size();
 
-    UE_LOG(LogTemp, Warning, TEXT("[RubberHit] FORCE BOUNCE %s -> %.0f"),
-        *OtherActor->GetName(), 800.0f);
+    // 거의 멈춰서 닿으면 튕기지 않고 안착 (무한 통통 방지)
+    if (InSpeed < RubberStopThreshold)
+        return;
+
+    // 들어온 속도의 0.7배로 튕김(감쇠), 단 최소 RubberMinBounce는 보장
+    const float OutSpeed = FMath::Max(InSpeed * RubberRestitution, RubberMinBounce);
+
+    PhysComp->SetPhysicsLinearVelocity(N * OutSpeed);
+
+    UE_LOG(LogTemp, Warning, TEXT("[RubberHit] %s | in=%.0f -> out=%.0f"),
+        *OtherActor->GetName(), InSpeed, OutSpeed);
 }
 
 void ATransformation_actor::UpdateSteamEffect()

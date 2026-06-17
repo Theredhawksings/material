@@ -311,12 +311,6 @@ void AmaterialCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (UCharacterMovementComponent* Move = GetCharacterMovement())
-	{
-		if (Move->IsFalling())
-			LastFallZSpeed = Move->Velocity.Z;
-	}
-
 	if (HeldActor)
 	{
 		UpdateHoldPivotTransform();
@@ -1412,50 +1406,54 @@ void AmaterialCharacter::UpdateGroundFriction()
     }
 }
 
+void AmaterialCharacter::DoRubberBounce(const FVector& SurfaceNormal)
+{
+    UCharacterMovementComponent* Move = GetCharacterMovement();
+    if (!Move) return;
+
+    const FVector N = SurfaceNormal.GetSafeNormal();
+    const FVector Vel = GetVelocity();   // 캐릭터 현재 속도
+
+    // 면으로 들어가는 속도 성분
+    const float VIntoSurface = FVector::DotProduct(Vel, -N);
+
+    // 너무 느리게 닿으면 무시 (무한 통통 방지)
+    if (VIntoSurface < RubberPlayerStopThreshold)
+        return;
+
+    // 속도 대비 반사 (물체랑 동일하게 0.7)
+    FVector Bounced = Vel + (1.f + RubberPlayerRestitution) * VIntoSurface * N;
+
+    // 너무 약하면 최소 보장 (들어온 속도 비례)
+    float AlongN = FVector::DotProduct(Bounced, N);
+    const float MinBounce = VIntoSurface * RubberPlayerRestitution;
+    if (AlongN < MinBounce)
+        Bounced += N * (MinBounce - AlongN);
+
+    // 과도한 발사 방지
+    Bounced = Bounced.GetClampedToMaxSize(RubberPlayerMaxBounce);
+
+    LaunchCharacter(Bounced, true, true);   // XY, Z 둘 다 새 값으로
+}
+
 void AmaterialCharacter::Landed(const FHitResult& Hit)
 {
-	Super::Landed(Hit);
+    Super::Landed(Hit);
 
-	ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
-	if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
-		return;
+    ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
+    if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
+        return;
 
-	const float FallSpeed = FMath::Abs(LastFallZSpeed);
-
-	// 너무 살살 내려앉으면 그냥 착지 (무한 통통 방지 → 자연스럽게 멈춤)
-	if (FallSpeed < RubberMinFallToBounce)
-		return;
-
-	// 낙하 속도에 비례해 위로 튕김 (높이 떨어질수록 높이 튐 = 진짜 고무/트램펄린)
-	const float BounceUp = FMath::Min(FallSpeed * RubberPlayerRestitution, RubberPlayerMaxBounce);
-
-	// bXYOverride=false(수평 속도 유지), bZOverride=true(Z만 새 값)
-	LaunchCharacter(FVector(0.f, 0.f, BounceUp), false, true);
+    DoRubberBounce(Hit.ImpactNormal);
 }
 
 void AmaterialCharacter::OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	ATransformation_actor* Block = Cast<ATransformation_actor>(OtherActor);
-	if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
-		return;
+    ATransformation_actor* Block = Cast<ATransformation_actor>(OtherActor);
+    if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
+        return;
 
-	const FVector N = Hit.ImpactNormal;
-
-	// 윗면/밑면(거의 수직 법선)은 Landed가 처리 → 여기선 옆면만
-	if (FMath::Abs(N.Z) > 0.6f)
-		return;
-
-	// 옆면 연속 발동 방지
-	const float Now = GetWorld()->GetTimeSeconds();
-	if (Now - LastSideBounceTime < RubberSideBounceCooldown)
-		return;
-	LastSideBounceTime = Now;
-
-	// 벽 바깥쪽(수평) + 살짝 위로 튕김
-	FVector Launch = N.GetSafeNormal2D() * RubberPlayerSideVelocity;
-	Launch.Z = RubberPlayerSideUpZ;
-
-	// 옆면은 수평 속도까지 덮어써야 "팅겨나가는" 느낌
-	LaunchCharacter(Launch, true, true);
+    DoRubberBounce(Hit.ImpactNormal);
 }
+

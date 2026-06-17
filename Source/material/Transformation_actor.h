@@ -456,11 +456,14 @@ private:
 private:
     void ApplyFixedPhysics();
 
-    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
-    float RubberBounceMultiplier = 0.8f;   // 반사 탄성계수 e (0~1, 1=완전탄성, >1=점점 더 튐)
+UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+float RubberRestitution = 0.7f;       // 속도 대비 반사율 (감쇠)
 
-    UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
-    float RubberMinBounceSpeed = 200.f;    // 이 속도 미만 충돌은 무시 (덜덜 떨림 방지)
+UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+float RubberMinBounce = 250.f;        // 튕길 때 최소 보장 속도
+
+UPROPERTY(EditAnywhere, Category = "Rubber|Bounce")
+float RubberStopThreshold = 70.f;     // 이보다 느리게 닿으면 멈춤(안착)
 
     UFUNCTION()
     void OnRubberHit(UPrimitiveComponent* HitComp, AActor* OtherActor,

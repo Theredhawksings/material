@@ -279,14 +279,10 @@ private:
 	void OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution    = 0.65f;  // 낙하속도 대비 튕김 비율(<1이면 점점 낮게)
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce       = 1600.f; // 윗면 튕김 최대 속도(과발사 방지)
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberMinFallToBounce       = 200.f;  // 이보다 천천히 떨어지면 안 튕김(정착)
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerSideVelocity    = 700.f;  // 옆면 밀려나는 힘
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerSideUpZ         = 300.f;  // 옆면 튕길 때 살짝 위로
-	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberSideBounceCooldown    = 0.25f;  // 옆면 연속 튕김 방지 간격
+void DoRubberBounce(const FVector& SurfaceNormal);   // ★ 공통 함수
 
-	float LastFallZSpeed    = 0.f;
-	float LastSideBounceTime = -10.f;
+UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution   = 0.7f;   // 속도 대비 (물체랑 동일)
+UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerStopThreshold = 100.f;  // 이 속도 미만은 안 튕김
+UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce     = 1800.f; // 최대 튕김 속도
 
 };
