@@ -552,8 +552,11 @@ else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
         if (AWire* DownWire = Cast<AWire>(A))
             ConnectedWires.AddUnique(DownWire);
         else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-            if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                ConnectedActors.AddUnique(Block);
+{
+    UE_LOG(LogTemp, Error, TEXT("끝점에서 Metal블럭 잡힘: %s"), *A->GetName());
+    if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+        ConnectedActors.AddUnique(Block);
+}
     }
 }
 

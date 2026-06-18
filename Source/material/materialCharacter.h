@@ -262,6 +262,19 @@ private:
 	UPROPERTY() TObjectPtr<USoundBase> TouchPadSound;
 	UPROPERTY() TObjectPtr<USoundBase> WalkSound;
 
+// ★ 철/얼음 부딪침 & 물체 내릴 때 무작위 재생할 사운드들
+	UPROPERTY() TArray<TObjectPtr<USoundBase>> MetallicSounds;
+	// ★ 고무 튕길 때 무작위 재생할 사운드들
+	UPROPERTY() TArray<TObjectPtr<USoundBase>> RubberSounds;
+	
+	// 무작위로 하나 골라주는 헬퍼
+	USoundBase* GetRandomMetallicSound() const;
+	USoundBase* GetRandomRubberSound() const;   // ★ 추가
+
+	// 부딪침 사운드 중복 재생 방지용 쿨다운
+	float LastImpactSoundTime = 0.f;
+	UPROPERTY(EditAnywhere, Category = "Impact Sound") float ImpactSoundCooldown = 0.2f;
+
 	UPROPERTY() TObjectPtr<UAudioComponent> WalkAudioComp; 
 
 	// ── 빙판 미끄러짐 ──

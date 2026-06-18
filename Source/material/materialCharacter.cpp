@@ -164,11 +164,37 @@ AmaterialCharacter::AmaterialCharacter()
 		{TEXT("SoundWave'/Game/Sound/sound_touch_pad.sound_touch_pad'"), &TouchPadSound},
 		{TEXT("SoundWave'/Game/Sound/sound_walking.sound_walking'"),   &WalkSound},
 	};
+	
 	for (const FSoundLoader &Loader : SoundAssets)
 	{
 		ConstructorHelpers::FObjectFinder<USoundBase> SoundAsset(Loader.Path);
 		if (SoundAsset.Succeeded())
 			*Loader.Target = SoundAsset.Object;
+	}
+
+	// ★ 메탈릭 사운드 3종 로드 (무작위 재생용)
+	const TCHAR* MetallicPaths[] = {
+		TEXT("SoundWave'/Game/Sound/sound__metallic_1.sound__metallic_1'"),
+		TEXT("SoundWave'/Game/Sound/sound_metallic_2.sound_metallic_2'"),
+		TEXT("SoundWave'/Game/Sound/sound_metallic_3.sound_metallic_3'"),
+	};
+	for (const TCHAR* Path : MetallicPaths)
+	{
+		ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+		if (S.Succeeded())
+			MetallicSounds.Add(S.Object);
+	}
+
+	// ★ 고무 사운드 2종 로드 (무작위 재생용)
+	const TCHAR* RubberPaths[] = {
+		TEXT("SoundWave'/Game/Sound/sound_rubber_1.sound_rubber_1'"),
+		TEXT("SoundWave'/Game/Sound/sound_rubber_2.sound_rubber_2'"),
+	};
+	for (const TCHAR* Path : RubberPaths)
+	{
+		ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+		if (S.Succeeded())
+			RubberSounds.Add(S.Object);
 	}
 
 	// 걷기 루프용 오디오 컴포넌트 (재생/정지 제어 위해 컴포넌트로)
@@ -215,6 +241,24 @@ AmaterialCharacter::AmaterialCharacter()
 		GetMesh()->SetMaterial(0, PlayerMat.Object);
 
 	bIsUsingSyringe = false;
+
+	
+}
+
+USoundBase* AmaterialCharacter::GetRandomMetallicSound() const
+{
+	if (MetallicSounds.Num() == 0)
+		return nullptr;
+	const int32 Idx = FMath::RandRange(0, MetallicSounds.Num() - 1);
+	return MetallicSounds[Idx];
+}
+
+USoundBase* AmaterialCharacter::GetRandomRubberSound() const
+{
+	if (RubberSounds.Num() == 0)
+		return nullptr;
+	const int32 Idx = FMath::RandRange(0, RubberSounds.Num() - 1);
+	return RubberSounds[Idx];
 }
 
 void AmaterialCharacter::BeginPlay()
@@ -305,6 +349,8 @@ void AmaterialCharacter::BeginPlay()
 		Capsule->SetNotifyRigidBodyCollision(true);
 		Capsule->OnComponentHit.AddDynamic(this, &AmaterialCharacter::OnCapsuleHit);
 	}
+
+
 }
 
 void AmaterialCharacter::Tick(float DeltaTime)
@@ -524,45 +570,29 @@ bool AmaterialCharacter::TryPickup()
 	const FVector Start = FollowCamera->GetComponentLocation();
 	const FVector End = Start + FollowCamera->GetForwardVector() * PickupRange + FollowCamera->GetRightVector() * -20.f;
 
-	// =========================================================================
-	// 픽업 레이저 디버그 시각화
-	// =========================================================================
-	// 카메라 위치 (레이저 시작점) - 흰색 구체
 	DrawDebugSphere(GetWorld(), Start, 8.f, 8, FColor::White, false, 3.0f, 0, 1.f);
-
-	// 레이저 방향 및 끝점 - 파란색 (스위프 반경 포함)
 	DrawDebugSphere(GetWorld(), End, PickupSphereRadius, 12, FColor::Blue, false, 3.0f);
 	DrawDebugLine(GetWorld(), Start, End, FColor::Blue, false, 3.0f, 0, 1.5f);
-
-	// 캐릭터 위치도 표시 (카메라 vs 캐릭터 위치 비교용) - 회색
 	DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 8, FColor(128, 128, 128), false, 3.0f);
 
-	// 로그: 레이저 시작/끝/방향 출력
 	UE_LOG(LogTemp, Warning, TEXT("[TryPickup] CameraPos=(%s) | Forward=(%s) | Range=%.0f | SphereR=%.0f"),
 		   *Start.ToCompactString(),
 		   *FollowCamera->GetForwardVector().ToCompactString(),
 		   PickupRange,
 		   PickupSphereRadius);
-	// =========================================================================
 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TryPickup), false, this);
 	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
 													   ECC_Camera, FCollisionShape::MakeSphere(PickupSphereRadius), Params);
 
-	// =========================================================================
-	// 히트 결과 디버그
-	// =========================================================================
 	if (bHit && Hit.GetActor())
 	{
-		// 히트된 지점 - 노란색 점
 		DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 20.f, FColor::Yellow, false, 3.0f);
-		// 히트된 액터 바운딩박스 - 초록색
 		DrawDebugBox(GetWorld(),
 					 Hit.GetActor()->GetActorLocation(),
 					 FVector(40.f),
 					 FColor::Green, false, 3.0f, 0, 2.f);
-		// 히트된 액터 이름 (월드 공간에 텍스트)
 		DrawDebugString(GetWorld(),
 						Hit.GetActor()->GetActorLocation() + FVector(0.f, 0.f, 60.f),
 						FString::Printf(TEXT("HIT: %s"), *Hit.GetActor()->GetName()),
@@ -573,13 +603,11 @@ bool AmaterialCharacter::TryPickup()
 	}
 	else
 	{
-		// 히트 없음 - 빨간색 끝점
 		DrawDebugSphere(GetWorld(), End, PickupSphereRadius, 12, FColor::Red, false, 3.0f);
 		DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 3.0f, 0, 1.5f);
 		UE_LOG(LogTemp, Warning, TEXT("[TryPickup] NO HIT (ECC_Camera, Range=%.0f)"), PickupRange);
 		return false;
 	}
-	// =========================================================================
 
 	AActor *Target = Hit.GetActor();
 	if (!Target)
@@ -589,7 +617,6 @@ bool AmaterialCharacter::TryPickup()
 	{
 		if (!TransActor->bCanBePickedUp)
 		{
-			// 픽업 불가 상태 표시 - 주황색
 			DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Orange, false, 3.0f, 0, 2.f);
 			DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
 							TEXT("bCanBePickedUp = false"), nullptr, FColor::Orange, 3.0f, true);
@@ -602,7 +629,6 @@ bool AmaterialCharacter::TryPickup()
 															 { return Target->ActorHasTag(Tag); });
 	if (!bHasValidTag)
 	{
-		// 유효 태그 없음 - 빨간색 박스
 		DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(40.f), FColor::Red, false, 3.0f, 0, 2.f);
 		DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 80.f),
 						TEXT("NO VALID TAG"), nullptr, FColor::Red, 3.0f, true);
@@ -610,7 +636,6 @@ bool AmaterialCharacter::TryPickup()
 		return false;
 	}
 
-	// 픽업 성공 - 초록색 확정 표시
 	DrawDebugBox(GetWorld(), Target->GetActorLocation(), FVector(45.f), FColor::Green, false, 3.0f, 0, 3.f);
 	DrawDebugString(GetWorld(), Target->GetActorLocation() + FVector(0.f, 0.f, 100.f),
 					TEXT("PICKUP OK!"), nullptr, FColor::Green, 3.0f, true);
@@ -693,6 +718,19 @@ void AmaterialCharacter::DropHeld()
 	USkeletalMeshComponent *MeshComp = GetMesh();
 	if (!PickupAnim || !MeshComp)
 		return;
+
+// ★ 물체 내릴 때 메탈릭 사운드 (0.3초 뒤 무작위 재생)
+	if (USoundBase* Snd = GetRandomMetallicSound())
+	{
+		const FVector SoundLoc = GetActorLocation();
+		FTimerHandle DropSoundHandle;
+		GetWorld()->GetTimerManager().SetTimer(DropSoundHandle,
+			[this, Snd, SoundLoc]()
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
+			},
+			1.0f, false);
+	}
 
 	if (HoldPivot)
 	{
@@ -1026,7 +1064,6 @@ void AmaterialCharacter::CloseRadialMenu(bool bConfirm)
 		bMouseCaptured = true;
 	}
 
-	// 확정 클릭이면 현재 가리키는 머터리얼을 "장전"만 한다 (대상 적용은 발사 때)
 	if (bConfirm)
 	{
 		EBlockForm SelForm;
@@ -1140,12 +1177,10 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 
 	const FVector Center = GetActorLocation();
 
-	// 철 크기 비례 스케일
 	const float SizeScale = bHoldingMetal
 								? FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.5f, 2.0f)
 								: 1.0f;
 
-	// 디버그
 	DrawDebugSphere(GetWorld(), Center, MagnetScanRange, 16, FColor::Blue, false, 0.f);
 	if (GEngine)
 		GEngine->AddOnScreenDebugMessage(1, 0.f, FColor::Cyan,
@@ -1169,13 +1204,11 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 		if (!OtherActor || OtherActor == this)
 			continue;
 
-		// Metal 케이스에서는 WakeRigidBody로 깨우므로 체크 완화
 		UPrimitiveComponent *PrimComp = Hit.GetComponent();
 		if (!PrimComp)
 			continue;
 		if (!PrimComp->IsSimulatingPhysics())
 		{
-			// Magnet 태그면 깨워서 진행
 			if (OtherActor->ActorHasTag(TEXT("Magnet")))
 				PrimComp->WakeRigidBody();
 			else
@@ -1191,13 +1224,11 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 		const FVector Dir = ToCenter / Dist;
 		const float SafeDist = FMath::Max(Dist, 10.f);
 
-		// ── Magnet 들고 있을 때 ──
 		if (bHoldingMagnet)
 		{
-			// Metal → 무조건 인력
 			if (OtherActor->ActorHasTag(TEXT("Metal")))
 			{
-				float ForceMag = MagnetForceStrength * SizeScale * 800.f;  // ★ 3000 → 800
+				float ForceMag = MagnetForceStrength * SizeScale * 800.f;
 				ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
 
 				const FVector CurVel = PrimComp->GetPhysicsLinearVelocity();
@@ -1214,7 +1245,6 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 
 				MetalCount++;
 			}
-			// Magnet → 극성 계산
 			else if (OtherActor->ActorHasTag(TEXT("Magnet")))
 			{
 				ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
@@ -1229,7 +1259,7 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 				const float OtherPole = FVector::DotProduct(OtherNorth, -DirToOther);
 				const float Polarity = -(MyPole * OtherPole);
 
-				float ForceMag = (MagnetForceStrength * 1500.f) / SafeDist;  // ★ 5000 → 1500
+				float ForceMag = (MagnetForceStrength * 1500.f) / SafeDist;
 				ForceMag *= PrimComp->GetMass();
 
 				const FVector ForceDir = Dir * FMath::Sign(Polarity);
@@ -1252,8 +1282,6 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 				MagnetCount++;
 			}
 		}
-
-		// ── Metal 들고 있을 때 → 주변 Magnet 인력 (살짝살짝 + 크기 비례) ──
 		else if (bHoldingMetal)
 		{
 			if (!OtherActor->ActorHasTag(TEXT("Magnet")))
@@ -1267,7 +1295,7 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 			ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
 
 			PrimComp->WakeRigidBody();
-			PrimComp->AddImpulse(Dir * 40.f, NAME_None, true);  // ★ 100 → 40
+			PrimComp->AddImpulse(Dir * 40.f, NAME_None, true);
 
 			DrawDebugLine(GetWorld(), Center, OtherLoc, FColor::Green, false, 0.f, 0, 2.f);
 			DrawDebugString(GetWorld(), OtherLoc + FVector(0, 0, 40.f),
@@ -1299,7 +1327,6 @@ void AmaterialCharacter::FireMaterialShot()
 	FRotator Rot;
 	PC->GetPlayerViewPoint(Loc, Rot);
 
-	// 시작점을 왼쪽으로 30 이동
 	const FVector Start = Loc + FRotationMatrix(Rot).GetUnitAxis(EAxis::Y) * -15.f;
 	const FVector End   = Start + Rot.Vector() * InteractRange;
 
@@ -1355,7 +1382,6 @@ void AmaterialCharacter::ApplyLoadedFormTo(ATransformation_actor *Target)
     if (!Target || !bHasLoadedForm)
         return;
 
-    // ★ 추가: 폼 변경 잠긴 블럭이면 게이지 소모 없이 무시
     if (!Target->bCanChangeForm)
     {
         UE_LOG(LogTemp, Warning, TEXT("[MaterialShot] 잠긴 블럭 - 게이지 소모 안 함"));
@@ -1383,20 +1409,14 @@ void AmaterialCharacter::UpdateGroundFriction()
 
     if (Move->IsMovingOnGround())
     {
-        // 캐릭터가 현재 밟고 있는 바닥
         const FHitResult& Floor = Move->CurrentFloor.HitResult;
         if (AActor* FloorActor = Floor.GetActor())
         {
-            // 방법 A: 이미 쓰고 있는 태그 시스템 활용 (가장 간단)
             bOnIce = FloorActor->ActorHasTag(TEXT("Ice"));
-
-            // 방법 B: 폼을 직접 확인하고 싶으면 이걸로 교체
-            // if (ATransformation_actor* T = Cast<ATransformation_actor>(FloorActor))
-            //     bOnIce = (T->GetCurrentForm() == EBlockForm::Ice);
         }
     }
 
-    if (bOnIce != bWasOnIce)   // 상태가 바뀔 때만 적용
+    if (bOnIce != bWasOnIce)
     {
         if (bOnIce)
         {
@@ -1418,33 +1438,46 @@ void AmaterialCharacter::DoRubberBounce(const FVector& SurfaceNormal)
     if (!Move) return;
 
     const FVector N = SurfaceNormal.GetSafeNormal();
-    const FVector Vel = GetVelocity();   // 캐릭터 현재 속도
+    const FVector Vel = GetVelocity();
 
-    // 면으로 들어가는 속도 성분
     const float VIntoSurface = FVector::DotProduct(Vel, -N);
 
-    // 너무 느리게 닿으면 무시 (무한 통통 방지)
     if (VIntoSurface < RubberPlayerStopThreshold)
-        return;
+        return;   // 안 튕길 만큼 느리면 소리도 안 냄
 
-    // 속도 대비 반사 (물체랑 동일하게 0.7)
+    // ★ 실제로 튕기는 순간 고무 사운드 (무작위)
+    if (USoundBase* Snd = GetRandomRubberSound())
+        UGameplayStatics::PlaySoundAtLocation(this, Snd, GetActorLocation());
+
     FVector Bounced = Vel + (1.f + RubberPlayerRestitution) * VIntoSurface * N;
 
-    // 너무 약하면 최소 보장 (들어온 속도 비례)
     float AlongN = FVector::DotProduct(Bounced, N);
     const float MinBounce = VIntoSurface * RubberPlayerRestitution;
     if (AlongN < MinBounce)
         Bounced += N * (MinBounce - AlongN);
 
-    // 과도한 발사 방지
     Bounced = Bounced.GetClampedToMaxSize(RubberPlayerMaxBounce);
 
-    LaunchCharacter(Bounced, true, true);   // XY, Z 둘 다 새 값으로
+    LaunchCharacter(Bounced, true, true);
 }
 
 void AmaterialCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
+
+if (AActor* HitActor = Hit.GetActor())
+	{
+		if ((HitActor->ActorHasTag(TEXT("Metal")) || HitActor->ActorHasTag(TEXT("Ice"))))
+		{
+			const float Now = GetWorld()->GetTimeSeconds();
+			if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
+			{
+				if (USoundBase* Snd = GetRandomMetallicSound())
+					UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
+				LastImpactSoundTime = Now;
+			}
+		}
+	}
 
     ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
     if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
@@ -1456,10 +1489,22 @@ void AmaterialCharacter::Landed(const FHitResult& Hit)
 void AmaterialCharacter::OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+    // ★ 철/얼음에 부딪치면 메탈릭 사운드 (쿨다운으로 연속 충돌 시 중복 방지)
+if (OtherActor &&
+		(OtherActor->ActorHasTag(TEXT("Metal")) || OtherActor->ActorHasTag(TEXT("Ice"))))
+	{
+		const float Now = GetWorld()->GetTimeSeconds();
+		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
+		{
+			if (USoundBase* Snd = GetRandomMetallicSound())
+				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
+			LastImpactSoundTime = Now;
+		}
+	}
+
     ATransformation_actor* Block = Cast<ATransformation_actor>(OtherActor);
     if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
         return;
 
     DoRubberBounce(Hit.ImpactNormal);
 }
-

@@ -63,8 +63,8 @@ ATransformation_actor::ATransformation_actor()
         TEXT("/Game/ICE.ICE"));
 
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> CopperMatFinder(
-        TEXT("/AnimationSharing/AnimSharingBlue.AnimSharingBlue"));
-
+        TEXT("/Game/M_Cooper.M_Cooper"));
+        
     // ============================================================
     //  피지컬 머터리얼 로드
     // ============================================================
