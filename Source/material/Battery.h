@@ -9,6 +9,8 @@ class UBoxComponent;
 class UStaticMeshComponent;
 class UInputComponent;
 class APlayerController;
+class USoundBase;  
+class UAudioComponent; 
 
 UCLASS()
 class MATERIAL_API ABATTERY : public AActor
@@ -89,4 +91,10 @@ private:
     UFUNCTION()
     void OnConnectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+    UPROPERTY(EditAnywhere, Category = "Battery|Sound")
+    TObjectPtr<USoundBase> SparkSound;
+
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> SparkAudioComp;
 };

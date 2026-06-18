@@ -6,6 +6,10 @@
 #include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
 #include "Wire.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
+#include "Components/AudioComponent.h"   // ★ 추가
 
 ABATTERY::ABATTERY()
 {
@@ -34,6 +38,18 @@ ABATTERY::ABATTERY()
     ConnectionOutlet->ShapeColor = FColor::Yellow;
     ConnectionOutlet->SetHiddenInGame(!bShowDebugShapes);
     ConnectionOutlet->SetVisibility(bShowDebugShapes);
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> SparkAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_Spark.sound_Spark'"));
+    if (SparkAsset.Succeeded())
+        SparkSound = SparkAsset.Object;
+    // ★ 스파크 루프용 오디오 컴포넌트 (이게 빠져 있었음)
+    SparkAudioComp = CreateDefaultSubobject<UAudioComponent>(TEXT("SparkAudioComp"));
+    SparkAudioComp->SetupAttachment(RootComponent);
+    SparkAudioComp->bAutoActivate = false;   // 시작 시 자동 재생 X
+    if (SparkSound)
+        SparkAudioComp->SetSound(SparkSound);
+        
 }
 
 void ABATTERY::BeginPlay()
@@ -137,6 +153,15 @@ void ABATTERY::OnHoldReleased()
 void ABATTERY::TogglePower()
 {
     bPowered = !bPowered;
+
+    // ★ ON이면 계속 재생, OFF면 재생 중인 것 정지
+    if (SparkAudioComp)
+    {
+        if (bPowered)
+            SparkAudioComp->Play();
+        else
+            SparkAudioComp->Stop();
+    }
 
     UE_LOG(LogTemp, Warning,
         TEXT("Battery Power: %s"),

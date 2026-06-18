@@ -3,6 +3,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Character.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h" 
 
 APressurePlate::APressurePlate()
 {
@@ -18,6 +21,11 @@ APressurePlate::APressurePlate()
     DetectBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     DetectBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     DetectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> PedalAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_pedal.sound_pedal'"));
+    if (PedalAsset.Succeeded())
+        PedalSound = PedalAsset.Object;
 }
 
 void APressurePlate::BeginPlay()
@@ -100,6 +108,9 @@ void APressurePlate::OnBoxEndOverlap(UPrimitiveComponent*, AActor* OtherActor,
 
 void APressurePlate::ToggleMagnets()
 {
+    if (PedalSound)
+        UGameplayStatics::PlaySoundAtLocation(this, PedalSound, GetActorLocation());
+
     for (int32 i = 0; i < MagnetSlots.Num(); ++i)
     {
         AMagnet* Magnet = MagnetSlots[i].Magnet.Get();
@@ -107,18 +118,15 @@ void APressurePlate::ToggleMagnets()
 
         if (MagnetMovedStates[i])
         {
-            // 올라오기: 원래 위치로 + 복구
             Magnet->Restore();
             MagnetTargetLocations[i] = MagnetOriginalLocations[i];
             MagnetMovedStates[i]     = false;
         }
         else
         {
-            // 내려가기: MoveDistance만큼 아래로
             MagnetTargetLocations[i] = MagnetOriginalLocations[i]
                                      + FVector(0.f, 0.f, -MoveDistance);
             MagnetMovedStates[i]     = true;
-            // 소자는 완전히 내려간 후 Tick에서 처리
         }
     }
-}
+} 

@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 class UBoxComponent;
 class AMagnet;
+class USoundBase;
 
 // ★ 자석 하나의 설정을 묶은 구조체
 USTRUCT(BlueprintType)
@@ -71,4 +72,8 @@ private:
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
     void ToggleMagnets();
+
+    // ★ 밟을 때 재생할 페달 사운드
+    UPROPERTY(EditAnywhere, Category = "PressurePlate|Sound")
+    TObjectPtr<USoundBase> PedalSound;
 };
