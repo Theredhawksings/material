@@ -6,6 +6,9 @@
 #include "Components/SceneComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Sound/SoundBase.h"
+#include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 
 AGenerator::AGenerator()
@@ -25,6 +28,16 @@ AGenerator::AGenerator()
     OutputBox->SetBoxExtent(FVector(40.f, 40.f, 40.f));
     OutputBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     OutputBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> TurnOnAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_generator_turning_on.sound_generator_turning_on'"));
+    if (TurnOnAsset.Succeeded())
+        TurningOnSound = TurnOnAsset.Object;
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> TurnOffAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_generator_turning_off.sound_generator_turning_off'"));
+    if (TurnOffAsset.Succeeded())
+        TurningOffSound = TurnOffAsset.Object;
 }
 
 void AGenerator::BeginPlay()
@@ -37,9 +50,19 @@ void AGenerator::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    DetectMagnets();
+    // ── 자석 스캔은 주기적으로만 (EMF/회로는 매 프레임 그대로) ──
+    // GetAllActorsOfClass는 월드 전체 액터를 순회하는 비싼 호출이라
+    // 매 프레임이 아니라 일정 주기로만 갱신한다. (MagnetScanInterval = 0 이면 매 프레임)
+    MagnetScanAccumulator += DeltaTime;
+    if (MagnetScanInterval <= 0.f || MagnetScanAccumulator >= MagnetScanInterval)
+    {
+        MagnetScanAccumulator = 0.f;
+        DetectMagnets();
+    }
+
     UpdateEMF(DeltaTime);
     UpdateCircuit();
+    UpdateGeneratorSound();
 
 #if ENABLE_DRAW_DEBUG
     if (!bDebugDraw) return;
@@ -89,8 +112,11 @@ void AGenerator::Tick(float DeltaTime)
 
 void AGenerator::DetectMagnets()
 {
-    NorthMagnets.Empty();
-    SouthMagnets.Empty();
+    NorthMagnets.Reset();   // Empty() 대신 Reset() → 내부 용량 유지, 재할당 감소
+    SouthMagnets.Reset();
+
+    const FVector MyLoc    = GetActorLocation();
+    const float   RadiusSq = FMath::Square(MagnetDetectRadius);
 
     TArray<AActor*> FoundMagnets;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AMagnet::StaticClass(), FoundMagnets);
@@ -100,13 +126,11 @@ void AGenerator::DetectMagnets()
         AMagnet* Magnet = Cast<AMagnet>(Actor);
         if (!Magnet || Magnet->IsDemagnetized()) continue;
 
-        const float Dist = FVector::Dist(GetActorLocation(), Magnet->GetActorLocation());
-        if (Dist > MagnetDetectRadius) continue;
+        // sqrt 없는 제곱거리 비교 (결과는 동일)
+        if (FVector::DistSquared(MyLoc, Magnet->GetActorLocation()) > RadiusSq) continue;
 
-        if (Magnet->IsNorthPole())
-            NorthMagnets.Add(Magnet);
-        else
-            SouthMagnets.Add(Magnet);
+        if (Magnet->IsNorthPole()) NorthMagnets.Add(Magnet);
+        else                       SouthMagnets.Add(Magnet);
     }
 }
 
@@ -122,6 +146,8 @@ void AGenerator::UpdateEMF(float DeltaTime)
         GeneratorMesh->SetRelativeRotation(FRotator::ZeroRotator);
         return;
     }
+
+    const FVector MyLoc = GetActorLocation();   // 한 번만 캐시
 
     // ── 1) 유효 쌍 수 & 불균형도 ────────────────────────────────
     const int32 NCount = NorthMagnets.Num();
@@ -147,7 +173,7 @@ void AGenerator::UpdateEMF(float DeltaTime)
         if (M) NorthCentroid += M->GetActorLocation();
     NorthCentroid /= (float)NorthMagnets.Num();
 
-    const FVector ToNorth = (NorthCentroid - GetActorLocation()).GetSafeNormal();
+    const FVector ToNorth = (NorthCentroid - MyLoc).GetSafeNormal();
     const float Dot    = FVector::DotProduct(ToNorth, GetActorRightVector());
     const float RotDir = (Dot > 0.f) ? 1.f : -1.f;
 
@@ -157,39 +183,38 @@ void AGenerator::UpdateEMF(float DeltaTime)
 
     GeneratorMesh->SetRelativeRotation((SpinAxisMask * RotationAngle).Quaternion());
 
-    // ── 4) B(자기장): 거리 감쇠 + 쌍 합산 ──────────────────────
-    TArray<AMagnet*> SortedN = NorthMagnets.FilterByPredicate(
-        [](const TObjectPtr<AMagnet>& M){ return M != nullptr; });
-    TArray<AMagnet*> SortedS = SouthMagnets.FilterByPredicate(
-        [](const TObjectPtr<AMagnet>& M){ return M != nullptr; });
+    // ── 4) B(자기장): 거리 한 번만 계산해서 정렬 + 쌍 합산 ──────
+    // 기존엔 Sort 비교마다 GetActorLocation() + Dist(sqrt)를 두 번씩 호출했음.
+    // 거리(제곱)를 미리 한 번만 계산해 정렬 비용을 줄인다.
+    struct FMagnetDistSq { AMagnet* Magnet; float DistSq; };
+    TArray<FMagnetDistSq, TInlineAllocator<8>> SortedN, SortedS;
+    SortedN.Reserve(NCount);
+    SortedS.Reserve(SCount);
 
-    SortedN.Sort([this](const AMagnet& A, const AMagnet& B){
-        return FVector::Dist(GetActorLocation(), A.GetActorLocation())
-             < FVector::Dist(GetActorLocation(), B.GetActorLocation());
-    });
-    SortedS.Sort([this](const AMagnet& A, const AMagnet& B){
-        return FVector::Dist(GetActorLocation(), A.GetActorLocation())
-             < FVector::Dist(GetActorLocation(), B.GetActorLocation());
-    });
+    for (const TObjectPtr<AMagnet>& M : NorthMagnets)
+        if (M) SortedN.Add({ M.Get(), (float)FVector::DistSquared(MyLoc, M->GetActorLocation()) });
+    for (const TObjectPtr<AMagnet>& M : SouthMagnets)
+        if (M) SortedS.Add({ M.Get(), (float)FVector::DistSquared(MyLoc, M->GetActorLocation()) });
+
+    SortedN.Sort([](const FMagnetDistSq& A, const FMagnetDistSq& B){ return A.DistSq < B.DistSq; });
+    SortedS.Sort([](const FMagnetDistSq& A, const FMagnetDistSq& B){ return A.DistSq < B.DistSq; });
+
+    // 스캔 사이에 자석이 파괴/null이 된 경우까지 대비해 루프 범위를 클램프
+    const int32 PairLoop = FMath::Min(EffectivePairs, FMath::Min(SortedN.Num(), SortedS.Num()));
 
     float TotalB = 0.f;
-    for (int32 i = 0; i < EffectivePairs; ++i)
+    for (int32 i = 0; i < PairLoop; ++i)
     {
-        const float StrengthN = SortedN[i]->GetStrength();
-        const float StrengthS = SortedS[i]->GetStrength();
-        const float DistN     = FMath::Max(
-            FVector::Dist(GetActorLocation(), SortedN[i]->GetActorLocation()), 1.f);
-        const float DistS     = FMath::Max(
-            FVector::Dist(GetActorLocation(), SortedS[i]->GetActorLocation()), 1.f);
+        AMagnet* MN = SortedN[i].Magnet;
+        AMagnet* MS = SortedS[i].Magnet;
 
-        // 각 자석의 DecayExponent와 ReferenceDistance 기반 감쇠
-        const float DecayN   = SortedN[i]->GetDecayExponent();
-        const float DecayS   = SortedS[i]->GetDecayExponent();
-        const float RefDistN = SortedN[i]->GetReferenceDistance();
-        const float RefDistS = SortedS[i]->GetReferenceDistance();
+        const float DistN = FMath::Max(FMath::Sqrt(SortedN[i].DistSq), 1.f);
+        const float DistS = FMath::Max(FMath::Sqrt(SortedS[i].DistSq), 1.f);
 
-        const float BN = (StrengthN / 1000000.f) * FMath::Pow(RefDistN / DistN, DecayN);
-        const float BS = (StrengthS / 1000000.f) * FMath::Pow(RefDistS / DistS, DecayS);
+        const float BN = (MN->GetStrength() / 1000000.f)
+                       * FMath::Pow(MN->GetReferenceDistance() / DistN, MN->GetDecayExponent());
+        const float BS = (MS->GetStrength() / 1000000.f)
+                       * FMath::Pow(MS->GetReferenceDistance() / DistS, MS->GetDecayExponent());
         TotalB += (BN + BS) * 0.5f;
     }
 
@@ -269,14 +294,15 @@ void AGenerator::UpdateCircuit()
         Wire->SetBatteryVoltage(0.f);
         Wire->SetPowered(false);
     }
-    BoxPoweredWires.Empty();
+    BoxPoweredWires.Reset();   // Empty() 대신 Reset() → 용량 유지
 
     if (!bCoilOutputEnabled || !bGenerating || !bCurrentPositive) return;
 
     // ── 3) OutputBox 안 전선 탐지 + 전기 중계 ───────────────────
-    const FVector BoxCenter = OutputBox->GetComponentLocation();
-    const FQuat   BoxRot    = OutputBox->GetComponentQuat();
-    const FVector BoxExtent = OutputBox->GetScaledBoxExtent();
+    const FTransform BoxXform  = OutputBox->GetComponentTransform();
+    const FVector    BoxCenter = BoxXform.GetLocation();
+    const FQuat      BoxRot    = BoxXform.GetRotation();
+    const FVector    BoxExtent = OutputBox->GetScaledBoxExtent();
 
     TArray<FOverlapResult> Hits;
     FCollisionQueryParams QParams(SCENE_QUERY_STAT(GeneratorOutputSense), false);
@@ -293,8 +319,7 @@ void AGenerator::UpdateCircuit()
         if (!Wire) continue;
 
         const FVector StartPt = Wire->GetStartPointLocation();
-        const FVector LocalPt = OutputBox->GetComponentTransform()
-                                         .InverseTransformPosition(StartPt);
+        const FVector LocalPt = BoxXform.InverseTransformPosition(StartPt);
         if (FMath::Abs(LocalPt.X) > BoxExtent.X ||
             FMath::Abs(LocalPt.Y) > BoxExtent.Y ||
             FMath::Abs(LocalPt.Z) > BoxExtent.Z) continue;
@@ -309,5 +334,44 @@ void AGenerator::UpdateCircuit()
         Wire->SetPowered(true);
 
         BoxPoweredWires.Add(Wire);
+    }
+}
+
+void AGenerator::UpdateGeneratorSound()
+{
+    // EMF는 sin으로 깜빡이므로, 안정적인 "발전 가능" 상태로 판단 (각도 무관)
+    const bool bRunning = bGeneratorActive && (EffectivePairs > 0);
+
+    // ── 상태가 바뀐 순간 처리 ──
+    if (bRunning != bWasRunning)
+    {
+        bWasRunning = bRunning;
+
+        GetWorld()->GetTimerManager().ClearTimer(GenSoundTimerHandle);
+
+        // 켜지든 꺼지든, 재생 중이던 ON 루프는 일단 끊는다
+        if (ActiveGenAudio)
+        {
+            ActiveGenAudio->Stop();
+            ActiveGenAudio = nullptr;
+        }
+
+        // 꺼질 때: OFF 즉시 1회 재생하고 끝
+        if (!bRunning)
+        {
+            if (TurningOffSound)
+                UGameplayStatics::PlaySoundAtLocation(this, TurningOffSound, GetActorLocation());
+            return;
+        }
+    }
+
+    // ── 돌아가는 동안: ON 사운드가 안 울리면 (다시) 재생 → 연속 재생 보장 ──
+    if (bRunning && TurningOnSound)
+    {
+        if (!ActiveGenAudio || !ActiveGenAudio->IsPlaying())
+        {
+            ActiveGenAudio = UGameplayStatics::SpawnSoundAttached(
+                TurningOnSound, GetRootComponent());
+        }
     }
 }

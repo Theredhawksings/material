@@ -327,6 +327,25 @@ void AmaterialCharacter::Tick(float DeltaTime)
 
 	UpdateAnimation();
 	UpdateGroundFriction();
+
+		// 걷기 발소리: 땅에서 움직일 때만 재생 (점프/픽업 중엔 정지)
+	if (WalkAudioComp && WalkSound)
+	{
+		const bool bShouldPlayWalk = IsMoving()
+			&& !GetCharacterMovement()->IsFalling()
+			&& !bIsPickingUp && !bIsUsingSyringe;
+
+		if (bShouldPlayWalk && !WalkAudioComp->IsPlaying())
+		{
+			WalkAudioComp->SetSound(WalkSound);
+			WalkAudioComp->Play();
+		}
+		else if (!bShouldPlayWalk && WalkAudioComp->IsPlaying())
+		{
+			WalkAudioComp->Stop();
+		}
+	}
+	
 }
 
 void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputComponent)
@@ -800,19 +819,6 @@ void AmaterialCharacter::UpdateAnimation()
 	if (bWasHolding != bHolding || bMoving != bIsPlayingWalk)
 	{
 		PlayAnimIfValid(GetAnimForState(bMoving, bHolding), true);
-
-		if (WalkAudioComp && WalkSound)
-		{
-			if (bMoving && !bIsPlayingWalk)        // 멈춤 → 이동: 재생 시작
-			{
-				WalkAudioComp->SetSound(WalkSound);
-				WalkAudioComp->Play();
-			}
-			else if (!bMoving && bIsPlayingWalk)   // 이동 → 멈춤: 정지
-			{
-				WalkAudioComp->Stop();
-			}
-		}
 
 		bWasHolding = bHolding;
 		bIsPlayingWalk = bMoving;

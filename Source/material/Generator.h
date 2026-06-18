@@ -9,6 +9,8 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class AWire;
 class AMagnet;
+class USoundBase; 
+class UAudioComponent;  
 
 UCLASS()
 class MATERIAL_API AGenerator : public AActor
@@ -116,7 +118,31 @@ private:
     void DetectMagnets();
     void UpdateEMF(float DeltaTime);
     void UpdateCircuit();
+    void UpdateGeneratorSound(); 
 
     UPROPERTY(EditAnywhere, Category = "Generator")
     bool bGeneratorActive = false;
+
+    UPROPERTY(EditAnywhere, Category = "Generator|Sound")
+    TObjectPtr<USoundBase> TurningOnSound;
+
+    UPROPERTY(EditAnywhere, Category = "Generator|Sound")
+    TObjectPtr<USoundBase> TurningOffSound;
+
+    UPROPERTY(EditAnywhere, Category = "Generator|Sound")
+    float GeneratorSoundDelay = 0.3f;
+
+    bool bWasRunning = false;
+    FTimerHandle GenSoundTimerHandle;
+
+    // Generator|Magnet 카테고리에
+UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
+float MagnetScanInterval = 0.2f;   // 0이면 매 프레임 스캔(원래 동작)
+
+// ImbalanceNoiseTime 옆에
+float MagnetScanAccumulator = 0.f;
+
+UPROPERTY()
+    TObjectPtr<UAudioComponent> ActiveGenAudio = nullptr;   // ★ 현재 재생 중인 사운드 핸들
+
 };
