@@ -4,6 +4,9 @@
 #include "Transformation_actor.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
 
 AMagnetCheckZone::AMagnetCheckZone()
 {
@@ -15,6 +18,12 @@ AMagnetCheckZone::AMagnetCheckZone()
 	CheckBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	CheckBox->SetCollisionResponseToAllChannels(ECR_Overlap);
 	CheckBox->SetGenerateOverlapEvents(true);
+
+	// ★ 문 열리는 효과음 로드
+	static ConstructorHelpers::FObjectFinder<USoundBase> DoorOpenAsset(
+		TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+	if (DoorOpenAsset.Succeeded())
+		DoorOpenSound = DoorOpenAsset.Object;
 }
 
 void AMagnetCheckZone::BeginPlay()
@@ -58,6 +67,10 @@ void AMagnetCheckZone::Tick(float DeltaTime)
 			{
 				bSatisfied = true;
 				bIsOpening = true;
+
+				// ★ 문 열리는 효과음 (조건 충족 시 딱 한 번만 재생)
+				if (DoorOpenSound)
+					UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, GetActorLocation());
 
 				if (GEngine)
 					GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,

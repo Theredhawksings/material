@@ -1,10 +1,17 @@
+// ==========================================
+// TransformPlatform.cpp
+// ==========================================
 #include "TransformPlatform.h"
 #include "Engine/Engine.h"
 #include "DrawDebugHelpers.h"
+#include "Kismet/GameplayStatics.h"
+#include "UObject/ConstructorHelpers.h"
 
 ATransformPlatform::ATransformPlatform()
     : LeftDoorActor(nullptr)
     , RightDoorActor(nullptr)
+    , PedalSound(nullptr)
+    , DoorOpenSound(nullptr)
     , bActivated(false)
     , bIsOpening(false)
     , bIsOpen(false)
@@ -19,6 +26,19 @@ ATransformPlatform::ATransformPlatform()
 
     PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
     PlatformMesh->SetupAttachment(RootComponent);
+
+    // 사운드 에셋 자동 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> PedalSoundAsset(TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_pedal.sound_pedal'"));
+    if (PedalSoundAsset.Succeeded())
+    {
+        PedalSound = PedalSoundAsset.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorSoundAsset(TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+    if (DoorSoundAsset.Succeeded())
+    {
+        DoorOpenSound = DoorSoundAsset.Object;
+    }
 }
 
 void ATransformPlatform::BeginPlay()
@@ -103,6 +123,17 @@ void ATransformPlatform::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor
     bActivated  = true;
     bIsOpening  = true;
     CurrentTime = 0.0f;
+
+    // 사운드 동시 재생
+    if (PedalSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, PedalSound, GetActorLocation());
+    }
+
+    if (DoorOpenSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, GetActorLocation());
+    }
 
     auto DisableCollision = [](AActor* Door)
     {

@@ -7,6 +7,8 @@
 #include "Engine/TextRenderActor.h"
 #include "MainStage1_Platform1.generated.h"
 
+class USoundBase; 
+
 UCLASS()
 class MATERIAL_API AMainStage1_Platform1 : public AActor
 {
@@ -74,4 +76,7 @@ public:
     FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
 
     bool IsConditionMet() const;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+    TObjectPtr<USoundBase> DoorOpenSound;
 };

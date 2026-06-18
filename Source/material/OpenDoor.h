@@ -6,6 +6,7 @@
 
 class USceneComponent;
 class UBoxComponent;
+class USoundBase;   // ★ 추가
 
 UCLASS()
 class MATERIAL_API AOpenDoor : public AActor
@@ -39,6 +40,10 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "OpenDoor|Open")
     float OpenSpeed = 2.f;
+
+    // ★ 문 열릴 때 재생할 효과음
+    UPROPERTY(EditAnywhere, Category = "OpenDoor|Sound")
+    TObjectPtr<USoundBase> DoorOpenSound;
 
     bool bOpened  = false;
     bool bOpening = false;

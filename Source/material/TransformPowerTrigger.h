@@ -6,6 +6,8 @@
 #include "AirConditioner.h"
 #include "TransformPowerTrigger.generated.h"
 
+class USoundBase;   // ★ 추가
+
 UCLASS()
 class MATERIAL_API ATransformPowerTrigger : public AActor
 {
@@ -37,6 +39,19 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     float OpenSpeed = 2.0f;
 
+    // ── 사운드 ──
+    // 페달 소리 (먼저 재생)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Sound")
+    TObjectPtr<USoundBase> PedalSound;
+
+    // 문 열리는 소리 (페달 소리 뒤에 재생)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Sound")
+    TObjectPtr<USoundBase> DoorOpenSound;
+
+    // 페달 소리 후 문 소리까지 딜레이(초)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door|Sound")
+    float DoorSoundDelay = 0.5f;
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -62,4 +77,7 @@ private:
     FVector LeftTargetLocation;
     FVector RightStartLocation;
     FVector RightTargetLocation;
+
+    // 문 소리 딜레이용 타이머
+    FTimerHandle DoorSoundTimerHandle;
 };

@@ -1,3 +1,6 @@
+// ==========================================
+// TransformPlatform.h
+// ==========================================
 #pragma once
 
 #include "CoreMinimal.h"
@@ -52,6 +55,12 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    class USoundBase* PedalSound;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    class USoundBase* DoorOpenSound;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
     bool bDebugDraw = true;

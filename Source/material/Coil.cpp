@@ -1,9 +1,12 @@
 #include "Coil.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/AudioComponent.h"     // ★ 추가
 #include "DrawDebugHelpers.h"
 #include "Wire.h"
 #include "materialCharacter.h"
+#include "UObject/ConstructorHelpers.h"    // ★ 추가
+#include "Sound/SoundBase.h"               // ★ 추가
 #include "Kismet/GameplayStatics.h"
 #include "Engine/OverlapResult.h"
 
@@ -27,6 +30,19 @@ ACoil::ACoil()
 	DetectionZone->bDrawOnlyIfSelected = false;
 	DetectionZone->SetHiddenInGame(false);
 	DetectionZone->SetVisibility(true);
+
+	// ★ 전선 사운드 로드
+	static ConstructorHelpers::FObjectFinder<USoundBase> WireAsset(
+		TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_Spark.sound_Spark'"));
+	if (WireAsset.Succeeded())
+		WireSound = WireAsset.Object;
+
+	// ★ 전선 루프용 오디오 컴포넌트
+	WireAudioComp = CreateDefaultSubobject<UAudioComponent>(TEXT("WireAudioComp"));
+	WireAudioComp->SetupAttachment(RootComponent);
+	WireAudioComp->bAutoActivate = false;   // 시작 시 자동 재생 X
+	if (WireSound)
+		WireAudioComp->SetSound(WireSound);
 }
 
 void ACoil::BeginPlay()
@@ -50,6 +66,7 @@ void ACoil::Tick(float DeltaTime)
 		MagnetsInsideLastFrame.Empty();
 		CurrentEMF = 0.f;
 		ShutdownConnectedWires();
+		UpdateWireSound();   // ★ 꺼졌으니 사운드도 정지
 		DebugVisualize();
 		return;
 	}
@@ -66,6 +83,7 @@ void ACoil::Tick(float DeltaTime)
 
 	DebugVisualize();
 	UpdateCircuit();
+	UpdateWireSound();   // ★ 전기 상태에 맞춰 사운드 재생/정지
 }
 
 // ============================================================================
@@ -234,6 +252,25 @@ void ACoil::ShutdownConnectedWires()
 }
 
 // ============================================================================
+//  전선 사운드 — 전기 나오는 동안(코일 ON + EMF > 0) 계속 재생, 아니면 정지
+// ============================================================================
+void ACoil::UpdateWireSound()
+{
+	if (!WireAudioComp) return;
+
+	const bool bElectricFlowing = bCoilActive && (CurrentEMF > 0.f);
+
+	if (bElectricFlowing && !WireAudioComp->IsPlaying())
+	{
+		WireAudioComp->Play();
+	}
+	else if (!bElectricFlowing && WireAudioComp->IsPlaying())
+	{
+		WireAudioComp->Stop();
+	}
+}
+
+// ============================================================================
 //  켜기 / 끄기 / 영구 정지
 // ============================================================================
 void ACoil::SetCoilActive(bool bNewActive)
@@ -249,6 +286,7 @@ void ACoil::SetCoilActive(bool bNewActive)
 		MagnetsInside.Empty();
 		MagnetsInsideLastFrame.Empty();
 		CurrentEMF = 0.f;
+		UpdateWireSound();   // ★ 꺼지면 사운드도 즉시 정지
 	}
 }
 

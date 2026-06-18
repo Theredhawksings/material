@@ -6,6 +6,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "MainStage1_Platform2.generated.h"
 
+class USoundBase;   // ★ 추가
+
 UCLASS()
 class MATERIAL_API AMainStage1_Platform2 : public AActor
 {
@@ -53,6 +55,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
     FVector OpenDirection = FVector(0.0f, 1.0f, 0.0f);
+
+    // ★ 문 열릴 때 재생할 효과음
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Door")
+    TObjectPtr<USoundBase> DoorOpenSound;
 
     // 디버그
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")

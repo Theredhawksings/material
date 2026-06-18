@@ -5,6 +5,7 @@
 #include "MagnetCheckZone.generated.h"
 
 class UBoxComponent;
+class USoundBase; 
 
 UCLASS()
 class MATERIAL_API AMagnetCheckZone : public AActor
@@ -59,4 +60,8 @@ private:
 	FVector LeftTargetLocation;
 	FVector RightStartLocation;
 	FVector RightTargetLocation;
+
+	// ★ 문 열릴 때 재생할 효과음
+	UPROPERTY(EditAnywhere, Category = "CheckZone|Door")
+	TObjectPtr<USoundBase> DoorOpenSound;
 };

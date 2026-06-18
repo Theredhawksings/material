@@ -1,6 +1,9 @@
 #include "MainStage1_Platform2.h"
 #include "Engine/Engine.h"
 #include "DrawDebugHelpers.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
 
 AMainStage1_Platform2::AMainStage1_Platform2()
     : LeftDoorActor(nullptr)
@@ -19,6 +22,12 @@ AMainStage1_Platform2::AMainStage1_Platform2()
 
     PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
     PlatformMesh->SetupAttachment(RootComponent);
+
+    // ★ 문 열리는 효과음 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorOpenAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+    if (DoorOpenAsset.Succeeded())
+        DoorOpenSound = DoorOpenAsset.Object;
 }
 
 void AMainStage1_Platform2::BeginPlay()
@@ -108,6 +117,10 @@ void AMainStage1_Platform2::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherAc
     bActivated = true;
     bIsOpening = true;
     CurrentTime = 0.0f;
+
+    // ★ 문 열리는 효과음 (조건 충족 시 딱 한 번만 재생)
+    if (DoorOpenSound)
+        UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, GetActorLocation());
 
     // 문 충돌 제거 (열리는 동안 막히지 않게)
     auto DisableCollision = [](AActor* Door)

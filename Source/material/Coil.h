@@ -6,6 +6,8 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
+class USoundBase;        // ★ 추가
+class UAudioComponent;   // ★ 추가
 
 UCLASS()
 class MATERIAL_API ACoil : public AActor
@@ -80,6 +82,13 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Coil|Circuit")
 	float WireDetectRadius = 200.f;
 
+	// ── 전선 사운드 (전기 나오는 동안 재생) ──
+	UPROPERTY(EditAnywhere, Category = "Coil|Sound")
+	TObjectPtr<USoundBase> WireSound;
+
+	UPROPERTY()
+	TObjectPtr<UAudioComponent> WireAudioComp;
+
 	// ── 디버그 ──
 	UPROPERTY(EditAnywhere, Category = "Coil|Debug")
 	bool bDebugDraw = true;
@@ -112,6 +121,7 @@ private:
 	void ApplyMagneticForce();
 	void UpdateCircuit();
 	void ShutdownConnectedWires();
+	void UpdateWireSound();   // ★ 추가
 	void DebugVisualize();
 	void ApplyDebugVisibility();
 };

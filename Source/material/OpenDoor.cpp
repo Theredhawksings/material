@@ -2,6 +2,9 @@
 #include "Components/SceneComponent.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Character.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
 
 AOpenDoor::AOpenDoor()
 {
@@ -16,6 +19,12 @@ AOpenDoor::AOpenDoor()
     DetectBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     DetectBox->SetCollisionResponseToAllChannels(ECR_Ignore);
     DetectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+    // ★ 문 열리는 효과음 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorOpenAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+    if (DoorOpenAsset.Succeeded())
+        DoorOpenSound = DoorOpenAsset.Object;
 }
 
 void AOpenDoor::BeginPlay()
@@ -87,7 +96,13 @@ void AOpenDoor::OnBoxBeginOverlap(UPrimitiveComponent*, AActor* OtherActor,
     OverlappingPlayers.Add(OtherActor);
 
     if (bWasEmpty && !bOpened)
+    {
         bOpening = true;
+
+        // ★ 문 열리기 시작할 때 효과음 (한 번만 재생)
+        if (DoorOpenSound)
+            UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, GetActorLocation());
+    }
 }
 
 void AOpenDoor::OnBoxEndOverlap(UPrimitiveComponent*, AActor* OtherActor,

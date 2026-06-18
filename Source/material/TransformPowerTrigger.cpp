@@ -1,5 +1,9 @@
 #include "TransformPowerTrigger.h"
 #include "Engine/Engine.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
+#include "TimerManager.h"                 // ★ 추가
 
 ATransformPowerTrigger::ATransformPowerTrigger()
 {
@@ -9,6 +13,18 @@ ATransformPowerTrigger::ATransformPowerTrigger()
     RootComponent = TriggerBox;
     TriggerBox->SetBoxExtent(FVector(100.f, 100.f, 100.f));
     TriggerBox->SetCollisionProfileName(TEXT("Trigger"));
+
+    // ★ 페달 소리 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> PedalAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_pedal.sound_pedal'"));
+    if (PedalAsset.Succeeded())
+        PedalSound = PedalAsset.Object;
+
+    // ★ 문 열리는 소리 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorOpenAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+    if (DoorOpenAsset.Succeeded())
+        DoorOpenSound = DoorOpenAsset.Object;
 }
 
 void ATransformPowerTrigger::BeginPlay()
@@ -140,6 +156,23 @@ void ATransformPowerTrigger::OpenDoor()
 
     bIsOpening = true;
     CurrentTime = 0.f;
+
+    // ★ 1) 페달 소리 먼저 즉시 재생
+    if (PedalSound)
+        UGameplayStatics::PlaySoundAtLocation(this, PedalSound, GetActorLocation());
+
+    // ★ 2) 문 소리는 DoorSoundDelay초 뒤에 재생 (페달 소리가 먼저 들리도록)
+    if (DoorOpenSound)
+    {
+        const FVector SoundLoc = GetActorLocation();
+        USoundBase* SoundToPlay = DoorOpenSound;
+        GetWorld()->GetTimerManager().SetTimer(DoorSoundTimerHandle,
+            [this, SoundToPlay, SoundLoc]()
+            {
+                UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, SoundLoc);
+            },
+            DoorSoundDelay, false);
+    }
 
     // 열리는 동안 문 충돌 끄기 (캐릭터가 통과 가능하도록)
     if (LeftDoorActor)

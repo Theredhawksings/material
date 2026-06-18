@@ -2,6 +2,9 @@
 #include "Transformation_actor.h"
 #include "Engine/Engine.h"
 #include "Components/TextRenderComponent.h"
+#include "UObject/ConstructorHelpers.h"   // ★ 추가
+#include "Sound/SoundBase.h"              // ★ 추가
+#include "Kismet/GameplayStatics.h"       // ★ 추가
 
 AMainStage1_Platform1::AMainStage1_Platform1()
     : TrackedActor(nullptr)
@@ -21,6 +24,12 @@ AMainStage1_Platform1::AMainStage1_Platform1()
 
     PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
     PlatformMesh->SetupAttachment(RootComponent);
+
+    // ★ 문 열리는 효과음 로드
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorOpenAsset(
+        TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_door_opening.sound_door_opening'"));
+    if (DoorOpenAsset.Succeeded())
+        DoorOpenSound = DoorOpenAsset.Object;
 }
 
 void AMainStage1_Platform1::BeginPlay()
@@ -82,6 +91,10 @@ void AMainStage1_Platform1::Tick(float DeltaTime)
         {
             bActivated = true;
             bIsOpening = true;
+
+            // ★ 문 열리는 효과음 (조건 충족 시 딱 한 번만 재생)
+            if (DoorOpenSound)
+                UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, GetActorLocation());
 
             if (GEngine)
                 GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("⚡ 전기 감지! 문이 열립니다"));
