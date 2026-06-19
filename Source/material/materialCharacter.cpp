@@ -23,6 +23,9 @@
 #include "Components/AudioComponent.h"
 #include "Blueprint/UserWidget.h"
 
+FVector AmaterialCharacter::PendingSpawnLocation = FVector::ZeroVector;
+bool    AmaterialCharacter::bHasPendingSpawn    = false;
+
 AmaterialCharacter::AmaterialCharacter()
 	: HeldActor(nullptr), PendingPickupActor(nullptr), bIsPlayingWalk(false), bWasHolding(false), bIsPickingUp(false)
 {
@@ -241,8 +244,6 @@ AmaterialCharacter::AmaterialCharacter()
 		GetMesh()->SetMaterial(0, PlayerMat.Object);
 
 	bIsUsingSyringe = false;
-
-	
 }
 
 USoundBase* AmaterialCharacter::GetRandomMetallicSound() const
@@ -350,6 +351,11 @@ void AmaterialCharacter::BeginPlay()
 		Capsule->OnComponentHit.AddDynamic(this, &AmaterialCharacter::OnCapsuleHit);
 	}
 
+	if (bHasPendingSpawn)
+	{
+		SetActorLocation(PendingSpawnLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		bHasPendingSpawn = false;
+	}
 
 }
 
@@ -1122,7 +1128,31 @@ void AmaterialCharacter::OnWarpStage1()
 
 void AmaterialCharacter::OnWarpStage2()
 {
-	WarpToLevel(TEXT("/Game/stage/Stage2/Stage2"));
+	const FVector  DestLocation = FVector(5020.0, 37394.0, 290.0);
+	const FString  DestLevel    = TEXT("/Game/stage/MainStage/MainStage1");
+
+	// PIE 접두사(UEDPIE_0_)를 정확히 제거
+	const FString CleanCurrent = UWorld::RemovePIEPrefix(GetWorld()->GetMapName());
+
+	FString DestMapName = DestLevel;
+	int32 SlashIdx;
+	if (DestLevel.FindLastChar('/', SlashIdx))
+		DestMapName = DestLevel.RightChop(SlashIdx + 1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Warp] Current='%s' Dest='%s'"), *CleanCurrent, *DestMapName);
+
+	if (CleanCurrent.Equals(DestMapName, ESearchCase::IgnoreCase))
+	{
+		SetActorLocation(DestLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		UE_LOG(LogTemp, Warning, TEXT("[Warp] 같은 맵 - 순간이동만"));
+	}
+	else
+	{
+		PendingSpawnLocation = DestLocation;
+		bHasPendingSpawn = true;
+		WarpToLevel(DestLevel);
+		UE_LOG(LogTemp, Warning, TEXT("[Warp] 다른 맵 - 레벨 로드"));
+	}
 }
 
 void AmaterialCharacter::OnWarpStage3()

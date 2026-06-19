@@ -298,4 +298,8 @@ UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitutio
 UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerStopThreshold = 100.f;  // 이 속도 미만은 안 튕김
 UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce     = 1800.f; // 최대 튕김 속도
 
+
+static FVector PendingSpawnLocation;
+static bool    bHasPendingSpawn;
+
 };
