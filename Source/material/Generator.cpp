@@ -8,6 +8,7 @@
 #include "Engine/OverlapResult.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Sound/SoundBase.h"
+#include "Sound/SoundAttenuation.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -360,7 +361,10 @@ void AGenerator::UpdateGeneratorSound()
         if (!bRunning)
         {
             if (TurningOffSound)
-                UGameplayStatics::PlaySoundAtLocation(this, TurningOffSound, GetActorLocation());
+                UGameplayStatics::PlaySoundAtLocation(
+                    this, TurningOffSound, GetActorLocation(),
+                    1.f, 1.f, 0.f,
+                    GeneratorSoundAttenuation);
             return;
         }
     }
@@ -371,7 +375,10 @@ void AGenerator::UpdateGeneratorSound()
         if (!ActiveGenAudio || !ActiveGenAudio->IsPlaying())
         {
             ActiveGenAudio = UGameplayStatics::SpawnSoundAttached(
-                TurningOnSound, GetRootComponent());
+                TurningOnSound, GetRootComponent(),
+                NAME_None, FVector::ZeroVector, EAttachLocation::KeepRelativeOffset,
+                false, 1.f, 1.f, 0.f,
+                GeneratorSoundAttenuation);
         }
     }
 }

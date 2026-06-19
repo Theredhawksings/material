@@ -11,6 +11,7 @@ class AWire;
 class AMagnet;
 class USoundBase; 
 class UAudioComponent;  
+class USoundAttenuation;   // 전방 선언 추가
 
 UCLASS()
 class MATERIAL_API AGenerator : public AActor
@@ -145,4 +146,7 @@ float MagnetScanAccumulator = 0.f;
 UPROPERTY()
     TObjectPtr<UAudioComponent> ActiveGenAudio = nullptr;   // ★ 현재 재생 중인 사운드 핸들
 
+    UPROPERTY(EditAnywhere, Category = "Generator|Sound")
+    TObjectPtr<USoundAttenuation> GeneratorSoundAttenuation;
+    
 };
