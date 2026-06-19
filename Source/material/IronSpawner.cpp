@@ -87,8 +87,6 @@ void AIronSpawner::SpawnIron()
         if (NewIron->MeshComp)
         {
             NewIron->MeshComp->SetWorldScale3D(FVector(0.6f, 0.6f, 0.6f));
-            
-            // 🔥 이 줄을 추가해서 스폰될 때 BlockAllDynamic으로 강제 설정해!
             NewIron->MeshComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
         }
 
