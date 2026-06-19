@@ -159,7 +159,7 @@ void AGenerator::UpdateEMF(float DeltaTime)
         ? (float)FMath::Abs(NCount - SCount) / (float)(NCount + SCount)
         : 0.f;
 
-    if (EffectivePairs == 0)
+    if (EffectivePairs < MinRequiredPairs)
     {
         CurrentEMF = 0.f;
         return;
@@ -340,8 +340,7 @@ void AGenerator::UpdateCircuit()
 
 void AGenerator::UpdateGeneratorSound()
 {
-    // EMF는 sin으로 깜빡이므로, 안정적인 "발전 가능" 상태로 판단 (각도 무관)
-    const bool bRunning = bGeneratorActive && (EffectivePairs > 0);
+    const bool bRunning = bGeneratorActive && (EffectivePairs >= MinRequiredPairs);
 
     // ── 상태가 바뀐 순간 처리 ──
     if (bRunning != bWasRunning)

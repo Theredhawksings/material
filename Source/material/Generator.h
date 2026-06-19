@@ -148,5 +148,8 @@ UPROPERTY()
 
     UPROPERTY(EditAnywhere, Category = "Generator|Sound")
     TObjectPtr<USoundAttenuation> GeneratorSoundAttenuation;
-    
+  
+    UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
+    int32 MinRequiredPairs = 1;
+
 };
