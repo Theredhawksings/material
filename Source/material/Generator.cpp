@@ -165,7 +165,7 @@ void AGenerator::UpdateEMF(float DeltaTime)
     }
 
     // ── 2) 회전속도: 쌍 많을수록 느려짐 ────────────────────────
-    CurrentRotationSpeed = BaseRotationSpeed / (float)EffectivePairs;
+    CurrentRotationSpeed = BaseRotationSpeed;
 
     // ── 3) 회전 방향: N극 무게중심 기준 ────────────────────────
     FVector NorthCentroid = FVector::ZeroVector;

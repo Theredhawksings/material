@@ -16,6 +16,7 @@ class UMaterialInstanceDynamic;
 class UPhysicalMaterial;
 class ATemperature;
 class AWire;
+class USoundBase;
 
 UENUM(BlueprintType)
 enum class EBlockForm : uint8
@@ -486,4 +487,42 @@ float RubberStopThreshold = 70.f;     // 이보다 느리게 닿으면 멈춤(�
     FTimerHandle ResidualKillHandle;
 
     void BouncePlayer(class AmaterialCharacter* Player, const FVector& Normal);
+
+    // ★ 재질별 충돌 사운드 (에디터에서 지정 가능)
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    TArray<TObjectPtr<USoundBase>> MetallicHitSounds;
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    TArray<TObjectPtr<USoundBase>> RubberHitSounds;
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    TArray<TObjectPtr<USoundBase>> WoodHitSounds;
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    TObjectPtr<USoundBase> GasInjectionSound;
+
+    // 충돌 소리 중복 방지
+    float LastHitSoundTime = 0.f;
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    float HitSoundCooldown = 0.3f;
+
+    // ★ 이 세기 이상 충돌해야 소리 남 (가만히 있을 때 필터링)
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    float HitSoundImpulseThreshold = 300.f;
+
+    USoundBase* GetRandomSound(const TArray<TObjectPtr<USoundBase>>& Sounds) const;
+
+    UFUNCTION()
+    void OnBlockHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+    UPROPERTY()
+    TObjectPtr<USoundAttenuation> HitSoundAttenuation;
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    float SoundInnerRadius   = 500.f;   // 이 거리 안 = 최대 볼륨
+
+    UPROPERTY(EditAnywhere, Category = "Sound")
+    float SoundFalloffDistance = 2000.f; // 여기서부터 줄어들기 시작
 };

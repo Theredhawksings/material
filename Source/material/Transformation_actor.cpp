@@ -15,6 +15,7 @@
 #include "Components/MeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
+#include "Sound/SoundBase.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -190,6 +191,42 @@ ATransformation_actor::ATransformation_actor()
         TEXT("/Game/modeling/Effect/Smoke.Smoke"));
     if (SteamFX.Succeeded())
         SteamEffect = SteamFX.Object;
+
+        // ★ 충돌 사운드 로드
+    const TCHAR* MetallicHitPaths[] = {
+        TEXT("SoundWave'/Game/Sound/sound__metallic_1.sound__metallic_1'"),
+        TEXT("SoundWave'/Game/Sound/sound_metallic_2.sound_metallic_2'"),
+        TEXT("SoundWave'/Game/Sound/sound_metallic_3.sound_metallic_3'"),
+    };
+    for (const TCHAR* Path : MetallicHitPaths)
+    {
+        ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+        if (S.Succeeded()) MetallicHitSounds.Add(S.Object);
+    }
+
+    const TCHAR* RubberHitPaths[] = {
+        TEXT("SoundWave'/Game/Sound/sound_rubber_1.sound_rubber_1'"),
+        TEXT("SoundWave'/Game/Sound/sound_rubber_2.sound_rubber_2'"),
+    };
+    for (const TCHAR* Path : RubberHitPaths)
+    {
+        ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+        if (S.Succeeded()) RubberHitSounds.Add(S.Object);
+    }
+
+    const TCHAR* WoodHitPaths[] = {
+        TEXT("SoundWave'/Game/Sound/sound_wood_1.sound_wood_1'"),
+        TEXT("SoundWave'/Game/Sound/sound_wood_2.sound_wood_2'"),
+    };
+    for (const TCHAR* Path : WoodHitPaths)
+    {
+        ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+        if (S.Succeeded()) WoodHitSounds.Add(S.Object);
+    }
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> GasAsset(
+        TEXT("SoundWave'/Game/Sound/sound_gas_injection.sound_gas_injection'"));
+    if (GasAsset.Succeeded()) GasInjectionSound = GasAsset.Object;
 }
 
 // ============================================================================
@@ -285,6 +322,8 @@ void ATransformation_actor::BeginPlay()
     GetWorld()->GetTimerManager().SetTimer(
         RefreshTimerHandle, this,
         &ATransformation_actor::RefreshConnectedWires, 0.2f, true);
+
+    MeshComp->OnComponentHit.AddDynamic(this, &ATransformation_actor::OnBlockHit);
 }
 
 // ============================================================================
@@ -1968,14 +2007,9 @@ void ATransformation_actor::UpdateSteamEffect()
 
 void ATransformation_actor::SpawnSteamEffect()
 {
-    if (!SteamEffect || !MeshComp)
-        return;
-    if (SteamComponent)
-        return;
-
-    // ★ 액터가 죽는 중이거나 거의 다 녹았으면 수증기 새로 만들지 않음
-    if (IsActorBeingDestroyed())
-        return;
+    if (!SteamEffect || !MeshComp) return;
+    if (SteamComponent) return;
+    if (IsActorBeingDestroyed()) return;
 
     const FVector BoxExtent = MeshComp->Bounds.BoxExtent;
     SteamComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
@@ -1983,6 +2017,10 @@ void ATransformation_actor::SpawnSteamEffect()
         FVector(0.f, 0.f, BoxExtent.Z), FRotator::ZeroRotator,
         EAttachLocation::KeepRelativeOffset,
         false, true, ENCPoolMethod::None, true);
+
+    // ★ 수증기 시작 시 가스 소리 재생
+    if (GasInjectionSound)
+        UGameplayStatics::PlaySoundAtLocation(this, GasInjectionSound, GetActorLocation());
 }
 
 void ATransformation_actor::DestroySteamEffect()
@@ -2076,4 +2114,51 @@ void ATransformation_actor::BeginDelayedDestroy()
         }), TotalDestroyDelay, false);
 }
 
+USoundBase* ATransformation_actor::GetRandomSound(const TArray<TObjectPtr<USoundBase>>& Sounds) const
+{
+    if (Sounds.Num() == 0) return nullptr;
+    return Sounds[FMath::RandRange(0, Sounds.Num() - 1)].Get();
+}
 
+void ATransformation_actor::OnBlockHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+    // ★ 충돌 세기가 threshold 미만이면 무시 (가만히 있거나 살짝 닿는 경우)
+    if (!MeshComp) return;
+
+    // ★ 내가 움직이고 있을 때만 재생 (가만히 있으면 무시)
+    const float MySpeed = MeshComp->GetPhysicsLinearVelocity().Size();
+    if (MySpeed < HitSoundImpulseThreshold)
+        return;
+
+    // 쿨다운 체크
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (Now - LastHitSoundTime < HitSoundCooldown)
+        return;
+    LastHitSoundTime = Now;
+    // ★ 현재 폼에 맞는 사운드 선택
+    USoundBase* SoundToPlay = nullptr;
+    switch (CurrentForm)
+    {
+    case EBlockForm::Metal:
+    case EBlockForm::Copper:
+    case EBlockForm::Magnet:
+    case EBlockForm::Ice:
+        SoundToPlay = GetRandomSound(MetallicHitSounds);
+        break;
+    case EBlockForm::Rubber:
+        SoundToPlay = GetRandomSound(RubberHitSounds);
+        break;
+    case EBlockForm::Wood:
+        SoundToPlay = GetRandomSound(WoodHitSounds);
+        break;
+    default:
+        break;
+    }
+
+    if (SoundToPlay)
+        UGameplayStatics::PlaySoundAtLocation(
+            this, SoundToPlay, Hit.ImpactPoint,
+            1.f, 1.f, 0.f,
+            HitSoundAttenuation);
+}

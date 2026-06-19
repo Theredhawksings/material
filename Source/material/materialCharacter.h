@@ -266,10 +266,12 @@ private:
 	UPROPERTY() TArray<TObjectPtr<USoundBase>> MetallicSounds;
 	// ★ 고무 튕길 때 무작위 재생할 사운드들
 	UPROPERTY() TArray<TObjectPtr<USoundBase>> RubberSounds;
-	
+	UPROPERTY() TArray<TObjectPtr<USoundBase>> WoodSounds; 
+
 	// 무작위로 하나 골라주는 헬퍼
 	USoundBase* GetRandomMetallicSound() const;
 	USoundBase* GetRandomRubberSound() const;   // ★ 추가
+	USoundBase* GetRandomWoodSound() const;
 
 	// 부딪침 사운드 중복 재생 방지용 쿨다운
 	float LastImpactSoundTime = 0.f;

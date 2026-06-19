@@ -1,5 +1,6 @@
 #include "TestUI.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "materialCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/Image.h"
 #include "Materials/MaterialInstanceDynamic.h"

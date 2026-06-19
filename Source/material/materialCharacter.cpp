@@ -200,6 +200,18 @@ AmaterialCharacter::AmaterialCharacter()
 			RubberSounds.Add(S.Object);
 	}
 
+	// ★ 나무 사운드 2종 로드 (무작위 재생용)
+	const TCHAR* WoodPaths[] = {
+		TEXT("SoundWave'/Game/Sound/sound_wood_1.sound_wood_1'"),
+		TEXT("SoundWave'/Game/Sound/sound_wood_2.sound_wood_2'"),
+	};
+	for (const TCHAR* Path : WoodPaths)
+	{
+		ConstructorHelpers::FObjectFinder<USoundBase> S(Path);
+		if (S.Succeeded())
+			WoodSounds.Add(S.Object);
+	}
+
 	// 걷기 루프용 오디오 컴포넌트 (재생/정지 제어 위해 컴포넌트로)
 	WalkAudioComp = CreateDefaultSubobject<UAudioComponent>(TEXT("WalkAudioComp"));
 	WalkAudioComp->SetupAttachment(RootComponent);
@@ -260,6 +272,14 @@ USoundBase* AmaterialCharacter::GetRandomRubberSound() const
 		return nullptr;
 	const int32 Idx = FMath::RandRange(0, RubberSounds.Num() - 1);
 	return RubberSounds[Idx];
+}
+
+USoundBase* AmaterialCharacter::GetRandomWoodSound() const
+{
+	if (WoodSounds.Num() == 0)
+		return nullptr;
+	const int32 Idx = FMath::RandRange(0, WoodSounds.Num() - 1);
+	return WoodSounds[Idx];
 }
 
 void AmaterialCharacter::BeginPlay()
@@ -726,16 +746,55 @@ void AmaterialCharacter::DropHeld()
 		return;
 
 // ★ 물체 내릴 때 메탈릭 사운드 (0.3초 뒤 무작위 재생)
-	if (USoundBase* Snd = GetRandomMetallicSound())
+	if (HeldActor &&
+		(HeldActor->ActorHasTag(TEXT("Metal"))   ||
+		 HeldActor->ActorHasTag(TEXT("Ice"))     ||
+		 HeldActor->ActorHasTag(TEXT("Copper"))  ||
+		 HeldActor->ActorHasTag(TEXT("Magnet"))))
 	{
-		const FVector SoundLoc = GetActorLocation();
-		FTimerHandle DropSoundHandle;
-		GetWorld()->GetTimerManager().SetTimer(DropSoundHandle,
-			[this, Snd, SoundLoc]()
-			{
-				UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
-			},
-			1.0f, false);
+		if (USoundBase* Snd = GetRandomMetallicSound())
+		{
+			const FVector SoundLoc = GetActorLocation();
+			FTimerHandle DropSoundHandle;
+			GetWorld()->GetTimerManager().SetTimer(DropSoundHandle,
+				[this, Snd, SoundLoc]()
+				{
+					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
+				},
+				1.0f, false);
+		}
+	}
+
+	// ★ 고무 내릴 때 고무 사운드 (0.3초 뒤 무작위 재생)
+	if (HeldActor && HeldActor->ActorHasTag(TEXT("Rubber")))
+	{
+		if (USoundBase* Snd = GetRandomRubberSound())
+		{
+			const FVector SoundLoc = GetActorLocation();
+			FTimerHandle DropRubberSoundHandle;
+			GetWorld()->GetTimerManager().SetTimer(DropRubberSoundHandle,
+				[this, Snd, SoundLoc]()
+				{
+					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
+				},
+				1.0f, false);
+		}
+	}
+
+	// ★ 나무 내릴 때 나무 사운드 (0.3초 뒤 무작위 재생)
+	if (HeldActor && HeldActor->ActorHasTag(TEXT("Wood")))
+	{
+		if (USoundBase* Snd = GetRandomWoodSound())
+		{
+			const FVector SoundLoc = GetActorLocation();
+			FTimerHandle DropWoodSoundHandle;
+			GetWorld()->GetTimerManager().SetTimer(DropWoodSoundHandle,
+				[this, Snd, SoundLoc]()
+				{
+					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
+				},
+				1.0f, false);
+		}
 	}
 
 	if (HoldPivot)
@@ -1497,7 +1556,10 @@ void AmaterialCharacter::Landed(const FHitResult& Hit)
 
 if (AActor* HitActor = Hit.GetActor())
 	{
-		if ((HitActor->ActorHasTag(TEXT("Metal")) || HitActor->ActorHasTag(TEXT("Ice"))))
+		if (HitActor->ActorHasTag(TEXT("Metal"))  ||
+			HitActor->ActorHasTag(TEXT("Ice"))    ||
+			HitActor->ActorHasTag(TEXT("Copper")) ||
+			HitActor->ActorHasTag(TEXT("Magnet")))
 		{
 			const float Now = GetWorld()->GetTimeSeconds();
 			if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
@@ -1507,7 +1569,22 @@ if (AActor* HitActor = Hit.GetActor())
 				LastImpactSoundTime = Now;
 			}
 		}
+	
+
+			if (HitActor && HitActor->ActorHasTag(TEXT("Wood")))
+	{
+		const float Now = GetWorld()->GetTimeSeconds();
+		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
+		{
+			if (USoundBase* Snd = GetRandomWoodSound())
+				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
+			LastImpactSoundTime = Now;
+		}
 	}
+	}
+
+
+
 
     ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
     if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
@@ -1521,12 +1598,27 @@ void AmaterialCharacter::OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* Othe
 {
     // ★ 철/얼음에 부딪치면 메탈릭 사운드 (쿨다운으로 연속 충돌 시 중복 방지)
 if (OtherActor &&
-		(OtherActor->ActorHasTag(TEXT("Metal")) || OtherActor->ActorHasTag(TEXT("Ice"))))
+		(OtherActor->ActorHasTag(TEXT("Metal"))   ||
+		 OtherActor->ActorHasTag(TEXT("Ice"))     ||
+		 OtherActor->ActorHasTag(TEXT("Copper"))  ||
+		 OtherActor->ActorHasTag(TEXT("Magnet"))))
 	{
 		const float Now = GetWorld()->GetTimeSeconds();
 		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
 		{
 			if (USoundBase* Snd = GetRandomMetallicSound())
+				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
+			LastImpactSoundTime = Now;
+		}
+		
+	}
+// ★ 나무 충돌 사운드
+	if (OtherActor && OtherActor->ActorHasTag(TEXT("Wood")))
+	{
+		const float Now = GetWorld()->GetTimeSeconds();
+		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
+		{
+			if (USoundBase* Snd = GetRandomWoodSound())
 				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
 			LastImpactSoundTime = Now;
 		}
