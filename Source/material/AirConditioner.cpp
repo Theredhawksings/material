@@ -77,7 +77,7 @@ AAirConditioner::AAirConditioner()
 
     // ★ 추가: 스모크 사운드 자동 로드
     static ConstructorHelpers::FObjectFinder<USoundBase> SmokeSnd(
-        TEXT("/Game/Sound/sound_gas_injection.sound_gas_injection"));
+        TEXT("SoundWave'/Game/Sound/sound_air_condition.sound_air_condition'"));
     if (SmokeSnd.Succeeded())
         SmokeSound = SmokeSnd.Object;
 

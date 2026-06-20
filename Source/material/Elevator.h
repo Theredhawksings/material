@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,7 +7,8 @@
 class UBoxComponent;
 class UStaticMeshComponent;
 class USceneComponent;
-class USoundBase; // [추가]
+class USoundBase;
+class UAudioComponent;
 
 UENUM()
 enum class EElevatorState : uint8
@@ -20,7 +19,7 @@ enum class EElevatorState : uint8
     DoorClosing,
     Done,
     ArrivalOpening,
-    Disabled // [추가] 영구 정지 상태
+    Disabled
 };
 
 UCLASS()
@@ -47,24 +46,27 @@ public:
     UPROPERTY(EditAnywhere, Category = "Elevator|Timing")
     float BoardingTime = 3.f;
 
-    // [수정] 엘리베이터 이동 시간 (기존 TeleportDelay) -> 여유 있게 3초로 변경
     UPROPERTY(EditAnywhere, Category = "Elevator|Timing")
-    float TravelTime = 3.0f;
-
-    // --- [추가] 사운드 ---
-    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
-    TObjectPtr<USoundBase> OpenSound;   // 문 열림 사운드
+    float TravelTime = 5.0f;
 
     UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
-    TObjectPtr<USoundBase> CloseSound;  // 문 닫힘 사운드
+    TObjectPtr<USoundBase> OpenSound;
 
-    // 문이 움직이기 시작한 뒤 사운드가 나올 때까지의 딜레이(초)
+    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
+    TObjectPtr<USoundBase> CloseSound;
+
+    UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
+    TObjectPtr<USoundBase> TeleportSound;
+
     UPROPERTY(EditAnywhere, Category = "Elevator|Sound")
     float SoundDelay = 0.3f;
 
-    // 디버그 메시지 on/off
     UPROPERTY(EditAnywhere, Category = "Elevator|Debug")
     bool bDebug = true;
+
+    // ★ 진동 세기 조절 (에디터에서 조절 가능)
+    UPROPERTY(EditAnywhere, Category = "Elevator|Shake")
+    float ShakeIntensity = 3.0f;   // 기본값 1.0 -> 3.0으로 상향
 
 protected:
     virtual void BeginPlay() override;
@@ -76,6 +78,9 @@ protected:
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> DoorR;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UBoxComponent> TriggerBox;
 
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> TeleportAudioComp;
+
     UFUNCTION()
     void OnTriggerBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
@@ -84,12 +89,8 @@ protected:
     void CloseDoors();
     void TeleportPlayer();
     void SetDoorYaw(float Yaw);
-
-    // [추가] 사운드 재생 헬퍼 (타이머로 호출됨)
     void PlayOpenSound();
     void PlayCloseSound();
-
-    // 화면 + 로그 출력 헬퍼
     void DebugMsg(const FString& Msg, const FColor& Color = FColor::Green);
 
     EElevatorState State = EElevatorState::Idle;
@@ -100,5 +101,9 @@ protected:
 
     FTimerHandle BoardTimer;
     FTimerHandle TeleportTimer;
-    FTimerHandle SoundTimer; // [추가] 사운드 딜레이용
+    FTimerHandle SoundTimer;
+
+    // ★ 진동용
+    FVector OriginalLocation = FVector::ZeroVector;
+    float ShakeElapsed = 0.f;
 };
