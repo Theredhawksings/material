@@ -1727,43 +1727,73 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             ATransformation_actor *OtherMag = bIsMagnet ? Cast<ATransformation_actor>(OtherActor) : nullptr;
             if (OtherMag)
             {
-                if (bMagnetSnapped || OtherMag->bMagnetSnapped)
-                    continue;
                 if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag))
                     continue;
                 if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics())
                     continue;
 
-                const float MyPole = FVector::DotProduct(MyNorth, DirToOther);
-                const float OtherPole = FVector::DotProduct(OtherMag->GetNorthPoleWorldDir(), -DirToOther);
-                const float Polarity = -(MyPole * OtherPole);
+                const FVector MyC = GetActorLocation();
+                const FVector OtC = OtherMag->GetActorLocation();
+                FVector Dir = (OtC - MyC);
+                const float D = Dir.Size();
+                if (D < 1.f) continue;
+                Dir /= D;
 
-                float SpeedScale = FMath::Clamp(ReferenceDistance / FMath::Max(SafeDist, 1.f), 0.1f, 5.f);
-                float Speed = MagnetApproachSpeed * SpeedScale * FMath::Abs(Polarity);
-                FVector MoveDir = DirToOther * FMath::Sign(Polarity);
-
-                const float MyMass = FMath::Max(MeshComp->GetMass(), 0.1f);
-                const float OtMass = FMath::Max(OtherMag->MeshComp->GetMass(), 0.1f);
-                const float TotMass = MyMass + OtMass;
-
-                FVector MyVel = MoveDir * Speed * (OtMass / TotMass);
-                MyVel.Z = MeshComp->GetPhysicsLinearVelocity().Z;
-                MeshComp->SetPhysicsLinearVelocity(MyVel);
-
-                FVector OtVel = -MoveDir * Speed * (MyMass / TotMass);
-                OtVel.Z = OtherMag->MeshComp->GetPhysicsLinearVelocity().Z;
-                OtherMag->MeshComp->SetPhysicsLinearVelocity(OtVel);
-
-                if (Polarity > 0.f && Distance <= MagnetSnapDistance)
+                // 마주본 면의 극으로 인력/척력 판정
+                const FVector MyN = GetNorthPoleWorldDir();
+                const FVector OtN = OtherMag->GetNorthPoleWorldDir();
+                const float MyFace = (FVector::DotProduct(MyN,  Dir) >= 0.f) ? 1.f : -1.f;
+                const float OtFace = (FVector::DotProduct(OtN, -Dir) >= 0.f) ? 1.f : -1.f;
+                bool bAttract;
+                if (FMath::Abs(Dir.Z) > 0.6f)
                 {
-                    bMagnetSnapped = true;
-                    OtherMag->bMagnetSnapped = true;
-                    MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
-                    OtherMag->MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                    // 위아래로 겹침: 좌우 극 판정 무의미 → 두 N극 방향이 같으면 같은 극(척력)
+                    const float NAlign = FVector::DotProduct(MyN, OtN);
+                    bAttract = (NAlign < 0.f);   // N극이 반대 방향이면 인력, 같으면 척력
+                }
+                else
+                {
+                    // 좌우로 나란히: 마주본 면의 극으로 판정
+                    bAttract = (MyFace != OtFace);
+                }
+
+                GEngine->AddOnScreenDebugMessage(
+                    (int32)GetUniqueID() + 7000, 0.f,
+                    bAttract ? FColor::Green : FColor::Red,
+                    FString::Printf(TEXT("[%s] %s D=%.0f MyFace=%.0f OtFace=%.0f MyN=(%.1f,%.1f,%.1f) Dir=(%.1f,%.1f,%.1f)"),
+                        *GetName(), bAttract ? TEXT("인력") : TEXT("척력"),
+                        D, MyFace, OtFace,
+                        MyN.X, MyN.Y, MyN.Z, Dir.X, Dir.Y, Dir.Z));
+
+                MeshComp->WakeRigidBody();
+                OtherMag->MeshComp->WakeRigidBody();
+
+                if (bAttract)
+                {
+                    // 인력: 서로 향해 끌어당김 (Z 포함 전체 방향)
+                    MeshComp->SetPhysicsLinearVelocity(Dir * 130.f);
+                    OtherMag->MeshComp->SetPhysicsLinearVelocity(-Dir * 130.f);
+                }
+                else
+                {
+                    // ★ 척력: 무조건 서로 반대로 밀어냄 (Z도 그대로 살림 → 위아래도 분리됨)
+                    FVector Push = -Dir;
+
+                    // 거의 수직으로 겹쳐 있으면(위아래 탑) 옆으로 쓰러뜨리는 성분 추가
+                    if (FMath::Abs(Dir.Z) > 0.7f)
+                    {
+                        FVector Side = FVector(Dir.Y, -Dir.X, 0.f);
+                        if (Side.IsNearlyZero()) Side = FVector(1.f, 0.f, 0.f);
+                        Side.Normalize();
+                        Push = (Push + Side * 1.2f).GetSafeNormal();  // 위로 + 옆으로 동시에
+                    }
+
+                    const float RepelSpeed = 350.f;
+                    MeshComp->SetPhysicsLinearVelocity(Push * RepelSpeed);
+                    OtherMag->MeshComp->SetPhysicsLinearVelocity(-Push * RepelSpeed);
                 }
                 continue;
             }
-
             // ── 자석-금속 (Metal만, Copper는 여기 안 옴) ──
             if (!TargetComp->IsSimulatingPhysics())
                 continue;

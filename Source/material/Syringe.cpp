@@ -3,6 +3,8 @@
 #include "Components/SphereComponent.h"
 #include "UObject/ConstructorHelpers.h"
 #include "materialCharacter.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 ASyringe::ASyringe()
 {
@@ -107,16 +109,25 @@ void ASyringe::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* Other
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (!OtherActor || bIsAttached) return;
+    if (!OtherActor || bIsUsed) return;
 
     AmaterialCharacter* Character = Cast<AmaterialCharacter>(OtherActor);
     if (!Character) return;
 
-    if (Character->GetAttachedSyringe() != nullptr) return;
+    UE_LOG(LogTemp, Warning, TEXT("Syringe Absorbed by: %s"), *OtherActor->GetName());
 
-    UE_LOG(LogTemp, Warning, TEXT("Character Detected: %s"), *OtherActor->GetName());
+    // 즉시 흡수 (게이지 충전) — UseSyringe 내부에서 bIsUsed = true 처리됨
+    UseSyringe(Character);
 
-    AttachToCharacterHand(Character);
+    // 가스 주입 사운드 재생
+    if (USoundBase* InjectionSound = LoadObject<USoundBase>(
+            nullptr, TEXT("/Game/Sound/sound_gas_injection1.sound_gas_injection1")))
+    {
+        UGameplayStatics::PlaySound2D(this, InjectionSound);
+    }
+
+    // 주사기 제거
+    Destroy();
 }
 
 void ASyringe::AttachToCharacterHand(AmaterialCharacter* Character)
