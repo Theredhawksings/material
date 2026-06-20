@@ -1,6 +1,7 @@
 #include "IronSpawner.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "Components/StaticMeshComponent.h"
 
 AIronSpawner::AIronSpawner()
@@ -65,6 +66,8 @@ void AIronSpawner::Tick(float DeltaTime)
     CheckIronLifeTime(DeltaTime);
 }
 
+#include "Kismet/GameplayStatics.h" // 상단에 추가 (FinishSpawningActor 사용을 위해)
+
 void AIronSpawner::SpawnIron()
 {
     UWorld* World = GetWorld();
@@ -72,22 +75,28 @@ void AIronSpawner::SpawnIron()
 
     FVector SpawnLocation   = SpawnLocationComponent->GetComponentLocation();
     FRotator SpawnRotation  = SpawnLocationComponent->GetComponentRotation();
+    FTransform SpawnTransform(SpawnRotation, SpawnLocation);
 
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-    ATransformation_actor* NewIron = World->SpawnActor<ATransformation_actor>(
-        IronClass, SpawnLocation, SpawnRotation, SpawnParams);
+    // 1. 지연 스폰(Deferred Spawn) 방식 사용: 액터 메모리만 먼저 할당
+    ATransformation_actor* NewIron = World->SpawnActorDeferred<ATransformation_actor>(
+        IronClass, SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
     if (NewIron)
     {
-        NewIron->SetForm(EBlockForm::Metal);
+        // 2. BeginPlay가 실행되기 전에 변수에 직접 접근하여 Form 강제 지정 (게이지 검사 우회!)
+        NewIron->CurrentForm = EBlockForm::Metal;
+        
+        // 3. 스폰 완료 선언: 이때 내부적으로 BeginPlay가 호출되며 Metal 폼에 맞는 태그/재질이 완벽히 세팅됨
+        UGameplayStatics::FinishSpawningActor(NewIron, SpawnTransform);
+
+        // 4. 스케일 및 물리 세팅 적용
         NewIron->SetActorScale3D(FVector(0.6f, 0.6f, 0.6f));
         
         if (NewIron->MeshComp)
         {
             NewIron->MeshComp->SetWorldScale3D(FVector(0.6f, 0.6f, 0.6f));
             NewIron->MeshComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+            NewIron->MeshComp->SetSimulatePhysics(true); // 물리 활성화
         }
 
         FIronSpawnData NewData;

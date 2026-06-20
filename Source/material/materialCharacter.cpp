@@ -1085,6 +1085,18 @@ void AmaterialCharacter::ChargeGaugeForMaterial(const FName &MaterialTag, int32 
 	UE_LOG(LogTemp, Warning, TEXT("ChargeGauge: %s +%d"), *MaterialTag.ToString(), Amount);
 }
 
+void AmaterialCharacter::ResetAllGauges()
+{
+	RubberGauge = 0;
+	MetalGauge  = 0;
+	IceGauge    = 0;
+	WoodGauge   = 0;
+	MagnetGauge = 0;
+	CopperGauge = 0;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Gauge] 모든 게이지 리셋 (0)"));
+}
+
 void AmaterialCharacter::OpenRadialMenu(ATransformation_actor *Target)
 {
 	APlayerController *PC = Cast<APlayerController>(GetController());
@@ -1629,4 +1641,6 @@ if (OtherActor &&
         return;
 
     DoRubberBounce(Hit.ImpactNormal);
+
+
 }

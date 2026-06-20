@@ -11,7 +11,7 @@ class AWire;
 class AMagnet;
 class USoundBase; 
 class UAudioComponent;  
-class USoundAttenuation;   // 전방 선언 추가
+class USoundAttenuation;
 
 UCLASS()
 class MATERIAL_API AGenerator : public AActor
@@ -33,6 +33,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Generator")
     void DeactivateGenerator() { bGeneratorActive = false; }
 
+    bool IsGeneratorActive() const { return bGeneratorActive; }
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
@@ -41,8 +43,13 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "Generator")
     TObjectPtr<USceneComponent> Root;
 
+    // 고정된 발전기 본체 메시
     UPROPERTY(VisibleAnywhere, Category = "Generator")
-    TObjectPtr<UStaticMeshComponent> GeneratorMesh;
+    TObjectPtr<UStaticMeshComponent> GeneratorBody;
+
+    // 360도 회전하는 코일 메시
+    UPROPERTY(VisibleAnywhere, Category = "Generator")
+    TObjectPtr<UStaticMeshComponent> CoilBody;
 
     // 에디터에서 도넛 옆으로 위치 이동. 박스 안 전선에 전기 중계.
     UPROPERTY(VisibleAnywhere, Category = "Generator|OutputBox")
@@ -52,13 +59,9 @@ private:
     UPROPERTY(EditAnywhere, Category = "Generator|OutputBox")
     bool bCoilOutputEnabled = true;
 
-    // 발전기 본체에 붙어서 같이 회전하는 전선들
+    // 발전기 본체에 붙어서 직접 전기를 공급받는 전선들 (더 이상 회전하지 않음)
     UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
     TArray<TObjectPtr<AWire>> AssignedWires;
-
-    // true면 AssignedWires를 GeneratorMesh에 부착해 같이 회전
-    UPROPERTY(EditAnywhere, Category = "Generator|Circuit")
-    bool bRotateConnectedWires = true;
 
     UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
     float MagnetDetectRadius = 1500.f;
@@ -69,7 +72,7 @@ private:
 
     // 회전축 마스크 (기본 Yaw)
     UPROPERTY(EditAnywhere, Category = "Generator|Coil")
-    FRotator SpinAxisMask = FRotator(0.f, 1.f, 0.f);
+    FRotator SpinAxisMask = FRotator(1.f, 0.f, 0.f);
 
     UPROPERTY(EditAnywhere, Category = "Generator|EMF")
     int32 CoilWindings = 100;
@@ -136,15 +139,13 @@ private:
     bool bWasRunning = false;
     FTimerHandle GenSoundTimerHandle;
 
-    // Generator|Magnet 카테고리에
-UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
-float MagnetScanInterval = 0.2f;   // 0이면 매 프레임 스캔(원래 동작)
+    UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
+    float MagnetScanInterval = 0.2f;
 
-// ImbalanceNoiseTime 옆에
-float MagnetScanAccumulator = 0.f;
+    float MagnetScanAccumulator = 0.f;
 
-UPROPERTY()
-    TObjectPtr<UAudioComponent> ActiveGenAudio = nullptr;   // ★ 현재 재생 중인 사운드 핸들
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> ActiveGenAudio = nullptr;
 
     UPROPERTY(EditAnywhere, Category = "Generator|Sound")
     TObjectPtr<USoundAttenuation> GeneratorSoundAttenuation;
@@ -152,4 +153,11 @@ UPROPERTY()
     UPROPERTY(EditAnywhere, Category = "Generator|Magnet")
     int32 MinRequiredPairs = 1;
 
+    void UpdateThermal(float DeltaTime);
+
+    // 👇 열화상 관련 변수 추가
+    UPROPERTY(EditAnywhere, Category = "Generator|Thermal")
+    float ThermalCooldownRate = 50.f; // 1초에 감소하는 스텐실 값 (255->0까지 약 5.1초 소요)
+
+    float CurrentThermalValue = 0.f;
 };

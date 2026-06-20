@@ -19,17 +19,52 @@ AGenerator::AGenerator()
     Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     SetRootComponent(Root);
 
-    GeneratorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GeneratorMesh"));
-    GeneratorMesh->SetupAttachment(Root);
-    GeneratorMesh->SetSimulatePhysics(false);
-    GeneratorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    // 1) 고정 본체 컴포넌트 생성 및 에셋 로드
+    GeneratorBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GeneratorBody"));
+    GeneratorBody->SetupAttachment(Root);
+    GeneratorBody->SetRelativeScale3D(FVector(1.f, 1.f, 1.f)); // 👈 본체 스케일 1, 1, 1 강제 고정!
+    GeneratorBody->SetSimulatePhysics(false);
+    GeneratorBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BodyMeshAsset(
+        TEXT("/Script/Engine.StaticMesh'/Game/modeling/Object/Generator_Rotor/Generator_Rotor_body.Generator_Rotor_body'"));
+    if (BodyMeshAsset.Succeeded())
+    {
+        GeneratorBody->SetStaticMesh(BodyMeshAsset.Object);
+    }
+
+    // 2) 회전 코일 컴포넌트 생성 및 에셋 로드 (원점 부착)
+    CoilBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CoilBody"));
+    CoilBody->SetupAttachment(Root);
+    CoilBody->SetRelativeScale3D(FVector(1.f, 1.f, 1.f)); // 👈 코일 스케일 1, 1, 1 강제 고정!
+    CoilBody->SetSimulatePhysics(false);
+    CoilBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CoilMeshAsset(
+        TEXT("/Script/Engine.StaticMesh'/Game/modeling/Object/Generator_Rotor/Copper_Coil_Body.Copper_Coil_Body'"));
+    if (CoilMeshAsset.Succeeded())
+    {
+        CoilBody->SetStaticMesh(CoilMeshAsset.Object);
+    }
+
+    // 3) 머티리얼 에셋 로드 및 적용
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialAsset(
+        TEXT("/Script/Engine.Material'/Game/modeling/Object/Generator_Rotor/M_Generator_Rotor.M_Generator_Rotor'"));
+    if (MaterialAsset.Succeeded())
+    {
+        GeneratorBody->SetMaterial(0, MaterialAsset.Object);
+        CoilBody->SetMaterial(0, MaterialAsset.Object);
+    }
+
+    // 4) 출력 박스 설정
     OutputBox = CreateDefaultSubobject<UBoxComponent>(TEXT("OutputBox"));
     OutputBox->SetupAttachment(Root);
+    OutputBox->SetRelativeScale3D(FVector(1.f, 1.f, 1.f)); // 👈 혹시 몰라서 박스도 스케일 1, 1, 1 고정!
     OutputBox->SetBoxExtent(FVector(40.f, 40.f, 40.f));
     OutputBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     OutputBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 
+    // 사운드 로드
     static ConstructorHelpers::FObjectFinder<USoundBase> TurnOnAsset(
         TEXT("/Script/Engine.SoundWave'/Game/Sound/sound_generator_turning_on.sound_generator_turning_on'"));
     if (TurnOnAsset.Succeeded())
@@ -51,9 +86,6 @@ void AGenerator::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // ── 자석 스캔은 주기적으로만 (EMF/회로는 매 프레임 그대로) ──
-    // GetAllActorsOfClass는 월드 전체 액터를 순회하는 비싼 호출이라
-    // 매 프레임이 아니라 일정 주기로만 갱신한다. (MagnetScanInterval = 0 이면 매 프레임)
     MagnetScanAccumulator += DeltaTime;
     if (MagnetScanInterval <= 0.f || MagnetScanAccumulator >= MagnetScanInterval)
     {
@@ -64,6 +96,8 @@ void AGenerator::Tick(float DeltaTime)
     UpdateEMF(DeltaTime);
     UpdateCircuit();
     UpdateGeneratorSound();
+
+    UpdateThermal(DeltaTime);
 
 #if ENABLE_DRAW_DEBUG
     if (!bDebugDraw) return;
@@ -113,7 +147,7 @@ void AGenerator::Tick(float DeltaTime)
 
 void AGenerator::DetectMagnets()
 {
-    NorthMagnets.Reset();   // Empty() 대신 Reset() → 내부 용량 유지, 재할당 감소
+    NorthMagnets.Reset(); 
     SouthMagnets.Reset();
 
     const FVector MyLoc    = GetActorLocation();
@@ -127,7 +161,6 @@ void AGenerator::DetectMagnets()
         AMagnet* Magnet = Cast<AMagnet>(Actor);
         if (!Magnet || Magnet->IsDemagnetized()) continue;
 
-        // sqrt 없는 제곱거리 비교 (결과는 동일)
         if (FVector::DistSquared(MyLoc, Magnet->GetActorLocation()) > RadiusSq) continue;
 
         if (Magnet->IsNorthPole()) NorthMagnets.Add(Magnet);
@@ -144,13 +177,14 @@ void AGenerator::UpdateEMF(float DeltaTime)
         EffectivePairs       = 0;
         ImbalanceRatio       = 0.f;
         CurrentRotationSpeed = BaseRotationSpeed;
-        GeneratorMesh->SetRelativeRotation(FRotator::ZeroRotator);
+        
+        // 발전기가 정지하면 코일 메시의 회전을 초기화
+        CoilBody->SetRelativeRotation(FRotator::ZeroRotator);
         return;
     }
 
-    const FVector MyLoc = GetActorLocation();   // 한 번만 캐시
+    const FVector MyLoc = GetActorLocation();
 
-    // ── 1) 유효 쌍 수 & 불균형도 ────────────────────────────────
     const int32 NCount = NorthMagnets.Num();
     const int32 SCount = SouthMagnets.Num();
     EffectivePairs = FMath::Min(NCount, SCount);
@@ -165,10 +199,8 @@ void AGenerator::UpdateEMF(float DeltaTime)
         return;
     }
 
-    // ── 2) 회전속도: 쌍 많을수록 느려짐 ────────────────────────
     CurrentRotationSpeed = BaseRotationSpeed;
 
-    // ── 3) 회전 방향: N극 무게중심 기준 ────────────────────────
     FVector NorthCentroid = FVector::ZeroVector;
     for (AMagnet* M : NorthMagnets)
         if (M) NorthCentroid += M->GetActorLocation();
@@ -182,11 +214,9 @@ void AGenerator::UpdateEMF(float DeltaTime)
     if (RotationAngle >= 360.f)  RotationAngle -= 360.f;
     if (RotationAngle <= -360.f) RotationAngle += 360.f;
 
-    GeneratorMesh->SetRelativeRotation((SpinAxisMask * RotationAngle).Quaternion());
+    // 전체 본체가 아닌 코일 메시만 회전하도록 변경
+    CoilBody->SetRelativeRotation((SpinAxisMask * RotationAngle).Quaternion());
 
-    // ── 4) B(자기장): 거리 한 번만 계산해서 정렬 + 쌍 합산 ──────
-    // 기존엔 Sort 비교마다 GetActorLocation() + Dist(sqrt)를 두 번씩 호출했음.
-    // 거리(제곱)를 미리 한 번만 계산해 정렬 비용을 줄인다.
     struct FMagnetDistSq { AMagnet* Magnet; float DistSq; };
     TArray<FMagnetDistSq, TInlineAllocator<8>> SortedN, SortedS;
     SortedN.Reserve(NCount);
@@ -200,7 +230,6 @@ void AGenerator::UpdateEMF(float DeltaTime)
     SortedN.Sort([](const FMagnetDistSq& A, const FMagnetDistSq& B){ return A.DistSq < B.DistSq; });
     SortedS.Sort([](const FMagnetDistSq& A, const FMagnetDistSq& B){ return A.DistSq < B.DistSq; });
 
-    // 스캔 사이에 자석이 파괴/null이 된 경우까지 대비해 루프 범위를 클램프
     const int32 PairLoop = FMath::Min(EffectivePairs, FMath::Min(SortedN.Num(), SortedS.Num()));
 
     float TotalB = 0.f;
@@ -219,7 +248,6 @@ void AGenerator::UpdateEMF(float DeltaTime)
         TotalB += (BN + BS) * 0.5f;
     }
 
-    // ── 5) EMF 계산 ─────────────────────────────────────────────
     const float AngleRad        = FMath::DegreesToRadians(RotationAngle);
     const float AngularVelocity = FMath::DegreesToRadians(CurrentRotationSpeed);
     const float CoilRadius      = CoilRadiusCM / 100.f;
@@ -229,7 +257,6 @@ void AGenerator::UpdateEMF(float DeltaTime)
               * AngularVelocity
               * FMath::Sin(AngleRad * (float)EffectivePairs);
 
-    // ── 6) 불균형 페널티 ────────────────────────────────────────
     if (ImbalanceRatio > 0.f && ImbalancePenaltyScale > 0.f)
     {
         ImbalanceNoiseTime += DeltaTime;
@@ -253,24 +280,11 @@ void AGenerator::UpdateCircuit()
     const float AbsEMF      = FMath::Abs(CurrentEMF);
     const bool  bGenerating = (AbsEMF >= MinEMFThreshold);
 
-    // ── 1) AssignedWires: 회전 부착 + 직접 전기 공급 ────────────
+    // ── 1) AssignedWires: 부착/분리 로직을 제외하고 전력 공급만 처리 ──
     for (TObjectPtr<AWire>& WirePtr : AssignedWires)
     {
         AWire* Wire = WirePtr.Get();
         if (!Wire) continue;
-
-        USceneComponent* WireRoot = Wire->GetRootComponent();
-        if (WireRoot && bRotateConnectedWires)
-        {
-            if (WireRoot->GetAttachParent() != GeneratorMesh)
-                Wire->AttachToComponent(GeneratorMesh,
-                    FAttachmentTransformRules::KeepWorldTransform);
-        }
-        else if (WireRoot && !bRotateConnectedWires
-              && WireRoot->GetAttachParent() == GeneratorMesh)
-        {
-            Wire->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-        }
 
         if (bGenerating && bCurrentPositive)
         {
@@ -286,7 +300,7 @@ void AGenerator::UpdateCircuit()
         }
     }
 
-    // ── 2) OutputBox: 이전 프레임 전선 전원 끊기 ────────────────
+    // ── 2) OutputBox: 이전 프레임 전선 전원 끊기 ──
     for (TObjectPtr<AWire>& WirePtr : BoxPoweredWires)
     {
         AWire* Wire = WirePtr.Get();
@@ -295,11 +309,11 @@ void AGenerator::UpdateCircuit()
         Wire->SetBatteryVoltage(0.f);
         Wire->SetPowered(false);
     }
-    BoxPoweredWires.Reset();   // Empty() 대신 Reset() → 용량 유지
+    BoxPoweredWires.Reset(); 
 
     if (!bCoilOutputEnabled || !bGenerating || !bCurrentPositive) return;
 
-    // ── 3) OutputBox 안 전선 탐지 + 전기 중계 ───────────────────
+    // ── 3) OutputBox 안 전선 탐지 + 전기 중계 ──
     const FTransform BoxXform  = OutputBox->GetComponentTransform();
     const FVector    BoxCenter = BoxXform.GetLocation();
     const FQuat      BoxRot    = BoxXform.GetRotation();
@@ -342,21 +356,18 @@ void AGenerator::UpdateGeneratorSound()
 {
     const bool bRunning = bGeneratorActive && (EffectivePairs >= MinRequiredPairs);
 
-    // ── 상태가 바뀐 순간 처리 ──
     if (bRunning != bWasRunning)
     {
         bWasRunning = bRunning;
 
         GetWorld()->GetTimerManager().ClearTimer(GenSoundTimerHandle);
 
-        // 켜지든 꺼지든, 재생 중이던 ON 루프는 일단 끊는다
         if (ActiveGenAudio)
         {
             ActiveGenAudio->Stop();
             ActiveGenAudio = nullptr;
         }
 
-        // 꺼질 때: OFF 즉시 1회 재생하고 끝
         if (!bRunning)
         {
             if (TurningOffSound)
@@ -368,7 +379,6 @@ void AGenerator::UpdateGeneratorSound()
         }
     }
 
-    // ── 돌아가는 동안: ON 사운드가 안 울리면 (다시) 재생 → 연속 재생 보장 ──
     if (bRunning && TurningOnSound)
     {
         if (!ActiveGenAudio || !ActiveGenAudio->IsPlaying())
@@ -379,5 +389,48 @@ void AGenerator::UpdateGeneratorSound()
                 false, 1.f, 1.f, 0.f,
                 GeneratorSoundAttenuation);
         }
+    }
+}
+
+void AGenerator::UpdateThermal(float DeltaTime)
+{
+    // EMF가 최소치 이상 발생 중이면 발전기가 작동하는 것으로 간주
+    const bool bGenerating = (FMath::Abs(CurrentEMF) >= MinEMFThreshold);
+
+    if (bGenerating)
+    {
+        // 작동 중일 때는 스텐실(온도) 값을 즉시 255로 세팅
+        CurrentThermalValue = 255.f;
+    }
+    else
+    {
+        // 멈췄을 때는 CooldownRate에 따라 서서히 식음
+        if (CurrentThermalValue > 0.f)
+        {
+            CurrentThermalValue -= ThermalCooldownRate * DeltaTime;
+            if (CurrentThermalValue < 0.f)
+            {
+                CurrentThermalValue = 0.f;
+            }
+        }
+    }
+
+    // float 값을 정수(0~255)로 변환
+    const int32 StencilValue = FMath::RoundToInt(CurrentThermalValue);
+
+    // 스텐실 값이 1 이상일 때만 CustomDepth를 켜서 성능 확보
+    if (StencilValue > 0)
+    {
+        GeneratorBody->SetRenderCustomDepth(true);
+        GeneratorBody->SetCustomDepthStencilValue(StencilValue);
+        
+        CoilBody->SetRenderCustomDepth(true);
+        CoilBody->SetCustomDepthStencilValue(StencilValue);
+    }
+    else
+    {
+        // 다 식었으면(0) 렌더링 부하를 없애기 위해 CustomDepth 끄기
+        GeneratorBody->SetRenderCustomDepth(false);
+        CoilBody->SetRenderCustomDepth(false);
     }
 }

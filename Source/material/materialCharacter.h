@@ -68,6 +68,8 @@ public:
 
 	ASyringe* GetAttachedSyringe() const { return AttachedSyringe; }
 	AActor* GetHeldActor() const { return HeldActor; }
+	
+	void ResetAllGauges(); 
 
 protected:
 	virtual void BeginPlay() override;
@@ -303,5 +305,7 @@ UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce 
 
 static FVector PendingSpawnLocation;
 static bool    bHasPendingSpawn;
+
+
 
 };
