@@ -21,6 +21,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	// ── 컴포넌트 ──────────────────────────────────────────
 	UPROPERTY(VisibleAnywhere, Category = "MagnetJumpPad")
 	USceneComponent* PadRoot;
 
@@ -33,27 +34,24 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "MagnetJumpPad")
 	USphereComponent* DetectRange;
 
-	// 발판 평형 높이 (0 = 베이스와 같은 위치)
+	// ── 설정 ──────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Setup")
 	float RestHeight = 0.f;
 
-	// 최대로 눌릴 수 있는 깊이
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Setup")
 	float TravelRange = 200.f;
 
-	// 복원 강성
+	// ── 스프링 ────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Spring")
 	float RestStiffness = 200.f;
 
-	// 밟는 힘
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Spring")
 	float PlayerPressForce = 50000.f;
 
-	// 감쇠
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Spring")
 	float Damping = 6.f;
 
-	// 발사 속도
+	// ── 발사 ──────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Launch")
 	float LaunchSpeed = 1200.f;
 
@@ -63,23 +61,30 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Launch")
 	float MaxLaunchSpeed = 2000.f;
 
-	// 플레이어 감지
+	// ── 감지 ──────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Detect")
 	float PlayerDetectRadius = 120.f;
 
-	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Detect")
-	float PlayerDetectHeight = 200.f;
-
+	// ── 디버그 ────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, Category = "MagnetJumpPad|Debug")
 	bool bDebugDraw = true;
 
 private:
+	// DetectRange 오버랩 콜백
+	UFUNCTION()
+	void OnDetectBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnDetectEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 	UPROPERTY()
 	ACharacter* CachedPlayer = nullptr;
 
-	float PadZ = 0.f;
+	float PadZ   = 0.f;
 	float PadVel = 0.f;
-	bool bLaunched = false;
-
-	bool IsPlayerOnPad() const;
+	bool  bLaunched  = false;
+	bool  bStepped   = false;   // DetectRange 오버랩 상태
 };
