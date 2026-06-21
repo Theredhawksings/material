@@ -142,17 +142,17 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 RubberGauge = 5;
+	int32 RubberGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 MetalGauge = 5;
+	int32 MetalGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 IceGauge = 5;
+	int32 IceGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 WoodGauge = 5;
+	int32 WoodGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 MagnetGauge = 10;
+	int32 MagnetGauge = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
-	int32 CopperGauge = 5;
+	int32 CopperGauge = 0;
 
 	UPROPERTY(EditAnywhere, Category = "Material Gauge")
 	int32 GaugeDecreaseAmount = 1;
@@ -302,16 +302,17 @@ private:
 	void OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-void DoRubberBounce(const FVector& SurfaceNormal);   // ★ 공통 함수
+	void DoRubberBounce(const FVector& SurfaceNormal);   // ★ 공통 함수
 
-UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution   = 0.7f;   // 속도 대비 (물체랑 동일)
-UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerStopThreshold = 100.f;  // 이 속도 미만은 안 튕김
-UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce     = 1800.f; // 최대 튕김 속도
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution   = 0.7f;   // 속도 대비 (물체랑 동일)
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerStopThreshold = 100.f;  // 이 속도 미만은 안 튕김
+	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce     = 1800.f; // 최대 튕김 속도
 
 
-static FVector PendingSpawnLocation;
-static bool    bHasPendingSpawn;
+	static FVector PendingSpawnLocation;
+	static bool    bHasPendingSpawn;
 
+	void OnResetMap();
 
 
 };

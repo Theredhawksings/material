@@ -48,6 +48,9 @@ public:
 
     void SetMagneticCameraState(bool bIsCameraOn);
 
+    void TogglePlatform();
+    bool IsPlatformRaised() const { return bPlatformRaised; }
+
 protected:
     virtual void BeginPlay() override;
 
@@ -177,6 +180,15 @@ protected:
     void OnWireContactEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
+    UPROPERTY(EditAnywhere, Category = "Magnet|Platform")
+    bool bStartSunken = false;                 // true=시작부터 내려감/소자
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Platform")
+    float PlatformMoveDistance = 300.f;
+
+    UPROPERTY(EditAnywhere, Category = "Magnet|Platform")
+    float PlatformMoveSpeed = 80.f;
+
 private:
     UPROPERTY()
     TSet<TObjectPtr<UPrimitiveComponent>> OverlappingMetals;
@@ -212,4 +224,12 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Magnet|Visual", meta = (ClampMin = "0.0", ClampMax = "2.0"))
     float ArrowDownRatio = 1.0f;
+
+    bool    bPlatformRaised = true;
+    FVector RaisedLoc       = FVector::ZeroVector;
+    FVector LoweredLoc      = FVector::ZeroVector;
+    FVector MoveTargetLoc   = FVector::ZeroVector;
+
+    void InitPlatformMovement();
+    void TickPlatformMovement(float DeltaTime);
 };

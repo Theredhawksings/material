@@ -52,6 +52,8 @@ void AMagnet::BeginPlay()
 
     BaseStrength = Strength;
 
+    InitPlatformMovement();
+
     MagnetRange->SetSphereRadius(MaxDistance);
     WireContactRange->SetSphereRadius(WireContactRadius);
 
@@ -174,7 +176,8 @@ void AMagnet::UpdateArrowVisibility()
 void AMagnet::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-
+    TickPlatformMovement(DeltaTime);
+    
     if (RotationSpeed > 0.f)
     {
         const float RotDir = bRotateClockwise ? 1.f : -1.f;
@@ -643,4 +646,62 @@ void AMagnet::Restore()
 
     // 금속 오버랩 다시 감지
     RefreshOverlappingMetals();
+}
+
+// ★ 발판용 이동 초기화
+void AMagnet::InitPlatformMovement()
+{
+    const FVector Loc = GetActorLocation();
+
+    if (bStartSunken)   // 에디터 배치 위치 = 내려간 위치
+    {
+        LoweredLoc      = Loc;
+        RaisedLoc       = Loc + FVector(0.f, 0.f, PlatformMoveDistance);
+        bPlatformRaised = false;
+        MoveTargetLoc   = LoweredLoc;
+        ForceDemagnetize();          // 시작부터 소자 상태
+    }
+    else                // 에디터 배치 위치 = 올라간 위치
+    {
+        RaisedLoc       = Loc;
+        LoweredLoc      = Loc - FVector(0.f, 0.f, PlatformMoveDistance);
+        bPlatformRaised = true;
+        MoveTargetLoc   = RaisedLoc;
+    }
+}
+
+// ★ 발판이 호출: 올라감 ↔ 내려감 반전
+void AMagnet::TogglePlatform()
+{
+    bPlatformRaised = !bPlatformRaised;
+
+    if (bPlatformRaised)
+    {
+        Restore();                   // 올라갈 땐 즉시 자력 복구
+        MoveTargetLoc = RaisedLoc;
+    }
+    else
+    {
+        MoveTargetLoc = LoweredLoc;  // 소자는 다 내려간 뒤 (아래 Tick에서)
+    }
+}
+
+// ★ 매 프레임 목표 위치로 이동
+void AMagnet::TickPlatformMovement(float DeltaTime)
+{
+    const FVector Cur = GetActorLocation();
+
+    if (FVector::Dist(Cur, MoveTargetLoc) < 1.f)
+    {
+        SetActorLocation(MoveTargetLoc);
+
+        // 다 내려갔으면 소자
+        if (!bPlatformRaised && !bDemagnetized)
+            ForceDemagnetize();
+
+        return;
+    }
+
+    SetActorLocation(
+        FMath::VInterpConstantTo(Cur, MoveTargetLoc, DeltaTime, PlatformMoveSpeed));
 }

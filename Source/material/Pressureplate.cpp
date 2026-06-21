@@ -3,13 +3,14 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Character.h"
-#include "UObject/ConstructorHelpers.h"   // ★ 추가
-#include "Sound/SoundBase.h"              // ★ 추가
-#include "Kismet/GameplayStatics.h" 
+#include "UObject/ConstructorHelpers.h"
+#include "Sound/SoundBase.h"
+#include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
 
 APressurePlate::APressurePlate()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = false;   // ★ 더 이상 Tick 안 함
 
     PlateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlateMesh"));
     SetRootComponent(PlateMesh);
@@ -35,56 +36,7 @@ void APressurePlate::BeginPlay()
     DetectBox->OnComponentBeginOverlap.AddDynamic(this, &APressurePlate::OnBoxBeginOverlap);
     DetectBox->OnComponentEndOverlap.AddDynamic(this,   &APressurePlate::OnBoxEndOverlap);
 
-    for (const FMagnetSlot& Slot : MagnetSlots)
-    {
-        AMagnet* Magnet = Slot.Magnet.Get();
-        if (!Magnet) continue;
-
-        const FVector Loc = Magnet->GetActorLocation();
-
-if (Slot.bStartSunken)
-{
-    MagnetOriginalLocations.Add(Loc + FVector(0.f, 0.f, MoveDistance));
-    MagnetTargetLocations.Add(Loc);
-    MagnetMovedStates.Add(true);
-    Magnet->ForceDemagnetize(); // ★ 이미 있음
-}
-        else
-        {
-            // ★ 처음에 올라가 있는 상태
-            MagnetOriginalLocations.Add(Loc);
-            MagnetTargetLocations.Add(Loc);
-            MagnetMovedStates.Add(false);
-        }
-    }
-}
-
-void APressurePlate::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-
-    for (int32 i = 0; i < MagnetSlots.Num(); ++i)
-    {
-        AMagnet* Magnet = MagnetSlots[i].Magnet.Get();
-        if (!Magnet) continue;
-
-        const FVector Current = Magnet->GetActorLocation();
-        const FVector Target  = MagnetTargetLocations[i];
-
-        if (FVector::Dist(Current, Target) < 1.f)
-        {
-            Magnet->SetActorLocation(Target);
-
-            // 완전히 내려갔을 때 소자
-            if (MagnetMovedStates[i] && !Magnet->IsDemagnetized())
-                Magnet->ForceDemagnetize();
-
-            continue;
-        }
-
-        const FVector New = FMath::VInterpConstantTo(Current, Target, DeltaTime, MoveSpeed);
-        Magnet->SetActorLocation(New);
-    }
+    // 자석 이동 초기화는 자석 본인이 BeginPlay에서 처리 → 여기선 없음
 }
 
 void APressurePlate::OnBoxBeginOverlap(UPrimitiveComponent*, AActor* OtherActor,
@@ -111,22 +63,19 @@ void APressurePlate::ToggleMagnets()
     if (PedalSound)
         UGameplayStatics::PlaySoundAtLocation(this, PedalSound, GetActorLocation());
 
-    for (int32 i = 0; i < MagnetSlots.Num(); ++i)
+    for (const FMagnetSlot& Slot : MagnetSlots)
     {
-        AMagnet* Magnet = MagnetSlots[i].Magnet.Get();
+        AMagnet* Magnet = Slot.Magnet.Get();
         if (!Magnet) continue;
 
-        if (MagnetMovedStates[i])
+        Magnet->TogglePlatform();
+
+        if (GEngine)
         {
-            Magnet->Restore();
-            MagnetTargetLocations[i] = MagnetOriginalLocations[i];
-            MagnetMovedStates[i]     = false;
-        }
-        else
-        {
-            MagnetTargetLocations[i] = MagnetOriginalLocations[i]
-                                     + FVector(0.f, 0.f, -MoveDistance);
-            MagnetMovedStates[i]     = true;
+            const TCHAR* Dir = Magnet->IsPlatformRaised() ? TEXT("올라감") : TEXT("내려감");
+            const FColor Col = Magnet->IsPlatformRaised() ? FColor::Green : FColor::Red;
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, Col,
+                FString::Printf(TEXT("[%s] %s"), *Magnet->GetName(), Dir));
         }
     }
-} 
+}

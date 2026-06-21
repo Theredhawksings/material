@@ -445,7 +445,7 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputC
 	PlayerInputComponent->BindAction("laboratory", IE_Pressed, this, &AmaterialCharacter::OnWarpLaboratory);
 	PlayerInputComponent->BindAction("Stage1", IE_Pressed, this, &AmaterialCharacter::OnWarpStage1);
 	PlayerInputComponent->BindAction("Stage2", IE_Pressed, this, &AmaterialCharacter::OnWarpStage2);
-	PlayerInputComponent->BindAction("Stage3", IE_Pressed, this, &AmaterialCharacter::OnWarpStage3);
+	PlayerInputComponent->BindAction("Stage3", IE_Pressed, this, &AmaterialCharacter::OnResetMap);
 
 	UEnhancedInputComponent *EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC)
@@ -533,24 +533,12 @@ void AmaterialCharacter::ChangeForm()
 
 void AmaterialCharacter::CheckWeight()
 {
-	if (!FollowCamera)
-		return;
-	const FVector Start = FollowCamera->GetComponentLocation();
-	const FVector End = Start + FollowCamera->GetForwardVector() * InteractRange;
-	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CheckWeight), false, this);
-	if (!GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-										  ECC_Visibility, FCollisionShape::MakeSphere(InteractSphereRadius), Params))
-		return;
-	AActor *HitActor = Hit.GetActor();
-	if (!HitActor)
-		return;
-	UPrimitiveComponent *PrimComp = Cast<UPrimitiveComponent>(HitActor->GetRootComponent());
-	if (!PrimComp)
-		return;
-	const float MassKg = PrimComp->GetMass();
-	DrawDebugString(GetWorld(), HitActor->GetActorLocation() + FVector(0.f, 0.f, 80.f),
-					FString::Printf(TEXT("%.1f kg"), MassKg), nullptr, FColor::Cyan, 3.0f, true);
+	RubberGauge = 10;
+	MetalGauge = 10;
+	IceGauge = 10;
+	WoodGauge = 10;
+	MagnetGauge = 10;
+	CopperGauge = 10;
 }
 
 void AmaterialCharacter::HoldPressed()
@@ -1658,4 +1646,21 @@ if (OtherActor &&
     DoRubberBounce(Hit.ImpactNormal);
 
 
+}
+
+void AmaterialCharacter::OnResetMap()
+{
+    // 1. 현재 위치에서 Z축으로 +5.0f (언리얼 단위로 5cm) 올린 좌표를 저장합니다.
+    // (만약 캡슐 콜리전 때문에 바닥에 끼인다면 50.0f 정도로 늘려주시면 좋습니다.)
+    PendingSpawnLocation = GetActorLocation() + FVector(0.f, 0.f, 5.0f);
+    bHasPendingSpawn = true;
+
+    // 2. 현재 플레이 중인 맵의 이름을 가져옵니다. (에디터 플레이 시 붙는 접두사 제거)
+    const FString CleanCurrentMapName = UWorld::RemovePIEPrefix(GetWorld()->GetMapName());
+
+    UE_LOG(LogTemp, Warning, TEXT("[Reset] 현재 맵(%s)을 리셋합니다. 스폰 예정 위치: %s"), 
+           *CleanCurrentMapName, *PendingSpawnLocation.ToString());
+
+    // 3. 해당 맵을 다시 로드하여 맵 상태를 초기화합니다.
+    UGameplayStatics::OpenLevel(GetWorld(), FName(*CleanCurrentMapName));
 }

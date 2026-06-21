@@ -9,19 +9,14 @@ class UBoxComponent;
 class AMagnet;
 class USoundBase;
 
-// ★ 자석 하나의 설정을 묶은 구조체
+// ★ 발판이 담당하는 자석 (밟으면 토글됨)
 USTRUCT(BlueprintType)
 struct FMagnetSlot
 {
     GENERATED_BODY()
 
-    // 연결할 자석
     UPROPERTY(EditAnywhere, Category = "MagnetSlot")
     TObjectPtr<AMagnet> Magnet = nullptr;
-
-    // ★ true = 처음에 내려가 있음, false = 처음에 올라가 있음
-    UPROPERTY(EditAnywhere, Category = "MagnetSlot")
-    bool bStartSunken = false;
 };
 
 UCLASS()
@@ -34,7 +29,6 @@ public:
 
 protected:
     virtual void BeginPlay() override;
-    virtual void Tick(float DeltaTime) override;
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "PressurePlate")
@@ -43,22 +37,9 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "PressurePlate")
     TObjectPtr<UBoxComponent> DetectBox;
 
-    // ★ 자석 슬롯 배열 - 에디터에서 자석 지정 + 초기 상태 설정
+    // ★ 이 발판이 토글할 자석들
     UPROPERTY(EditAnywhere, Category = "PressurePlate")
     TArray<FMagnetSlot> MagnetSlots;
-
-    // ★ 이동 거리
-    UPROPERTY(EditAnywhere, Category = "PressurePlate")
-    float MoveDistance = 300.f;
-
-    // ★ 이동 속도
-    UPROPERTY(EditAnywhere, Category = "PressurePlate")
-    float MoveSpeed = 80.f;
-
-    // 런타임 상태
-    TArray<FVector> MagnetOriginalLocations;
-    TArray<FVector> MagnetTargetLocations;
-    TArray<bool>    MagnetMovedStates;
 
     TSet<AActor*> OverlappingPlayers;
 
@@ -73,7 +54,6 @@ private:
 
     void ToggleMagnets();
 
-    // ★ 밟을 때 재생할 페달 사운드
     UPROPERTY(EditAnywhere, Category = "PressurePlate|Sound")
     TObjectPtr<USoundBase> PedalSound;
 };
