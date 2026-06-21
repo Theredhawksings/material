@@ -127,22 +127,34 @@ void AMainStage1_Platform1::Tick(float DeltaTime)
     }
 
     if (bIsOpening && !bIsOpen)
+{
+    CurrentTime += DeltaTime * OpenSpeed;
+    if (CurrentTime >= 1.0f)
     {
-        CurrentTime += DeltaTime * OpenSpeed;
-        if (CurrentTime >= 1.0f)
+        CurrentTime = 1.0f;
+        bIsOpen     = true;
+        bIsOpening  = false;
+
+        // ★ 큐브 이동 완료 → 충돌 다시 켜기
+        auto EnableCollision = [](AActor* Door)
         {
-            CurrentTime = 1.0f;
-            bIsOpen     = true;
-            bIsOpening  = false;
-        }
+            if (!Door) return;
+            TArray<UStaticMeshComponent*> Meshes;
+            Door->GetComponents<UStaticMeshComponent>(Meshes);
+            for (UStaticMeshComponent* M : Meshes)
+                M->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        };
+        EnableCollision(LeftDoorActor);
+        EnableCollision(RightDoorActor);
+    }
 
-        if (LeftDoorActor)
-            LeftDoorActor->SetActorLocation(
-                FMath::Lerp(LeftStartLocation, LeftTargetLocation, CurrentTime));
+    if (LeftDoorActor)
+        LeftDoorActor->SetActorLocation(
+            FMath::Lerp(LeftStartLocation, LeftTargetLocation, CurrentTime));
 
-        if (RightDoorActor)
-            RightDoorActor->SetActorLocation(
-                FMath::Lerp(RightStartLocation, RightTargetLocation, CurrentTime));
+    if (RightDoorActor)
+        RightDoorActor->SetActorLocation(
+            FMath::Lerp(RightStartLocation, RightTargetLocation, CurrentTime));
     }
 }
 

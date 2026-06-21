@@ -436,7 +436,8 @@ private:
 
     bool bMagnetCollided = false;
     bool bMagnetSnapped = false;
-
+    bool bLastAttract = false;
+    
     static constexpr float MaxForceClamp = 5e5f;
     static constexpr float MaxInducedForceClamp = 3e7f;
     static constexpr float GravityAccel = 980.f;

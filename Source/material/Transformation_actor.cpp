@@ -1279,8 +1279,11 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
             MagnetStrength = BaseMagnetStrength * PowerRatio;
             RefreshOverlappingMetals();
 
-            if (SpawnedArrowEffect)
+            if (SpawnedArrowEffect){
                 UpdateMagnetArrowPower(PowerRatio);
+                RefreshArrowVisibility();
+            }
+
         }
         else if (SpawnedArrowEffect && !SpawnedArrowEffect->IsHidden())
         {
@@ -1741,39 +1744,36 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
 
                 // 마주본 면의 극으로 인력/척력 판정
                 const FVector MyN = GetNorthPoleWorldDir();
-                const FVector OtN = OtherMag->GetNorthPoleWorldDir();
-                const float MyFace = (FVector::DotProduct(MyN,  Dir) >= 0.f) ? 1.f : -1.f;
-                const float OtFace = (FVector::DotProduct(OtN, -Dir) >= 0.f) ? 1.f : -1.f;
-                bool bAttract;
-                if (FMath::Abs(Dir.Z) > 0.6f)
-                {
-                    // 위아래로 겹침: 좌우 극 판정 무의미 → 두 N극 방향이 같으면 같은 극(척력)
-                    const float NAlign = FVector::DotProduct(MyN, OtN);
-                    bAttract = (NAlign < 0.f);   // N극이 반대 방향이면 인력, 같으면 척력
-                }
-                else
-                {
-                    // 좌우로 나란히: 마주본 면의 극으로 판정
-                    bAttract = (MyFace != OtFace);
-                }
+const FVector OtN = OtherMag->GetNorthPoleWorldDir();
 
-                GEngine->AddOnScreenDebugMessage(
-                    (int32)GetUniqueID() + 7000, 0.f,
-                    bAttract ? FColor::Green : FColor::Red,
-                    FString::Printf(TEXT("[%s] %s D=%.0f MyFace=%.0f OtFace=%.0f MyN=(%.1f,%.1f,%.1f) Dir=(%.1f,%.1f,%.1f)"),
-                        *GetName(), bAttract ? TEXT("인력") : TEXT("척력"),
-                        D, MyFace, OtFace,
-                        MyN.X, MyN.Y, MyN.Z, Dir.X, Dir.Y, Dir.Z));
+// 두 N극이 반대 방향(마주봄)이면 인력, 같은 방향이면 척력
+// 위치(Dir) 의존을 빼서 회전/위치 흔들림에 판정이 안 뒤집히게 함
+const float NAlign = FVector::DotProduct(MyN, OtN);
+
+// ★ N극이 같은 방향(dot>0)이면 한쪽 N이 상대 S를 마주봄 → 인력
+//    N극이 반대 방향(dot<0)이면 N끼리 마주봄 → 척력
+if (NAlign > 0.2f)
+    bLastAttract = true;     // 인력
+else if (NAlign < -0.2f)
+    bLastAttract = false;    // 척력
+// -0.2 ~ 0.2 애매한 구간이면 직전 판정 유지
+
+const bool bAttract = bLastAttract;
+
+
 
                 MeshComp->WakeRigidBody();
-                OtherMag->MeshComp->WakeRigidBody();
+OtherMag->MeshComp->WakeRigidBody();
 
-                if (bAttract)
-                {
-                    // 인력: 서로 향해 끌어당김 (Z 포함 전체 방향)
-                    MeshComp->SetPhysicsLinearVelocity(Dir * 130.f);
-                    OtherMag->MeshComp->SetPhysicsLinearVelocity(-Dir * 130.f);
-                }
+// ★ 자석끼리 상호작용 중엔 회전 억제 (극 방향 흔들림 방지)
+MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+OtherMag->MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+
+if (bAttract)
+{
+    MeshComp->SetPhysicsLinearVelocity(Dir * 130.f);
+    OtherMag->MeshComp->SetPhysicsLinearVelocity(-Dir * 130.f);
+}
                 else
                 {
                     // ★ 척력: 무조건 서로 반대로 밀어냄 (Z도 그대로 살림 → 위아래도 분리됨)
@@ -1788,7 +1788,7 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
                         Push = (Push + Side * 1.2f).GetSafeNormal();  // 위로 + 옆으로 동시에
                     }
 
-                    const float RepelSpeed = 350.f;
+                    const float RepelSpeed = 200.f;
                     MeshComp->SetPhysicsLinearVelocity(Push * RepelSpeed);
                     OtherMag->MeshComp->SetPhysicsLinearVelocity(-Push * RepelSpeed);
                 }

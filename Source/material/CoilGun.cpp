@@ -4,7 +4,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
-#include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 
 ACoilGun::ACoilGun()
@@ -41,7 +40,6 @@ void ACoilGun::Tick(float DeltaTime)
     switch (CurrentState)
     {
     case ECoilGunState::Idle:
-        // 전압 있으면 무조건 철 감지
         if (CurrentVoltage > 0.f)
             DetectIron();
         break;
@@ -54,15 +52,9 @@ void ACoilGun::Tick(float DeltaTime)
         }
 
         if (bCurrentPositive)
-        {
-            // sin > 0 → 인력
             ApplyMagneticForce();
-        }
         else
-        {
-            // sin < 0 → 전원 차단 → 관성 발사
             ReleaseFire();
-        }
         break;
 
     case ECoilGunState::Fired:
@@ -81,24 +73,24 @@ void ACoilGun::Tick(float DeltaTime)
         break;
     }
 
-    bool bHeating = false;
-    if (CurrentVoltage > 0.f && CurrentState == ECoilGunState::Charging && bCurrentPositive)
+    // ── 열화상 스텐실: 코일은 전류 흐르면(철 유무 무관), 철은 흡입 중일 때 가열 ──
+    const bool bCoilHeating = (CurrentVoltage > 0.f && bCurrentPositive);
+
+    bool bIronHeating = false;
+    if (bCoilHeating && CurrentState == ECoilGunState::Charging)
     {
-        const float Current = CurrentVoltage / FMath::Max(CoilResistance, 0.01f);
-        const float Mu0     = 4.f * PI * 1e-7f;
-        const float CoilR   = CoilRadiusCM / 100.f;
-        const float CoilL   = FMath::Max(CoilLengthCM / 100.f, 0.01f);
-        const float Area    = PI * CoilR * CoilR;
+        const float Current  = CurrentVoltage / FMath::Max(CoilResistance, 0.01f);
+        const float Mu0      = 4.f * PI * 1e-7f;
+        const float CoilR    = CoilRadiusCM / 100.f;
+        const float CoilL    = FMath::Max(CoilLengthCM / 100.f, 0.01f);
+        const float Area     = PI * CoilR * CoilR;
         const float ForceRaw = (FMath::Square((float)CoilWindings) * Mu0 * Area * FMath::Square(Current))
                              / (2.f * FMath::Square(CoilL));
 
-        bHeating = (ForceRaw >= ThermalForceThreshold);
+        bIronHeating = (ForceRaw >= ThermalForceThreshold);
     }
 
-    UpdateThermalStencil(DeltaTime, bHeating);
-    
-
-    DebugVisualize();
+    UpdateThermalStencil(DeltaTime, bCoilHeating, bIronHeating);
 }
 
 FVector ACoilGun::GetFireWorldDir() const
@@ -221,160 +213,62 @@ void ACoilGun::ApplyMagneticForce()
 
     // 회전 고정
     LoadedIron->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-
-#if ENABLE_DRAW_DEBUG
-    if (bDebugDraw)
-    {
-        DrawDebugDirectionalArrow(GetWorld(),
-            IronLoc, IronLoc + AxisForce.GetSafeNormal() * 80.f,
-            20.f, FColor::Cyan, false, -1.f, 0, 3.f);
-
-        DrawDebugString(GetWorld(), IronLoc + FVector(0, 0, 50.f),
-            FString::Printf(TEXT("I: %.1fA\nF: %.1fN"),
-                Current, ForceMag / ForceScaleMultiplier),
-            nullptr, FColor::Cyan, 0.f, true);
-    }
-#endif
 }
 
 void ACoilGun::ReleaseFire()
 {
-    LoadedIron->SetUseCCD(true);
-    
     if (!LoadedIron || !LoadedIron->IsSimulatingPhysics()) return;
+
+    LoadedIron->SetUseCCD(true);
 
     const FVector FireDir    = GetFireWorldDir();
     const FVector CurVel     = LoadedIron->GetPhysicsLinearVelocity();
     const float   ForwardSpd = FVector::DotProduct(CurVel, FireDir);
 
-    // ★ 최소 속도 보장
     const float LaunchSpd = FMath::Max(FMath::Abs(ForwardSpd), 50.f);
     LoadedIron->SetPhysicsLinearVelocity(FireDir * LaunchSpd);
 
-    UE_LOG(LogTemp, Warning, TEXT("CoilGun: 관성 발사! 속도=%.1f"), LaunchSpd);
+    // ★ 발사 순간의 철 온도를 "날아가는 탄"에 넘김 → 잔열 띠고 식어가며 비행
+    FiredIron        = LoadedIron;
+    FiredIronStencil = IronStencil;
+    IronStencil      = 0.f;
 
-#if ENABLE_DRAW_DEBUG
-    DrawDebugLine(GetWorld(),
-        GetActorLocation(),
-        GetActorLocation() + FireDir * 3000.f,
-        FColor::Red, false, 3.f, 0, 5.f);
-#endif
+    UE_LOG(LogTemp, Warning, TEXT("CoilGun: 관성 발사! 속도=%.1f"), LaunchSpd);
 
     CurrentState = ECoilGunState::Fired;
 }
 
-void ACoilGun::DebugVisualize()
-{
-#if ENABLE_DRAW_DEBUG
-    if (!bDebugDraw) return;
-
-    const FVector MyLoc   = GetActorLocation();
-    const FVector FireDir = GetFireWorldDir();
-
-    FColor  StateColor = FColor::White;
-    FString StateStr   = TEXT("IDLE");
-
-    switch (CurrentState)
-    {
-    case ECoilGunState::Idle:
-        StateColor = FColor::White;
-        StateStr   = TEXT("IDLE");
-        break;
-    case ECoilGunState::Charging:
-        StateColor = FColor::Green;
-        StateStr   = TEXT("CHARGING (흡입중)");
-        break;
-    case ECoilGunState::Fired:
-        StateColor = FColor::Yellow;
-        StateStr   = TEXT("FIRED!");
-        break;
-    case ECoilGunState::Cooldown:
-        StateColor = FColor::Orange;
-        StateStr   = FString::Printf(TEXT("COOLDOWN (%.1f)"),
-            CooldownTime - CooldownTimer);
-        break;
-    }
-
-    DrawDebugBox(GetWorld(), MyLoc,
-        BarrelZone->GetScaledBoxExtent(),
-        GetActorQuat(), StateColor, false, -1.f, 0, 2.f);
-
-    DrawDebugDirectionalArrow(GetWorld(),
-        MyLoc, MyLoc + FireDir * 300.f,
-        30.f, StateColor, false, -1.f, 0, 3.f);
-
-    DrawDebugSphere(GetWorld(), MyLoc,
-        WireDetectRadius, 12, FColor::Purple, false, -1.f, 0, 1.f);
-
-    const float Current  = CurrentVoltage / FMath::Max(CoilResistance, 0.01f);
-    const float CoilR    = CoilRadiusCM / 100.f;
-    const float CoilL    = FMath::Max(CoilLengthCM / 100.f, 0.01f);
-    const float Area     = PI * CoilR * CoilR;
-    const float Mu0      = 4.f * PI * 1e-7f;
-    const float ForceRaw = (FMath::Square((float)CoilWindings) * Mu0 * Area * FMath::Square(Current))
-                         / (2.f * FMath::Square(CoilL));
-
-    DrawDebugString(GetWorld(), MyLoc + FVector(0, 0, 80.f),
-        FString::Printf(TEXT(
-            "[CoilGun]\n"
-            "상태: %s\n"
-            "전압: %.1fV\n"
-            "전류: %.1fA\n"
-            "이론 힘: %.4fN\n"
-            "전류방향: %s\n"
-            "철: %s\n"
-            "연결Wire: %d개\n"
-            "Generator: %s"
-        ),
-            *StateStr,
-            CurrentVoltage,
-            Current,
-            ForceRaw,
-            bCurrentPositive ? TEXT("정방향(+)") : TEXT("역방향(-)"),
-            LoadedIron ? TEXT("장전됨") : TEXT("없음"),
-            ConnectedWires.Num(),
-            ConnectedGenerator ? TEXT("연결됨 ✅") : TEXT("없음 ❌")
-        ),
-        nullptr, StateColor, 0.f, true);
-#endif
-}
-
-void ACoilGun::UpdateThermalStencil(float DeltaTime, bool bHeating)
+void ACoilGun::UpdateThermalStencil(float DeltaTime, bool bCoilHeating, bool bIronHeating)
 {
     if (!bEnableThermalStencil) return;
 
-    // 대상 결정: 장전된 철 우선, 없으면 코일 메시
-    UPrimitiveComponent* Target =
-        (LoadedIron && IsValid(LoadedIron.Get()))
-        ? LoadedIron.Get()
-        : Cast<UPrimitiveComponent>(CoilMesh);
-
-    if (!Target) return;
-
-    // 대상이 바뀌면 이전 대상은 stencil 끄기
-    if (ThermalTarget && ThermalTarget != Target)
+    auto Apply = [](UPrimitiveComponent* C, float V)
     {
-        ThermalTarget->SetRenderCustomDepth(false);
+        if (!C || !IsValid(C)) return;
+        const bool bOn = (V > 0.5f);
+        C->SetRenderCustomDepth(bOn);
+        C->SetCustomDepthStencilValue(bOn ? FMath::RoundToInt(V) : 0);
+    };
+
+    // 1) 코일: 전류 흐르면 가열 (철 없어도 전원만 들어오면 달아오름)
+    CoilStencil += (bCoilHeating ? ThermalHeatRate : -ThermalCoolRate) * DeltaTime;
+    CoilStencil  = FMath::Clamp(CoilStencil, 0.f, 255.f);
+    Apply(Cast<UPrimitiveComponent>(CoilMesh), CoilStencil);
+
+    // 2) 장전된 철: 흡입 중 가열
+    if (LoadedIron)
+    {
+        IronStencil += (bIronHeating ? ThermalHeatRate : -ThermalCoolRate) * DeltaTime;
+        IronStencil  = FMath::Clamp(IronStencil, 0.f, 255.f);
+        Apply(LoadedIron.Get(), IronStencil);
     }
-    ThermalTarget = Target;
 
-    // 가열 / 냉각
-    if (bHeating)
-        CurrentStencil += ThermalHeatRate * DeltaTime;
-    else
-        CurrentStencil -= ThermalCoolRate * DeltaTime;
-
-    CurrentStencil = FMath::Clamp(CurrentStencil, 0.f, 255.f);
-
-    if (CurrentStencil > 0.5f)
+    // 3) 발사된 철: 날아가며 천천히 냉각, 다 식으면 추적 해제
+    if (FiredIron.IsValid())
     {
-        Target->SetRenderCustomDepth(true);
-        Target->SetCustomDepthStencilValue(FMath::RoundToInt(CurrentStencil));
-    }
-    else
-    {
-        // 완전히 식으면 stencil 비활성화
-        Target->SetRenderCustomDepth(false);
-        Target->SetCustomDepthStencilValue(0);
+        FiredIronStencil -= ThermalCoolRate * DeltaTime;
+        Apply(FiredIron.Get(), FiredIronStencil);   // 0.5 이하면 Apply가 알아서 끔
+        if (FiredIronStencil <= 0.5f)
+            FiredIron = nullptr;
     }
 }

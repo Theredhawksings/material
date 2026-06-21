@@ -56,34 +56,57 @@ void ACoil::BeginPlay()
 	ApplyDebugVisibility();
 }
 
+void ACoil::UpdateVisualEffects(float DeltaTime)
+{
+    if (!bEnableThermalStencil || !CoilMesh) return;
+
+    // 전기(EMF) 세기에 비례한 목표 온도 (0~255). 전기 없으면 0.
+    const float EMFPercent = (bCoilActive && MaxEMF > 0.f)
+        ? FMath::Clamp(CurrentEMF / MaxEMF, 0.f, 1.f)
+        : 0.f;
+    const float TargetStencil = EMFPercent * 255.f;
+
+    // 목표를 향해 가열/냉각 (열 관성). 오를 땐 HeatRate, 식을 땐 CoolRate.
+    const float Rate = (TargetStencil > CoilStencil) ? ThermalHeatRate : ThermalCoolRate;
+    CoilStencil = FMath::FInterpConstantTo(CoilStencil, TargetStencil, DeltaTime, Rate);
+    CoilStencil = FMath::Clamp(CoilStencil, 0.f, 255.f);
+
+    const bool bOn = (CoilStencil > 0.5f);
+    CoilMesh->SetRenderCustomDepth(bOn);
+    CoilMesh->SetCustomDepthStencilValue(bOn ? FMath::RoundToInt(CoilStencil) : 0);
+
+    // (선택) 머티리얼 온도 파라미터 — DynamicMaterial 만들어 쓸 때만 반영됨
+    if (DynamicMaterial)
+        DynamicMaterial->SetScalarParameterValue(MaterialParameterName, (CoilStencil / 255.f) * 10.f);
+}
+
 void ACoil::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 
-	if (!bCoilActive)
-	{
-		MagnetsInside.Empty();
-		MagnetsInsideLastFrame.Empty();
-		CurrentEMF = 0.f;
-		ShutdownConnectedWires();
-		UpdateWireSound();   // ★ 꺼졌으니 사운드도 정지
-		DebugVisualize();
-		return;
-	}
+    if (!bCoilActive)
+    {
+        MagnetsInside.Empty();
+        MagnetsInsideLastFrame.Empty();
+        CurrentEMF = 0.f;
+        ShutdownConnectedWires();
+        UpdateWireSound();
+        UpdateVisualEffects(DeltaTime);   // ★ 꺼져도 계속 식게
+        DebugVisualize();
+        return;
+    }
 
-	// 자석 넣었다 뺐다 감지 → EMF 충전
-	UpdateMagnetSensing();
+    UpdateMagnetSensing();
 
-	// EMF 감쇠 (흔들기 멈추면 빨리 식음)
-	if (CurrentEMF > 0.f)
-		CurrentEMF = FMath::Max(CurrentEMF - EMFDecayRate * DeltaTime, 0.f);
+    if (CurrentEMF > 0.f)
+        CurrentEMF = FMath::Max(CurrentEMF - EMFDecayRate * DeltaTime, 0.f);
 
-	// 코일이 자석 당기는 힘 (들고 있는 자석 제외)
-	ApplyMagneticForce();
+    ApplyMagneticForce();
 
-	DebugVisualize();
-	UpdateCircuit();
-	UpdateWireSound();   // ★ 전기 상태에 맞춰 사운드 재생/정지
+    UpdateVisualEffects(DeltaTime);        // ★ 추가
+    DebugVisualize();
+    UpdateCircuit();
+    UpdateWireSound();
 }
 
 // ============================================================================

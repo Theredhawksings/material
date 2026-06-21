@@ -141,5 +141,13 @@ private:
     UPROPERTY()
     TObjectPtr<UPrimitiveComponent> ThermalTarget;
 
-    void UpdateThermalStencil(float DeltaTime, bool bHeating);
+    void UpdateThermalStencil(float DeltaTime, bool bCoilHeating, bool bIronHeating);
+
+    // 열화상 스텐실 - 대상별 온도값
+float CoilStencil = 0.f;   // 코일 메시 온도
+float IronStencil = 0.f;   // 장전된 철 온도
+
+// 발사된 철(잔열 띠고 날아가는 탄) 추적
+TWeakObjectPtr<UPrimitiveComponent> FiredIron;
+float FiredIronStencil = 0.f;
 };

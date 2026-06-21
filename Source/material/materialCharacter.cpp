@@ -1270,7 +1270,11 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 
 	ATransformation_actor *HeldMagnet = bHoldingMagnet ? Cast<ATransformation_actor>(HeldActor) : nullptr;
 
-	const FVector Center = GetActorLocation();
+// ★ 들고 있는 자석이 소자(Curie)된 상태면 자력 0 → 아무것도 끌지 않음
+	if (HeldMagnet && HeldMagnet->IsDemagnetized())
+    return;
+
+const FVector Center = GetActorLocation();
 
 	const float SizeScale = bHoldingMetal
 								? FMath::Clamp(HeldLocalExtent.GetMax() / 50.f, 0.5f, 2.0f)
@@ -1344,7 +1348,11 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 			{
 				ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
 				if (!OtherMagnet || !HeldMagnet)
-					continue;
+        			continue;
+
+    		// ★ 대상 자석이 소자됐으면 끌지도 밀지도 않음
+    			if (OtherMagnet->IsDemagnetized())
+        			continue;
 
 				const FVector MyNorth = HeldMagnet->GetNorthPoleWorldDir();
 				const FVector DirToOther = -Dir;
@@ -1385,6 +1393,9 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 			ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
 			if (!OtherMagnet)
 				continue;
+
+    		if (OtherMagnet->IsDemagnetized())
+        	continue;
 
 			float ForceMag = MagnetForceStrength * SizeScale * 300000.f;
 			ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
