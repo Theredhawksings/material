@@ -116,4 +116,30 @@ private:
     void    ApplyMagneticForce();
     void    ReleaseFire();
     void    DebugVisualize();
+
+    // ── 열화상(Stencil) 효과 ──
+    // Stencil 활성화할 메시 (장전된 철 또는 코일 메시)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Thermal")
+    bool bEnableThermalStencil = true;
+
+    // 발사 가능으로 판단할 최소 힘 (N, ForceScale 적용 전 기준)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Thermal")
+    float ThermalForceThreshold = 0.0001f;
+
+    // 식는 속도 (초당 stencil 감소량)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Thermal")
+    float ThermalCoolRate = 80.f;
+
+    // 데우는 속도 (초당 stencil 증가량)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Thermal")
+    float ThermalHeatRate = 400.f;
+
+    // 현재 stencil 값 (0~255, float로 보간)
+    float CurrentStencil = 0.f;
+
+    // stencil 적용 대상
+    UPROPERTY()
+    TObjectPtr<UPrimitiveComponent> ThermalTarget;
+
+    void UpdateThermalStencil(float DeltaTime, bool bHeating);
 };

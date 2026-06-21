@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Elevator.h"
 #include "Blueprint/UserWidget.h"
+#include "materialCharacter.h"
 #include "EndingElevator.generated.h"
 
 UCLASS()

@@ -37,8 +37,13 @@ void UPauseMenuWidget::OnResumeClicked()
 
 void UPauseMenuWidget::OnResetClicked()
 {
-	// 우선은 Resume 처리를 합니다.
-	OnResumeClicked();
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	{
+		if (AmaterialCharacter* MyCharacter = Cast<AmaterialCharacter>(PC->GetPawn()))
+		{
+			MyCharacter->OnResetMap();
+		}
+	}
 }
 
 void UPauseMenuWidget::OnQuitClicked()

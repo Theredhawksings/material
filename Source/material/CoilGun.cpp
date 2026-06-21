@@ -81,6 +81,23 @@ void ACoilGun::Tick(float DeltaTime)
         break;
     }
 
+    bool bHeating = false;
+    if (CurrentVoltage > 0.f && CurrentState == ECoilGunState::Charging && bCurrentPositive)
+    {
+        const float Current = CurrentVoltage / FMath::Max(CoilResistance, 0.01f);
+        const float Mu0     = 4.f * PI * 1e-7f;
+        const float CoilR   = CoilRadiusCM / 100.f;
+        const float CoilL   = FMath::Max(CoilLengthCM / 100.f, 0.01f);
+        const float Area    = PI * CoilR * CoilR;
+        const float ForceRaw = (FMath::Square((float)CoilWindings) * Mu0 * Area * FMath::Square(Current))
+                             / (2.f * FMath::Square(CoilL));
+
+        bHeating = (ForceRaw >= ThermalForceThreshold);
+    }
+
+    UpdateThermalStencil(DeltaTime, bHeating);
+    
+
     DebugVisualize();
 }
 
@@ -320,4 +337,44 @@ void ACoilGun::DebugVisualize()
         ),
         nullptr, StateColor, 0.f, true);
 #endif
+}
+
+void ACoilGun::UpdateThermalStencil(float DeltaTime, bool bHeating)
+{
+    if (!bEnableThermalStencil) return;
+
+    // 대상 결정: 장전된 철 우선, 없으면 코일 메시
+    UPrimitiveComponent* Target =
+        (LoadedIron && IsValid(LoadedIron.Get()))
+        ? LoadedIron.Get()
+        : Cast<UPrimitiveComponent>(CoilMesh);
+
+    if (!Target) return;
+
+    // 대상이 바뀌면 이전 대상은 stencil 끄기
+    if (ThermalTarget && ThermalTarget != Target)
+    {
+        ThermalTarget->SetRenderCustomDepth(false);
+    }
+    ThermalTarget = Target;
+
+    // 가열 / 냉각
+    if (bHeating)
+        CurrentStencil += ThermalHeatRate * DeltaTime;
+    else
+        CurrentStencil -= ThermalCoolRate * DeltaTime;
+
+    CurrentStencil = FMath::Clamp(CurrentStencil, 0.f, 255.f);
+
+    if (CurrentStencil > 0.5f)
+    {
+        Target->SetRenderCustomDepth(true);
+        Target->SetCustomDepthStencilValue(FMath::RoundToInt(CurrentStencil));
+    }
+    else
+    {
+        // 완전히 식으면 stencil 비활성화
+        Target->SetRenderCustomDepth(false);
+        Target->SetCustomDepthStencilValue(0);
+    }
 }

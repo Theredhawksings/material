@@ -88,10 +88,10 @@ AmaterialCharacter::AmaterialCharacter()
     }
 
 	static ConstructorHelpers::FClassFinder<UUserWidget> PauseMenuBPClass(
-		TEXT("/Game/Widget/WBP_PauseMenu.WBP_PauseMenu_C"));   // ← 실제 경로로 교체
+    TEXT("/Game/Widget/PauseMenuWidget.PauseMenuWidget_C"));
 	if (PauseMenuBPClass.Succeeded())
 	{
-		PauseMenuWidgetClass = PauseMenuBPClass.Class;
+    PauseMenuWidgetClass = PauseMenuBPClass.Class;
 	}
 
 	HoldPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPivot"));
@@ -1695,4 +1695,10 @@ void AmaterialCharacter::ClosePauseMenu()
 	// ★★ 이 두 줄 빠뜨리면 Resume 누른 뒤 첫 ESC가 먹통됨 (상태 꼬임)
 	bGamePaused = false;
 	bMouseCaptured = true;
+}
+
+void AmaterialCharacter::HideCrosshair()
+{
+    if (CrosshairWidget)
+        CrosshairWidget->SetVisibility(ESlateVisibility::Hidden);
 }

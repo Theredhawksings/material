@@ -72,6 +72,11 @@ public:
 	void ResetAllGauges(); 
 
 	void ClosePauseMenu();  
+	
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<class UUserWidget> CrosshairWidgetClass;
+	void HideCrosshair();
+	void OnResetMap();
 
 protected:
 	virtual void BeginPlay() override;
@@ -240,8 +245,6 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Equipment") FRotator BackpackRotWhenHolding = FRotator(3.0f, 0.f, -90.f);
 
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-    TSubclassOf<class UUserWidget> CrosshairWidgetClass;
 
     UPROPERTY()
     class UUserWidget* CrosshairWidget;
@@ -322,7 +325,6 @@ private:
 	static FVector PendingSpawnLocation;
 	static bool    bHasPendingSpawn;
 
-	void OnResetMap();
 
 
 };

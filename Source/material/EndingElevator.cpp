@@ -58,41 +58,45 @@ void AEndingElevator::OnEndingTriggerBegin(UPrimitiveComponent* OverlappedComp, 
 
 void AEndingElevator::StartEnding()
 {
-	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-	if (!PC) return;
+    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+    if (!PC) return;
 
-	// ① 브금 끄기
-	if (TeleportAudioComp)
-	{
-		TeleportAudioComp->Stop();
-	}
+    // ★ 크로스헤어 숨기기
+    if (AmaterialCharacter* Char = Cast<AmaterialCharacter>(PC->GetPawn()))
+    {
+        Char->HideCrosshair();
+    }
 
-	// ② 카메라 서서히 암전 (먼저 천천히 깔림)
-	if (PC->PlayerCameraManager)
-	{
-		PC->PlayerCameraManager->StartCameraFade(
-			0.f, 1.f,
-			FadeDuration,
-			FLinearColor::Black,
-			false,
-			true
-		);
-	}
+    // 브금 끄기
+    if (TeleportAudioComp)
+        TeleportAudioComp->Stop();
 
-	// ③ 입력 막기
-	PC->SetInputMode(FInputModeUIOnly());
+    // 카메라 암전
+    if (PC->PlayerCameraManager)
+    {
+        PC->PlayerCameraManager->StartCameraFade(
+            0.f, 1.f,
+            FadeDuration,
+            FLinearColor::Black,
+            false,
+            true
+        );
+    }
 
-	// ④ TextDelay 후에 위젯 띄우기 (위젯이 뜰 때 자체 FadeIn 애니메이션 재생)
-	FTimerHandle TextTimer;
-	GetWorldTimerManager().SetTimer(TextTimer, this,
-		&AEndingElevator::ShowEndingText, TextDelay, false);
+    // 입력 막기
+    PC->SetInputMode(FInputModeUIOnly());
 
-	// ⑤ 다 본 후 메인 메뉴로 이동
-	FTimerHandle EndTimer;
-	GetWorldTimerManager().SetTimer(EndTimer, [this]()
-	{
-		UGameplayStatics::OpenLevel(this, MainMenuLevel);
-	}, FadeDuration + TextDelay + AfterFadeDelay, false);
+    // 텍스트 위젯
+    FTimerHandle TextTimer;
+    GetWorldTimerManager().SetTimer(TextTimer, this,
+        &AEndingElevator::ShowEndingText, TextDelay, false);
+
+    // 메인 메뉴 이동
+    FTimerHandle EndTimer;
+    GetWorldTimerManager().SetTimer(EndTimer, [this]()
+    {
+        UGameplayStatics::OpenLevel(this, MainMenuLevel);
+    }, FadeDuration + TextDelay + AfterFadeDelay, false);
 }
 
 void AEndingElevator::ShowEndingText()
