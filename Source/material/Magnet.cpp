@@ -640,12 +640,21 @@ void AMagnet::Restore()
     // 자석 메시 복구
     if (MagnetMesh)
         MagnetMesh->SetVisibility(true);
-
-    // Arrow 복구 (카메라 상태 반영)
+        
+    // 이펙트가 아예 없으면 지금 당장 스폰해라!
+    if (!SpawnedArrowEffect)
+    {
+        SpawnArrowEffect();
+    }
+        // Arrow 복구 (카메라 상태 반영)
     RefreshArrowVisibility();
 
     // 금속 오버랩 다시 감지
     RefreshOverlappingMetals();
+
+    UE_LOG(LogTemp, Warning, TEXT("자성 복구됨! SpawnedArrowEffect 유효성: %s, bDemagnetized: %d"), 
+    SpawnedArrowEffect ? TEXT("Valid") : TEXT("Null"), 
+    bDemagnetized);
 }
 
 // ★ 발판용 이동 초기화
