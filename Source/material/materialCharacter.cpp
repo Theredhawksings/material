@@ -87,6 +87,13 @@ AmaterialCharacter::AmaterialCharacter()
         CrosshairWidgetClass = CrosshairBPClass.Class;
     }
 
+	static ConstructorHelpers::FClassFinder<UUserWidget> PauseMenuBPClass(
+		TEXT("/Game/Widget/WBP_PauseMenu.WBP_PauseMenu_C"));   // ← 실제 경로로 교체
+	if (PauseMenuBPClass.Succeeded())
+	{
+		PauseMenuWidgetClass = PauseMenuBPClass.Class;
+	}
+
 	HoldPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPivot"));
 	HoldPivot->SetupAttachment(GetMesh());
 
@@ -998,33 +1005,17 @@ void AmaterialCharacter::OnEscapePressed()
 		return;
 	bIsProcessing = true;
 
-	APlayerController *PC = Cast<APlayerController>(GetController());
+	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
 	{
 		bIsProcessing = false;
 		return;
 	}
 
-	bGamePaused = !bGamePaused;
-
-	if (bGamePaused)
-	{
-		PC->SetPause(true);
-		PC->bShowMouseCursor = true;
-		FInputModeGameAndUI InputMode;
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		InputMode.SetHideCursorDuringCapture(false);
-		PC->SetInputMode(InputMode);
-		bMouseCaptured = false;
-	}
+	if (!bGamePaused)
+		OpenPauseMenu();
 	else
-	{
-		PC->SetPause(false);
-		PC->bShowMouseCursor = false;
-		FInputModeGameOnly InputMode;
-		PC->SetInputMode(InputMode);
-		bMouseCaptured = true;
-	}
+		ClosePauseMenu();
 
 	bIsProcessing = false;
 }
@@ -1663,4 +1654,45 @@ void AmaterialCharacter::OnResetMap()
 
     // 3. 해당 맵을 다시 로드하여 맵 상태를 초기화합니다.
     UGameplayStatics::OpenLevel(GetWorld(), FName(*CleanCurrentMapName));
+}
+
+void AmaterialCharacter::OpenPauseMenu()
+{
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+		return;
+
+	if (!PauseMenuWidget && PauseMenuWidgetClass)
+		PauseMenuWidget = CreateWidget<UUserWidget>(PC, PauseMenuWidgetClass);
+
+	if (PauseMenuWidget && !PauseMenuWidget->IsInViewport())
+		PauseMenuWidget->AddToViewport(50);
+
+	PC->SetPause(true);
+	PC->bShowMouseCursor = true;
+	FInputModeGameAndUI InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetHideCursorDuringCapture(false);
+	PC->SetInputMode(InputMode);
+
+	bGamePaused = true;
+	bMouseCaptured = false;
+}
+
+void AmaterialCharacter::ClosePauseMenu()
+{
+	if (PauseMenuWidget)
+		PauseMenuWidget->RemoveFromParent();
+
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->SetPause(false);
+		PC->bShowMouseCursor = false;
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+	}
+
+	// ★★ 이 두 줄 빠뜨리면 Resume 누른 뒤 첫 ESC가 먹통됨 (상태 꼬임)
+	bGamePaused = false;
+	bMouseCaptured = true;
 }

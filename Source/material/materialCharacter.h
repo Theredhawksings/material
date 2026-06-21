@@ -71,6 +71,8 @@ public:
 	
 	void ResetAllGauges(); 
 
+	void ClosePauseMenu();  
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -243,6 +245,14 @@ private:
 
     UPROPERTY()
     class UUserWidget* CrosshairWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> PauseMenuWidgetClass;
+
+	UPROPERTY()
+	class UUserWidget* PauseMenuWidget;
+
+	void OpenPauseMenu();
 
 	void UpdateHeldMagnetism();
 
