@@ -81,6 +81,12 @@ AmaterialCharacter::AmaterialCharacter()
 		RadialMenuClass = RadialMenuBP.Class;
 	}
 
+	static ConstructorHelpers::FClassFinder<UUserWidget> CrosshairBPClass(TEXT("/Game/Widget/WBP_Crosshair.WBP_Crosshair_C")); 
+    if (CrosshairBPClass.Succeeded())
+    {
+        CrosshairWidgetClass = CrosshairBPClass.Class;
+    }
+
 	HoldPivot = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPivot"));
 	HoldPivot->SetupAttachment(GetMesh());
 
@@ -376,6 +382,15 @@ void AmaterialCharacter::BeginPlay()
 		SetActorLocation(PendingSpawnLocation, false, nullptr, ETeleportType::TeleportPhysics);
 		bHasPendingSpawn = false;
 	}
+
+	if (CrosshairWidgetClass != nullptr)
+    {
+        CrosshairWidget = CreateWidget<UUserWidget>(GetWorld(), CrosshairWidgetClass);
+        if (CrosshairWidget != nullptr)
+        {
+            CrosshairWidget->AddToViewport(); 
+        }
+    }
 
 }
 
