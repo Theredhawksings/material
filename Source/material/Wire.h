@@ -204,6 +204,9 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|IceHeat")
     float SegmentHeatMultiplier = 50.f;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Thermal")
+    float MergeFollowRate = 3.f;   // 합류 전선이 기준 상류 온도 따라붙는 속도(1/초)
 
 private:
     void ClearGeneratedMeshes();
@@ -273,4 +276,7 @@ private:
     UNiagaraComponent* SparkComponentStart = nullptr;
     UNiagaraComponent* SparkComponentEnd = nullptr;
 
+
+    bool  bIsMergeNode      = false;
+    float HeatFollowTargetC = -1.f;
 };

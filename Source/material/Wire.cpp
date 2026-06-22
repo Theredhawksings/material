@@ -376,7 +376,14 @@ void AWire::UpdateJouleHeating(float DeltaTime)
         CurrentAmps = 0.f;
     }
 
-    if (WireTemperatureC > AmbientTemperatureC)
+    // ★ 합류 전선: 기준(전력 큰) 상류 온도까지 빠르게 따라붙어 끊김 없게
+    if (bPoweredFinal && bIsMergeNode && HeatFollowTargetC > WireTemperatureC)
+    {
+        const float Alpha = FMath::Clamp(MergeFollowRate * DeltaTime, 0.f, 1.f);
+        WireTemperatureC += (HeatFollowTargetC - WireTemperatureC) * Alpha;
+    }
+
+    if (WireTemperatureC > AmbientTemperatureC)   // ← 기존 냉각 블록
     {
         const float Cool = CoolingRateKPerSec * ((WireTemperatureC - AmbientTemperatureC) / 100.f) * DeltaTime;
         WireTemperatureC = FMath::Max(WireTemperatureC - Cool, AmbientTemperatureC);
@@ -391,6 +398,9 @@ void AWire::RefreshConnectedActors()
     TArray<TObjectPtr<AActor>> PrevConnectedActors = ConnectedActors;
     ConnectedActors.Reset();
     ConnectedWires.Reset();
+
+    bIsMergeNode      = false;
+    HeatFollowTargetC = -1.f;
 
     TArray<AWire*> UpstreamWires;
     float TotalUpstreamCurrent = 0.f;
@@ -498,8 +508,11 @@ if (bIsBatterySource && bPoweredFinal)
     }
 
 float PrevV = 0.f, PrevI = 0.f;
+AWire* DominantUpstream = nullptr;
+
 if (UpstreamWires.Num() > 0)
 {
+    // ★ 전압·전류는 기존 로직 그대로 (볼트 법칙 유지)
     if (UpstreamWires.Num() == 1)
     {
         PrevV = UpstreamWires[0]->GetEffectiveVoltage();
@@ -508,17 +521,24 @@ if (UpstreamWires.Num() > 0)
     else
     {
         float WeightedVoltage = 0.f;
-        float WeightedDenom = 0.f;
+        float WeightedDenom   = 0.f;
         for (AWire* W : UpstreamWires)
         {
             const float R = FMath::Max(
-                W->GetEffectiveVoltage() / FMath::Max(W->GetEffectiveCurrent(), 0.01f),
-                0.01f);
+                W->GetEffectiveVoltage() / FMath::Max(W->GetEffectiveCurrent(), 0.01f), 0.01f);
             WeightedVoltage += W->GetEffectiveVoltage() / R;
             WeightedDenom   += 1.f / R;
         }
         PrevV = (WeightedDenom > 0.f) ? WeightedVoltage / WeightedDenom : 0.f;
         PrevI = TotalUpstreamCurrent;
+    }
+
+    // ★ dominant는 '온도 따라가기' 타겟 고르는 용도로만 사용 (V/I엔 절대 안 씀)
+    float BestPower = -1.f;
+    for (AWire* W : UpstreamWires)
+    {
+        const float P = W->GetEffectiveVoltage() * W->GetEffectiveCurrent();
+        if (P > BestPower) { BestPower = P; DominantUpstream = W; }
     }
 }
 else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
@@ -527,20 +547,28 @@ else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
     PrevI = UpstreamBlock->GetEffectiveCurrent();
 }
 
-    if (bIsParallel && ParallelBranchCount > 1)
-    {
-        EffectiveVoltage = PrevV;
-        EffectiveCurrent = PrevI / float(ParallelBranchCount);
-        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::Green;
-    }
-    else
-    {
-        EffectiveVoltage = PrevV;
-        EffectiveCurrent = PrevI;
-        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::Cyan;
-    }
+// ★ 끝에 2개 이상 들어오면 합류 노드
+bIsMergeNode      = (UpstreamWires.Num() >= 2);
+HeatFollowTargetC = (bIsMergeNode && DominantUpstream)
+    ? DominantUpstream->GetWireTemperature() : -1.f;
+
+// ★ 합류 노드는 병렬 분배 안 함 (나누면 발열이 1/N²로 죽음)
+if (bIsParallel && ParallelBranchCount > 1 && !bIsMergeNode)
+{
+    EffectiveVoltage = PrevV;
+    EffectiveCurrent = PrevI / float(ParallelBranchCount);
+    CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
+    CachedCircuitColor = FColor::Green;
+}
+else
+{
+    EffectiveVoltage = PrevV;
+    EffectiveCurrent = PrevI;   // 합류든 직렬이든 dominant 전류 그대로
+    CachedCircuitText  = bIsMergeNode
+        ? FString::Printf(TEXT("[합류] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent)
+        : FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+    CachedCircuitColor = bIsMergeNode ? FColor::Orange : FColor::Cyan;
+}
 
     if (ConnectionSphereEnd)
 {

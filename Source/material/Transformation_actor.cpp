@@ -449,6 +449,16 @@ void ATransformation_actor::RefreshConnectedWires()
         if (AWire *Wire = Cast<AWire>(H.GetActor()))
             ConnectedWires.AddUnique(Wire);
     }
+    
+    bool bAnyWirePowered = false;
+    for (AWire* Wire : ConnectedWires)
+        if (Wire && Wire->IsPowered()) { bAnyWirePowered = true; break; }
+
+    if (!bAnyWirePowered)
+    {
+        StoredVoltage = 0.f;
+        StoredCurrent = 0.f;
+    }
 
     // ★ 전원 판단을 StoredVoltage 기준으로 - 타이머가 전압 안 건드림
     const bool bAnyPowerFound = (StoredVoltage > 0.f);
@@ -518,27 +528,6 @@ void ATransformation_actor::Tick(float DeltaTime)
                 MeshComp->GetPhysicsLinearVelocity().Size(),
                 GetActorLocation().Z));
     }
-
-    // ── Ice ──
-    if (CurrentForm == EBlockForm::Ice && bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
-    {
-        const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-        const float ReceivedPowerW = CalcReceivedPower(DistCm);
-
-        if (ReceivedPowerW > 0.0f)
-        {
-            SetStencilSafe(CachedStencilValue, true);
-            EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
-            MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
-            ApplyIceMeltVisual(MeltAlpha);
-
-if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
-{
-    BeginDelayedDestroy();  // ★ 기존 3줄 대신
-    return;
-}
-        }
-    }
     
     // ★ Ice 폼이면 가열 여부와 무관하게 매 프레임 수증기 상태 갱신
 // ── Ice ──
@@ -564,7 +553,7 @@ if (MeltAlpha >= 1.0f && bDestroyWhenMelted)
             const float ReceivedPowerW = CalcReceivedPower(DbgDist);
             if (ReceivedPowerW > 0.0f)
             {
-                SetStencilSafe(CachedStencilValue, true);
+                SetStencilSafe(40, true);
                 EnergyAccumJ += ReceivedPowerW * DeltaTime * FMath::Max(SimTimeScale, 0.0f);
                 MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
                 ApplyIceMeltVisual(MeltAlpha);
@@ -744,6 +733,8 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
         break;
     case EBlockForm::Metal:
     case EBlockForm::Copper:
+        StoredVoltage = 0.f;   // ★ 추가
+        StoredCurrent = 0.f;   // ★ 추가
         SetElectrified(false);
         WiresEnergizedByMetal.Empty();
         ConnectedWires.Empty();
@@ -954,7 +945,7 @@ void ATransformation_actor::ReceiveHeatEnergy(float EnergyJ, float SourceTempC)
     if (CurrentForm != EBlockForm::Ice || !MeshComp || EnergyJ <= 0.f)
         return;
 
-    SetStencilSafe(CachedStencilValue, true);
+    SetStencilSafe(40, true);
     EnergyAccumJ += EnergyJ * FMath::Max(SimTimeScale, 0.0f);
     MeltAlpha = FMath::Clamp(EnergyAccumJ / FMath::Max(TotalMeltEnergyJ, 1.0f), 0.0f, 1.0f);
     ApplyIceMeltVisual(MeltAlpha);
@@ -1218,13 +1209,14 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
 
     const float HeatRatio = bAtRoomTemp ? 0.f
                                         : FMath::Clamp((FormTemperatureC - 20.f) / FMath::Max(MaxTempC - 20.f, 1.f), 0.f, 1.f);
+    int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
 
-    const int32 StencilValue = FMath::RoundToInt(HeatRatio * MaxStencil);
+    // ★ Metal/Copper가 통전 중이면 전기 시그니처와 비교해 더 큰 값 사용
+    //    (전기 통한 금속이 뜨겁기까지 하면 더 뜨거운 쪽이 표시됨)
+    if ((CurrentForm == EBlockForm::Metal || CurrentForm == EBlockForm::Copper) && IsElectricallyActive())
+        StencilValue = FMath::Max(StencilValue, 200);
 
-    if (CurrentForm == EBlockForm::Magnet)
-        SetStencilSafe(StencilValue, StencilValue > 0); // 열 없으면 pass OFF
-    else
-        SetStencilSafe(StencilValue, StencilValue > 0);
+    SetStencilSafe(StencilValue, StencilValue > 0);
 
     // ── 자석 전용: 점진적 약화 / 소자 / 복구 ──
     if (CurrentForm != EBlockForm::Magnet)
@@ -1291,6 +1283,19 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
         }
     }
 }
+
+bool ATransformation_actor::IsElectricallyActive() const
+{
+    if (!IsConductive())
+        return false;
+    if (StoredVoltage > 0.f || bElectrified)
+        return true;
+    for (const TObjectPtr<AWire>& W : ConnectedWires)
+        if (W && W->IsPowered())
+            return true;
+    return false;
+}
+
 
 // ============================================================================
 //  UpdateMagnetArrowPower
@@ -1476,7 +1481,7 @@ void ATransformation_actor::EnterMagnetMode()
 
     FormTemperatureC = 20.f;
     BaseArrowPower = ArrowPower;
-    SetStencilSafe(0, true);
+    SetStencilSafe(0, false);
 
     RefreshOverlappingMetals();
 
@@ -1733,6 +1738,10 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
                 if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag))
                     continue;
                 if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics())
+                    continue;
+
+                // ★ 상대 자석이 소자(Curie)됐으면 인력/척력 모두 스킵
+                if (OtherMag->IsDemagnetized())
                     continue;
 
                 const FVector MyC = GetActorLocation();

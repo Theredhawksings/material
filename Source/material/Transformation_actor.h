@@ -74,7 +74,8 @@ public:
 
     void SetPowered(bool bNewPowered);
     bool IsElectrified() const { return bElectrified; }
-
+    bool IsElectricallyActive() const;
+    
     bool IsConductive() const { return CurrentForm == EBlockForm::Metal || CurrentForm == EBlockForm::Copper; }
     bool HasSourcePoweredWire() const;
 
