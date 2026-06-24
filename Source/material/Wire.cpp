@@ -265,47 +265,7 @@ void AWire::PropagateVoltage(float IncomingVoltage, float IncomingCurrent,
                               TMap<AWire*, float>& CurrentAccumMap,
                               const TMap<AWire*, int32>& IncomingCountMap)
 {
-    if (VoltageMap.Contains(this)) return;
-    VoltageMap.Add(this, IncomingVoltage);
-
-    EffectiveVoltage = IncomingVoltage;
-
-    // 병렬 가지 여부는 에디터에서 수동 설정한 bIsParallel 사용
-    if (bIsParallel && ParallelBranchCount > 1)
-    {
-        EffectiveCurrent   = IncomingCurrent / float(ParallelBranchCount);
-        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"),
-            ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::Green;
-    }
-    else
-    {
-        EffectiveCurrent   = IncomingCurrent;
-        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"),
-            EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::Cyan;
-    }
-
-    // 회로 해석 완료 표시 + 시각 기록
-    bCircuitSolved       = true;
-    if (UWorld* W = GetWorld())
-        LastSolveTimeSeconds = W->GetTimeSeconds();
-
-    TArray<AWire*> NextWires;
-    TArray<float>  NextBlockR;
-    CollectNextWiresWithBlockR(NextWires, NextBlockR, VoltageMap);
-
-    if (NextWires.Num() == 0) return;
-
-    for (int32 i = 0; i < NextWires.Num(); ++i)
-    {
-        AWire* Next = NextWires[i];
-        // 전선 저항 + 블럭 경유 저항까지 합산해서 전압 강하 계산
-        const float VDrop = EffectiveCurrent * (Resistance + NextBlockR[i]);
-        const float NextV = FMath::Max(IncomingVoltage - VDrop, 0.f);
-        Next->SetPowered(true);
-        Next->PropagateVoltage(NextV, EffectiveCurrent, VoltageMap, CurrentAccumMap, IncomingCountMap);
-    }
+    // TriggerCircuitSolve의 BFS가 대신 처리 — 이 함수는 더 이상 재귀 호출되지 않음
 }
 
 
@@ -338,47 +298,156 @@ void AWire::TriggerCircuitSolve()
 {
     if (!bPoweredBySource) return;
 
-    TMap<AWire*, int32> IncomingCountMap;
-    TSet<AWire*> GraphVisited;
-    BuildCircuitGraph(IncomingCountMap, GraphVisited);
-
-    TMap<AWire*, float> VoltageMap;
-    TMap<AWire*, float> CurrentAccumMap;
-
     const float SourceV = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
 
+    // --- Step 1: 직렬 저항 계산 (옴의 법칙으로 전체 전류 산출) ---
     TArray<AWire*> FirstNext;
     TArray<float>  FirstBlockR;
-    CollectNextWiresWithBlockR(FirstNext, FirstBlockR, VoltageMap);
+    {
+        TMap<AWire*, float> Dummy;
+        CollectNextWiresWithBlockR(FirstNext, FirstBlockR, Dummy);
+    }
 
-    // V = I * R_total 로 전체 전류 계산 (옴의 법칙)
-    // 전선 R=0, 저항은 블럭(Metal/Copper)에서만 나옴
     float TotalR = Resistance;
     if (FirstNext.Num() == 1)
     {
-        TSet<AWire*> Rv2;
-        Rv2.Add(this);
-        TotalR = Resistance + FirstBlockR[0] + FirstNext[0]->CalcSeriesResistance(Rv2);
+        TSet<AWire*> Rv; Rv.Add(this);
+        TotalR = Resistance + FirstBlockR[0] + FirstNext[0]->CalcSeriesResistance(Rv);
     }
     else if (FirstNext.Num() > 1)
     {
         float InvR = 0.f;
         for (int32 i = 0; i < FirstNext.Num(); ++i)
         {
-            TSet<AWire*> Rv2;
-            Rv2.Add(this);
-            const float BranchR = FirstBlockR[i] + FirstNext[i]->CalcSeriesResistance(Rv2);
-            if (BranchR > 0.001f)
-                InvR += 1.f / BranchR;
+            TSet<AWire*> Rv; Rv.Add(this);
+            const float BR = FirstBlockR[i] + FirstNext[i]->CalcSeriesResistance(Rv);
+            if (BR > 0.001f) InvR += 1.f / BR;
         }
         TotalR = Resistance + (InvR > 0.f ? 1.f / InvR : 0.f);
     }
+    const float SourceI = (TotalR > 0.001f) ? SourceV / TotalR : 0.f;
 
-    // 실제 저항(블럭)이 없으면 무부하 상태 → 전압만 전달, 전류 = 0
-    // 저항이 있을 때만 옴의 법칙으로 전류 계산
-    const float MinMeaningfulR = 0.001f;
-    const float SourceI = (TotalR > MinMeaningfulR) ? SourceV / TotalR : 0.f;
-    PropagateVoltage(SourceV, SourceI, VoltageMap, CurrentAccumMap, IncomingCountMap);
+    // 배터리 소스 자신 값 설정
+    EffectiveVoltage   = SourceV;
+    EffectiveCurrent   = SourceI;
+    bCircuitSolved     = true;
+    if (UWorld* W = GetWorld()) LastSolveTimeSeconds = W->GetTimeSeconds();
+
+    // --- Step 2: BFS 위상 정렬로 전파 ---
+    // 각 전선의 상류 입력 개수를 먼저 셈
+    TMap<AWire*, int32> IncomingCountMap;
+    {
+        TSet<AWire*> Visited;
+        BuildCircuitGraph(IncomingCountMap, Visited);
+    }
+
+    struct NodeState
+    {
+        float MaxV   = 0.f;  // 전압: 상류 중 max
+        float TotalI = 0.f;  // 전류: 상류 합산 (KCL)
+        int32 Recv   = 0;    // 받은 입력 수
+    };
+    TMap<AWire*, NodeState> States;
+
+    // 배터리 직결 다음 전선 시드
+    TArray<AWire*> Queue;
+    auto Seed = [&](AWire* W, float V, float I)
+    {
+        if (!W) return;
+        NodeState& S = States.FindOrAdd(W);
+        S.MaxV   = FMath::Max(S.MaxV, V);
+        S.TotalI += I;
+        S.Recv++;
+        const int32 Exp = FMath::Max(IncomingCountMap.FindRef(W), 1);
+        if (S.Recv >= Exp) Queue.AddUnique(W);
+    };
+
+    for (int32 i = 0; i < FirstNext.Num(); ++i)
+    {
+        const float VDrop = SourceI * (Resistance + FirstBlockR[i]);
+        Seed(FirstNext[i], FMath::Max(SourceV - VDrop, 0.f), SourceI);
+    }
+    // 배터리에 직결된 블럭
+    for (AActor* CA : ConnectedActors)
+    {
+        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+        if (!C || !C->IsConductive()) continue;
+        C->ClearPower(); C->ReceivePower(SourceV, SourceI);
+        const float BR = C->GetBlockResistance();
+        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        {
+            const float VDrop = SourceI * (Resistance + BR);
+            Seed(WPtr.Get(), FMath::Max(SourceV - VDrop, 0.f), SourceI);
+        }
+    }
+
+    // BFS 처리
+    int32 QIdx = 0;
+    while (QIdx < Queue.Num())
+    {
+        AWire* Cur = Queue[QIdx++];
+        NodeState& S = States[Cur];
+
+        Cur->SetPowered(true);
+        Cur->EffectiveVoltage = S.MaxV;
+        Cur->bIsMergeNode     = (S.Recv >= 2);
+
+        float OutI = S.TotalI;
+        if (Cur->bIsParallel && Cur->ParallelBranchCount > 1)
+            OutI = S.TotalI / float(Cur->ParallelBranchCount);
+        Cur->EffectiveCurrent = OutI;
+
+        if (Cur->bIsParallel && Cur->ParallelBranchCount > 1)
+        {
+            Cur->CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), Cur->ParallelBranchCount, S.MaxV, OutI);
+            Cur->CachedCircuitColor = FColor::Green;
+        }
+        else if (Cur->bIsMergeNode)
+        {
+            Cur->CachedCircuitText  = FString::Printf(TEXT("[합류] V:%.2f I:%.2fA"), S.MaxV, OutI);
+            Cur->CachedCircuitColor = FColor::Orange;
+        }
+        else
+        {
+            Cur->CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), S.MaxV, OutI);
+            Cur->CachedCircuitColor = FColor::Cyan;
+        }
+
+        Cur->bCircuitSolved = true;
+        if (UWorld* W = GetWorld()) Cur->LastSolveTimeSeconds = W->GetTimeSeconds();
+
+        // 블럭에 전력 전달
+        for (AActor* CA : Cur->ConnectedActors)
+        {
+            ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+            if (!C) continue;
+            C->ClearPower(); C->ReceivePower(S.MaxV, OutI);
+        }
+
+        // 다운스트림 전선 시드
+        TArray<AWire*> NextWires; TArray<float> NextBlockR;
+        {
+            TMap<AWire*, float> Dummy;
+            Cur->CollectNextWiresWithBlockR(NextWires, NextBlockR, Dummy);
+        }
+        for (int32 i = 0; i < NextWires.Num(); ++i)
+        {
+            const float VDrop = OutI * (Cur->Resistance + NextBlockR[i]);
+            Seed(NextWires[i], FMath::Max(S.MaxV - VDrop, 0.f), OutI);
+        }
+        // 블럭 경유 다음 전선
+        for (AActor* CA : Cur->ConnectedActors)
+        {
+            ATransformation_actor* C = Cast<ATransformation_actor>(CA);
+            if (!C || !C->IsConductive()) continue;
+            const float BR = C->GetBlockResistance();
+            for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+            {
+                const float VDrop = OutI * (Cur->Resistance + BR);
+                Seed(WPtr.Get(), FMath::Max(S.MaxV - VDrop, 0.f), OutI);
+            }
+        }
+    }
 }
 
 void AWire::UpdateFinalPower()
@@ -460,42 +529,19 @@ void AWire::RefreshConnectedActors()
     bIsMergeNode      = false;
     HeatFollowTargetC = -1.f;
 
-    TArray<AWire*> UpstreamWires;
-    float TotalUpstreamCurrent = 0.f;
-    float TotalUpstreamVoltage = 0.f;
+    // 업스트림은 PropagateVoltage가 처리 → 폴링은 타임아웃만 체크
     ATransformation_actor* UpstreamBlock = nullptr;
 
     if (ConnectionSphere)
     {
-        // 컴포넌트 단위로 겹침 체크 → 상대의 END sphere가 내 START sphere에 직접 닿은 경우만
         TArray<UPrimitiveComponent*> OverlappingComps;
         ConnectionSphere->GetOverlappingComponents(OverlappingComps);
-
         for (UPrimitiveComponent* Comp : OverlappingComps)
         {
             if (!Comp) continue;
             AActor* A = Comp->GetOwner();
             if (!A || A == this) continue;
-
-            if (AWire* OtherWire = Cast<AWire>(A))
-            {
-                if (SourceWire != nullptr && OtherWire != SourceWire)
-                    continue;
-
-                // 내 START sphere에 닿은 컴포넌트가 정확히 상대의 END sphere일 때만 upstream
-                if (Comp != OtherWire->GetEndSphere())
-                    continue;
-
-                // 전압이 0이어도 켜진 전선이면 전류는 합산 (합류 노드 KCL)
-                if (OtherWire->IsPowered())
-                {
-                    UpstreamWires.AddUnique(OtherWire);
-                    TotalUpstreamCurrent += OtherWire->GetEffectiveCurrent();
-                    // 전압은 가장 높은 값 사용 (같은 소스면 같아야 하므로 max가 정확)
-                    TotalUpstreamVoltage = FMath::Max(TotalUpstreamVoltage, OtherWire->GetEffectiveVoltage());
-                }
-            }
-            else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
             {
                 if (SourceWire != nullptr) continue;
                 ATransformation_actor* Block = Cast<ATransformation_actor>(A);
@@ -505,35 +551,39 @@ void AWire::RefreshConnectedActors()
         }
     }
 
-    bool bFoundPower = false;
-    if (bIsBatterySource)
-        bFoundPower = bPoweredBySource;
-    else if (UpstreamWires.Num() > 0)
-        bFoundPower = true;
-    else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
-        bFoundPower = true;
-
-    // 비-배터리 전선: 마지막 PropagateVoltage 이후 일정 시간이 지나면 전원 리셋
-    // - 타이머 위상 차이(배터리 solve보다 폴링이 먼저 돌 때)에 유예 시간 부여
-    // - 실제로 회로에서 빠진 전선은 solve가 안 오므로 타임아웃 후 자동 꺼짐
-    if (!bIsBatterySource && !bFoundPower)
+    // 비-배터리 전선: PropagateVoltage가 일정 시간 안 오면 무조건 리셋
+    // (블럭/전선 제거 후에도 bPoweredBySource가 stale로 남는 문제 방지)
+    if (!bIsBatterySource)
     {
         const float Now     = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
-        const float Timeout = RefreshInterval * 2.5f;   // 솔브 2.5 사이클 유예
+        const float Timeout = RefreshInterval * 2.5f;
         if ((Now - LastSolveTimeSeconds) > Timeout)
         {
             bPoweredBySource     = false;
             bCircuitSolved       = false;
+            EffectiveVoltage     = 0.f;
+            EffectiveCurrent     = 0.f;
             LastSolveTimeSeconds = -999.f;
         }
     }
+
+    bool bFoundPower = false;
+    if (bIsBatterySource)
+        bFoundPower = bPoweredBySource;
+    else if (bPoweredBySource)
+        bFoundPower = true;
+    else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
+        bFoundPower = true;
 
     SetPoweredByMetal(bFoundPower);
 
 if (bIsBatterySource && bPoweredFinal)
 {
-    // 끝점 스캔을 TriggerCircuitSolve() 이전에 실행해야
-    // CollectNextWiresWithBlockR이 올바르게 동작함
+    // 수동 지정 다운스트림 전선 사용
+    for (TObjectPtr<AWire>& W : ManualDownstreamWires)
+        if (W) ConnectedWires.AddUnique(W.Get());
+
+    // 블럭은 END sphere로 자동 감지
     if (ConnectionSphereEnd)
     {
         TArray<UPrimitiveComponent*> OverlappingComps;
@@ -543,13 +593,7 @@ if (bIsBatterySource && bPoweredFinal)
             if (!Comp) continue;
             AActor* A = Comp->GetOwner();
             if (!A || A == this) continue;
-            if (AWire* DownWire = Cast<AWire>(A))
-            {
-                // 내 END sphere에 닿은 컴포넌트가 정확히 상대의 START sphere일 때만 연결
-                if (Comp == DownWire->GetStartSphere())
-                    ConnectedWires.AddUnique(DownWire);
-            }
-            else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
                 if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
                     ConnectedActors.AddUnique(Block);
         }
@@ -585,79 +629,41 @@ if (bIsBatterySource && bPoweredFinal)
         return;
     }
 
-float PrevV = 0.f, PrevI = 0.f;
-AWire* DominantUpstream = nullptr;
-
-if (UpstreamWires.Num() > 0)
-{
-    // ★ 전압·전류는 기존 로직 그대로 (볼트 법칙 유지)
-    // 합류 노드: 전압은 max (같은 소스 → 같아야 함), 전류는 KCL 합산
-    PrevV = TotalUpstreamVoltage;   // 이미 max로 축적됨
-    PrevI = TotalUpstreamCurrent;
-
-    // ★ dominant는 '온도 따라가기' 타겟 고르는 용도로만 사용 (V/I엔 절대 안 씀)
-    float BestPower = -1.f;
-    for (AWire* W : UpstreamWires)
-    {
-        const float P = W->GetEffectiveVoltage() * W->GetEffectiveCurrent();
-        if (P > BestPower) { BestPower = P; DominantUpstream = W; }
-    }
-}
-else if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
-{
-    PrevV = UpstreamBlock->GetEffectiveVoltage();
-    PrevI = UpstreamBlock->GetEffectiveCurrent();
-}
-
-// ★ 끝에 2개 이상 들어오면 합류 노드
-bIsMergeNode      = (UpstreamWires.Num() >= 2);
-HeatFollowTargetC = (bIsMergeNode && DominantUpstream)
-    ? DominantUpstream->GetWireTemperature() : -1.f;
-
 // PropagateVoltage가 이미 정확히 계산해서 bCircuitSolved를 세팅했으면
 // 폴링이 덮어쓰지 않음 → 값 안정화
 if (!bCircuitSolved)
 {
-    if (bIsParallel && ParallelBranchCount > 1 && !bIsMergeNode)
+    // 블럭에서 전원 받는 경우만 폴링으로 V/I 설정
+    if (UpstreamBlock && UpstreamBlock->GetEffectiveVoltage() > 0.f)
     {
-        EffectiveVoltage = PrevV;
-        EffectiveCurrent = PrevI / float(ParallelBranchCount);
-        CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), ParallelBranchCount, EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = FColor::Green;
-    }
-    else
-    {
-        EffectiveVoltage = PrevV;
-        EffectiveCurrent = PrevI;
-        CachedCircuitText  = bIsMergeNode
-            ? FString::Printf(TEXT("[합류] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent)
-            : FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
-        CachedCircuitColor = bIsMergeNode ? FColor::Orange : FColor::Cyan;
+        EffectiveVoltage = UpstreamBlock->GetEffectiveVoltage();
+        EffectiveCurrent = UpstreamBlock->GetEffectiveCurrent();
+        CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), EffectiveVoltage, EffectiveCurrent);
+        CachedCircuitColor = FColor::Cyan;
     }
 }
 
+    // 수동 지정 다운스트림 전선 사용
+    for (TObjectPtr<AWire>& W : ManualDownstreamWires)
+        if (W) ConnectedWires.AddUnique(W.Get());
+
+    // 블럭은 END sphere로 자동 감지
     if (ConnectionSphereEnd)
-{
-    TArray<UPrimitiveComponent*> OverlappingComps;
-    ConnectionSphereEnd->GetOverlappingComponents(OverlappingComps);
-    for (UPrimitiveComponent* Comp : OverlappingComps)
     {
-        if (!Comp) continue;
-        AActor* A = Comp->GetOwner();
-        if (!A || A == this) continue;
-        if (AWire* DownWire = Cast<AWire>(A))
+        TArray<UPrimitiveComponent*> OverlappingComps;
+        ConnectionSphereEnd->GetOverlappingComponents(OverlappingComps);
+        for (UPrimitiveComponent* Comp : OverlappingComps)
         {
-            // 내 END sphere에 닿은 컴포넌트가 정확히 상대의 START sphere일 때만 연결
-            if (Comp == DownWire->GetStartSphere())
-                ConnectedWires.AddUnique(DownWire);
-        }
-        else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-        {
-            if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                ConnectedActors.AddUnique(Block);
+            if (!Comp) continue;
+            AActor* A = Comp->GetOwner();
+            if (!A || A == this) continue;
+            if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
+            {
+                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
+                    ConnectedActors.AddUnique(Block);
+            }
         }
     }
-}
 
     for (AActor* Target : ConnectedActors)
         if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
@@ -670,12 +676,13 @@ if (!bCircuitSolved)
     const bool bHasRealPower = bPoweredFinal && EffectiveVoltage > 0.f && EffectiveCurrent > 0.f;
     if (SparkEffect && bHasRealPower)
     {
-        if (UpstreamWires.Num() > 0 && !SparkComponentStart)
+        // START: 내 앞에 upstream이 있을 때 (bPoweredBySource = 배터리에서 propagate 받음)
+        if (bPoweredBySource && !bIsBatterySource && !SparkComponentStart)
             SparkComponentStart = UNiagaraFunctionLibrary::SpawnSystemAttached(
                 SparkEffect, ConnectionSphere, NAME_None,
                 FVector::ZeroVector, FRotator::ZeroRotator,
                 EAttachLocation::SnapToTarget, true);
-        else if (UpstreamWires.Num() == 0 && SparkComponentStart)
+        else if ((!bPoweredBySource || bIsBatterySource) && SparkComponentStart)
         { SparkComponentStart->DestroyComponent(); SparkComponentStart = nullptr; }
 
         if (ConnectedWires.Num() > 0 && !SparkComponentEnd)
@@ -761,29 +768,13 @@ void AWire::UpdateConnectionPoint()
             Spline->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local));
         ConnectionSphere->SetSphereRadius(OverlapRadius);
     }
-if (ConnectionSphereEnd)
-{
-    TArray<AActor*> Overlapping;
-    ConnectionSphereEnd->GetOverlappingActors(Overlapping);
 
-    //UE_LOG(LogTemp, Warning, TEXT("[%s] 끝점 감지 수: %d"), *GetName(), Overlapping.Num());
-
-    for (AActor* A : Overlapping)
+    if (ConnectionSphereEnd)
     {
-        if (!A || A == this) continue;
-
-        /*UE_LOG(LogTemp, Warning, TEXT("  끝점에 닿음: %s (Metal:%d Copper:%d)"),
-            A->GetName(),
-            A->ActorHasTag(FName("Metal")) ? 1 : 0,
-            A->ActorHasTag(FName("Copper")) ? 1 : 0);*/
-
-        if (AWire* DownWire = Cast<AWire>(A))
-            ConnectedWires.AddUnique(DownWire);
-        else if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-            if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                ConnectedActors.AddUnique(Block);
+        ConnectionSphereEnd->SetRelativeLocation(
+            Spline->GetLocationAtSplinePoint(NumPoints - 1, ESplineCoordinateSpace::Local));
+        ConnectionSphereEnd->SetSphereRadius(OverlapRadius);
     }
-}
 }
 
 void AWire::ApplyPower()

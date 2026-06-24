@@ -68,6 +68,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Source")
     TObjectPtr<ATransformation_actor> SourceBlock = nullptr;
+
+    // 이 전선의 END에서 연결되는 다음 전선들 (에디터에서 수동 지정)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Connection")
+    TArray<TObjectPtr<AWire>> ManualDownstreamWires;
     
 protected:
     virtual void BeginPlay() override;
