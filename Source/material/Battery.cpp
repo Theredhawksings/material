@@ -175,7 +175,7 @@ void ABATTERY::TogglePower()
 
 void ABATTERY::RefreshConnectedWires()
 {
-    ConnectedWires.Empty();
+    ConnectedWire = nullptr;
 
     TArray<AActor*> OverlappingActors;
     ConnectionOutlet->GetOverlappingActors(OverlappingActors);
@@ -184,7 +184,8 @@ void ABATTERY::RefreshConnectedWires()
     {
         if (AWire* Wire = Cast<AWire>(Actor))
         {
-            ConnectedWires.AddUnique(Wire);
+            ConnectedWire = Wire; // 첫 번째 전선만 저장
+            break;
         }
     }
 
@@ -193,23 +194,20 @@ void ABATTERY::RefreshConnectedWires()
 
 void ABATTERY::UpdateWiresPower()
 {
-    for (AWire* Wire : ConnectedWires)
+    if (!OutputWire) return; // 지목된 전선 없으면 무시
+
+    OutputWire->SetBatterySource(bPowered);
+
+    if (!bPowered)
     {
-        if (!Wire) continue;
-
-        Wire->SetBatterySource(bPowered);
-
-        if (!bPowered)
-        {
-            TSet<AWire*> Visited;
-            Wire->ResetVoltageNetwork(Visited);
-            Wire->SetPowered(false);
-        }
-        else
-        {
-            Wire->SetBatteryVoltage(Voltage);
-            Wire->SetPowered(true);
-        }
+        TSet<AWire*> Visited;
+        OutputWire->ResetVoltageNetwork(Visited);
+        OutputWire->SetPowered(false);
+    }
+    else
+    {
+        OutputWire->SetBatteryVoltage(Voltage);
+        OutputWire->SetPowered(true);
     }
 }
 
@@ -256,7 +254,7 @@ void ABATTERY::OnConnectionOverlap(UPrimitiveComponent* OverlappedComp, AActor* 
 {
     if (AWire* Wire = Cast<AWire>(OtherActor))
     {
-        ConnectedWires.AddUnique(Wire);
+        ConnectedWire = Wire;
 
         const FVector OutletPos  = ConnectionOutlet->GetComponentLocation();
         const float DistToStart  = FVector::Dist(OutletPos, Wire->GetStartPointLocation());
@@ -273,7 +271,9 @@ void ABATTERY::OnConnectionEndOverlap(UPrimitiveComponent* OverlappedComp, AActo
 {
     if (AWire* Wire = Cast<AWire>(OtherActor))
     {
-        ConnectedWires.Remove(Wire);
+        if (ConnectedWire == Wire)
+            ConnectedWire = nullptr;
+
         Wire->SetPowered(false);
         Wire->SetBatteryVoltage(0.f);
     }

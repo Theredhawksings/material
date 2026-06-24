@@ -55,7 +55,7 @@ private:
     TObjectPtr<UBoxComponent> ConnectionOutlet;
 
     UPROPERTY()
-    TArray<TObjectPtr<AWire>> ConnectedWires;
+    TObjectPtr<AWire> ConnectedWire;
 
     UPROPERTY()
     TObjectPtr<APlayerController> CachedPlayerController;
@@ -97,4 +97,8 @@ private:
 
     UPROPERTY()
     TObjectPtr<UAudioComponent> SparkAudioComp;
+
+    UPROPERTY(EditAnywhere, Category = "Battery|Electrical")
+    TObjectPtr<AWire> OutputWire; // 에디터에서 지목할 전선
 };
+\

@@ -43,7 +43,9 @@ public:
     float GetWireTemperature()  const { return WireTemperatureC; }
     float GetEffectiveVoltage() const { return EffectiveVoltage; }
     float GetEffectiveCurrent() const { return EffectiveCurrent; }
-    USplineComponent* GetSplineComponent() const { return Spline; }
+    USplineComponent*  GetSplineComponent()      const { return Spline; }
+    USphereComponent*  GetStartSphere()          const { return ConnectionSphere; }
+    USphereComponent*  GetEndSphere()            const { return ConnectionSphereEnd; }
 
     void RefreshConnectedActors();
     void ApplyPower();
@@ -132,7 +134,7 @@ protected:
     float BatteryVoltage = 0.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical")
-    float Resistance = 2.0f;
+    float Resistance = 0.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Electrical")
     float DefaultVoltage = 12.0f;
@@ -221,6 +223,7 @@ private:
 
     float CalcSeriesResistance(TSet<AWire*>& Visited) const;
     void CollectNextWires(TArray<AWire*>& Out, const TMap<AWire*, float>& VoltageMap) const;
+    void CollectNextWiresWithBlockR(TArray<AWire*>& OutWires, TArray<float>& OutBlockR, const TMap<AWire*, float>& VoltageMap) const;
 
     UFUNCTION()
     void OnIceHeatZoneBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -269,8 +272,9 @@ private:
     static constexpr float StefanBoltzmannSigma = 5.67e-8f;
 
 
-    bool bCircuitSolved = false;
-    bool bIsBatterySource = false;
+    bool  bCircuitSolved       = false;
+    bool  bIsBatterySource     = false;
+    float LastSolveTimeSeconds = -999.f;  // PropagateVoltage가 마지막으로 세팅한 시각
 
     UNiagaraSystem* SparkEffect = nullptr;
     UNiagaraComponent* SparkComponentStart = nullptr;

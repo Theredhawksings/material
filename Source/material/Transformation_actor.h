@@ -109,6 +109,13 @@ public:
 
     void AddFormHeat(float DeltaC) { FormTemperatureC += DeltaC; }
 
+    float GetBlockResistance() const
+{
+    if (CurrentForm == EBlockForm::Copper) return CopperResistance;
+    if (CurrentForm == EBlockForm::Metal)  return MetalResistance;
+    return 0.f;
+}
+
 
 protected:
     virtual void BeginPlay() override;
