@@ -541,12 +541,6 @@ void ATransformation_actor::Tick(float DeltaTime)
             DbgDist = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
             DbgRecv = CalcReceivedPower(DbgDist);
         }
-        GEngine->AddOnScreenDebugMessage(
-            (int32)GetUniqueID(), 0.f, FColor::Green,
-            FString::Printf(TEXT("[ICE] Alpha=%.4f Accum=%.0f Total=%.0f | bHeating=%d Fire=%d | Dist=%.0f Recv=%.4f | Pending=%d"),
-                MeltAlpha, EnergyAccumJ, TotalMeltEnergyJ,
-                bHeating ? 1 : 0, CurrentFire ? 1 : 0,
-                DbgDist, DbgRecv, bPendingDelayedDestroy ? 1 : 0));
 
         if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
         {
