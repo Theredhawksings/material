@@ -1434,7 +1434,7 @@ void ATransformation_actor::EnterMagnetMode()
     if (bShowFieldArrows && ArrowEffectClass)
     {
         // ★ 1초 타이머 제거! (즉시 스폰되도록 수정)
-        const FQuat OffQ = FRotator(90.f, 0.f, 0.f).Quaternion();
+        const FQuat OffQ = FRotator(0.f, 90.f, 0.f).Quaternion();
         FTransform T((GetActorQuat() * OffQ).Rotator(), GetActorLocation());
 
         AActor *Arrow = GetWorld()->SpawnActorDeferred<AActor>(
@@ -1489,7 +1489,7 @@ void ATransformation_actor::EnterMagnetMode()
 
             float TopZ = MaxBounds.Z - 50.f;
             SpawnedArrowEffect->SetActorRelativeLocation(FVector(0.f, 0.f, TopZ));
-            SpawnedArrowEffect->SetActorRelativeRotation(FRotator(90.f, 0.f, 0.f));
+            SpawnedArrowEffect->SetActorRelativeRotation(FRotator(0.f, 90.f, 0.f));
 
             // X축(긴 방향) 기준으로 화살표 스케일 계산
             // MaxBounds는 half-extent이므로 실제 길이 = MaxBounds * 2
