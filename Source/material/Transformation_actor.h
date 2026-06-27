@@ -281,9 +281,6 @@ public:
     UPROPERTY(EditAnywhere, Category = "Magnet|Movement")
     float MagnetSnapDistance = 5.f;
 
-    UPROPERTY(EditAnywhere, Category = "Debug")
-    bool bDebugDraw = false;
-
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Magnet|Curie")
     bool bDemagnetized = false;
 
@@ -496,7 +493,6 @@ float RubberStopThreshold = 70.f;     // 이보다 느리게 닿으면 멈춤(�
     FTimerHandle ResidualStopHandle;
     FTimerHandle ResidualKillHandle;
 
-    void BouncePlayer(class AmaterialCharacter* Player, const FVector& Normal);
 
     // ★ 재질별 충돌 사운드 (에디터에서 지정 가능)
     UPROPERTY(EditAnywhere, Category = "Sound")

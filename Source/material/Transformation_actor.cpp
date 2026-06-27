@@ -13,16 +13,12 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/SplineComponent.h"
 #include "Components/MeshComponent.h"
-#include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 #include "Sound/SoundBase.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 
-// ============================================================================
-//  Constructor
-// ============================================================================
 // ============================================================================
 //  Constructor
 // ============================================================================
@@ -519,32 +515,12 @@ void ATransformation_actor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (MeshComp && ActorHasTag(TEXT("PowerKey")))
-    {
-        GEngine->AddOnScreenDebugMessage((int32)GetUniqueID(), 0.f, FColor::Yellow,
-            FString::Printf(TEXT("[METAL] %s | Sim=%d | Vel=%.0f | Z=%.0f"),
-                *GetName(),
-                MeshComp->IsSimulatingPhysics() ? 1 : 0,
-                MeshComp->GetPhysicsLinearVelocity().Size(),
-                GetActorLocation().Z));
-    }
-    
-    // ★ Ice 폼이면 가열 여부와 무관하게 매 프레임 수증기 상태 갱신
-// ── Ice ──
     if (CurrentForm == EBlockForm::Ice)
     {
-        // ★ 디버그: 매 프레임 상태 출력 (이거 보고 원인 확정)
-        float DbgDist = -1.f;
-        float DbgRecv = -1.f;
-        if (CurrentFire)
-        {
-            DbgDist = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
-            DbgRecv = CalcReceivedPower(DbgDist);
-        }
-
         if (bHeating && CurrentFire && MeshComp && MeltAlpha < 1.0f)
         {
-            const float ReceivedPowerW = CalcReceivedPower(DbgDist);
+            const float DistCm = FVector::Dist(CurrentFire->GetActorLocation(), GetActorLocation());
+            const float ReceivedPowerW = CalcReceivedPower(DistCm);
             if (ReceivedPowerW > 0.0f)
             {
                 SetStencilSafe(40, true);
@@ -628,18 +604,6 @@ if (MeshComp && bDestroyWhenMelted && !bPendingDelayedDestroy)
     {
         UpdateMagnetism(DeltaTime);
     }
-    // ★ 블럭 전압/전류 디버깅 표시 (bDebugDraw가 체크되어 있을 때만 보임)
-    if (bDebugDraw)
-    {
-        // 출력할 텍스트 만들기 (예: "V: 220.0 / A: 10.0")
-        FString DebugMsg = FString::Printf(TEXT("V: %.1f / A: %.1f"), StoredVoltage, StoredCurrent);
-
-        // 텍스트를 띄울 위치 (블럭 중심에서 위로 60만큼 띄움)
-        FVector TextLocation = GetActorLocation() + FVector(0.f, 0.f, 60.f);
-
-        // 화면에 노란색 텍스트 그리기
-        DrawDebugString(GetWorld(), TextLocation, DebugMsg, nullptr, FColor::Yellow, 0.f, true, 1.2f);
-    }
 }
 
 // ============================================================================
@@ -647,13 +611,8 @@ if (MeshComp && bDestroyWhenMelted && !bPendingDelayedDestroy)
 // ============================================================================
 void ATransformation_actor::SetForm(EBlockForm NewForm)
 {
-    UE_LOG(LogTemp, Warning, TEXT("SetForm 호출: %d -> %d"), (int)CurrentForm, (int)NewForm);
-
     if (!bCanChangeForm)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("SetForm: 이 블럭은 폼 변경이 잠겨 있음 (bCanChangeForm=false)"));
         return;
-    }
 
     if (CurrentForm == NewForm)
     {
@@ -703,13 +662,9 @@ void ATransformation_actor::SetForm(EBlockForm NewForm)
                 break;
             }
             int32 GaugeVal = PlayerChar->GetGaugeByTag(Tag);
-            UE_LOG(LogTemp, Warning, TEXT("SetForm 게이지 검사: %s = %d"), *Tag.ToString(), GaugeVal);
 
             if (!Tag.IsNone() && GaugeVal <= 0)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("SetForm: %s 게이지가 0이라 변경 불가"), *Tag.ToString());
                 return;
-            }
         }
     }
 
@@ -861,10 +816,7 @@ void ATransformation_actor::NextForm()
     }
 
     if (NextIdx == INDEX_NONE)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("NextForm: 사용 가능한 폼이 없음 (모든 게이지 0)"));
         return;
-    }
 
     SetForm(CycleOrder[NextIdx]);
     DecreaseGaugeForCurrentTag();
@@ -1655,11 +1607,6 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             if (MeshComp->IsSimulatingPhysics())
                 MeshComp->AddForce(-RepelForce * 0.1f, NAME_None, false);
 
-            if (bDebugDraw)
-            {
-                DrawDebugLine(GetWorld(), MagnetLoc, CopperLoc,
-                              FColor::Orange, false, 0.f, 0, 2.f);
-            }
         }
     }
 
@@ -1729,7 +1676,7 @@ void ATransformation_actor::UpdateMagnetism(float DeltaTime)
             ATransformation_actor *OtherMag = bIsMagnet ? Cast<ATransformation_actor>(OtherActor) : nullptr;
             if (OtherMag)
             {
-                if (reinterpret_cast<uintptr_t>(this) > reinterpret_cast<uintptr_t>(OtherMag))
+                if (GetUniqueID() > OtherMag->GetUniqueID())
                     continue;
                 if (!OtherMag->MeshComp || !OtherMag->MeshComp->IsSimulatingPhysics())
                     continue;
@@ -1987,8 +1934,6 @@ void ATransformation_actor::OnRubberHit(UPrimitiveComponent* HitComp, AActor* Ot
 
     PhysComp->SetPhysicsLinearVelocity(N * OutSpeed);
 
-    UE_LOG(LogTemp, Warning, TEXT("[RubberHit] %s | in=%.0f -> out=%.0f"),
-        *OtherActor->GetName(), InSpeed, OutSpeed);
 }
 
 void ATransformation_actor::UpdateSteamEffect()
@@ -2060,8 +2005,6 @@ void ATransformation_actor::DestroySteamEffect()
 {
     if (SteamComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT(">>> DestroySteamEffect 호출됨, 수증기 서서히 감쇠 시작"));
-        
         // ★ Immediate 계열 함수를 절대 사용하지 않습니다!
         // 새로운 입자 생성을 중단하고 기존 입자는 유지하는 완만한 비활성화
         SteamComponent->Deactivate(); 
