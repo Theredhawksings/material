@@ -198,6 +198,11 @@ void ABATTERY::UpdateWiresPower()
 
     OutputWire->SetBatterySource(bPowered);
 
+    // 귀환 전선(−단자)을 출력 전선의 ManualReturnWires 로 등록 → 폐회로 인식
+    OutputWire->ManualReturnWires.Reset();
+    if (ReturnWire && ReturnWire != OutputWire)
+        OutputWire->ManualReturnWires.Add(ReturnWire);
+
     if (!bPowered)
     {
         TSet<AWire*> Visited;

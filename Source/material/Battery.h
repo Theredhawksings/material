@@ -99,6 +99,9 @@ private:
     TObjectPtr<UAudioComponent> SparkAudioComp;
 
     UPROPERTY(EditAnywhere, Category = "Battery|Electrical")
-    TObjectPtr<AWire> OutputWire; // 에디터에서 지목할 전선
+    TObjectPtr<AWire> OutputWire; // +단자: 배터리가 전원을 내보내는 출발 전선
+
+    UPROPERTY(EditAnywhere, Category = "Battery|Electrical")
+    TObjectPtr<AWire> ReturnWire; // −단자: 회로가 배터리로 돌아오는 귀환 전선
 };
 \
