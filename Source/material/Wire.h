@@ -72,6 +72,10 @@ public:
     // 이 전선의 END에서 연결되는 다음 전선들 (에디터에서 수동 지정)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Connection")
     TArray<TObjectPtr<AWire>> ManualDownstreamWires;
+
+    // [배터리 전용] −단자(귀환)로 들어오는 전선들. 배터리 소스 전선에만 설정.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Connection")
+    TArray<TObjectPtr<AWire>> ManualReturnWires;
     
 protected:
     virtual void BeginPlay() override;
