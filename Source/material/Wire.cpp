@@ -326,7 +326,24 @@ struct FBlockBridge
 
 void AWire::TriggerCircuitSolve()
 {
-    if (!bPoweredBySource) return;
+    // 직전에 이 배터리가 켰던 전선 전부 끄기 (배터리 OFF/분리 시 사용)
+    auto PowerDownPrev = [&]()
+    {
+        for (const TWeakObjectPtr<AWire>& Prev : PrevSolvedWires)
+        {
+            if (AWire* W = Prev.Get())
+            {
+                W->SetPowered(false);
+                W->EffectiveVoltage = 0.f; W->EffectiveCurrent = 0.f;
+                W->bCircuitSolved = false; W->LastSolveTimeSeconds = -999.f;
+                W->CachedCircuitText = TEXT("");
+                W->ApplyPower();
+            }
+        }
+        PrevSolvedWires.Reset();
+    };
+
+    if (!bPoweredBySource) { PowerDownPrev(); return; }
 
     UWorld* World = GetWorld();
     if (!World) return;
@@ -435,6 +452,7 @@ void AWire::TriggerCircuitSolve()
     // 배터리에서 나가는 전선이 아예 없으면 할 게 없음
     if (Pwires.Num() == 0)
     {
+        PowerDownPrev();
         EffectiveVoltage = EMF; EffectiveCurrent = 0.f;
         bCircuitSolved = true;
         LastSolveTimeSeconds = World->GetTimeSeconds();
@@ -622,8 +640,9 @@ void AWire::TriggerCircuitSolve()
         else if (E.B == PIdx) BatteryI += (NodeV[PIdx] - NodeV[E.A]) / E.R;
     }
 
-    // 각 전선에 노드 값 반영
+    // 각 전선에 노드 값 반영 + 이번에 전원 준 전선 집합 수집
     const float Now = World->GetTimeSeconds();
+    TSet<TWeakObjectPtr<AWire>> NowSolved;
     for (AWire* W : AllWires)
     {
         if (W == this) continue;
@@ -641,7 +660,23 @@ void AWire::TriggerCircuitSolve()
         W->LastSolveTimeSeconds = Now;
         W->CachedCircuitText  = FString::Printf(TEXT("[V:%.2f I:%.2fA]"), NodeV[nidx], NodeThroughI[nidx]);
         W->CachedCircuitColor = FColor::Cyan;
+        NowSolved.Add(W);
     }
+
+    // 직전엔 켰지만 이번엔 회로에서 빠진 전선 → 즉시 전원 차단
+    for (const TWeakObjectPtr<AWire>& Prev : PrevSolvedWires)
+    {
+        AWire* W = Prev.Get();
+        if (!W || NowSolved.Contains(W)) continue;
+        W->SetPowered(false);
+        W->EffectiveVoltage     = 0.f;
+        W->EffectiveCurrent     = 0.f;
+        W->bCircuitSolved       = false;
+        W->LastSolveTimeSeconds = -999.f;
+        W->CachedCircuitText    = TEXT("");
+        W->ApplyPower();
+    }
+    PrevSolvedWires = MoveTemp(NowSolved);
 
     // 배터리 본체
     EffectiveVoltage     = EMF;
@@ -967,7 +1002,8 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    // 전압이 있거나(고전위) 전류가 흐르면(귀환 전선=접지지만 전류 흐름) 점등
+    // 전류가 흐르거나 전압이 있으면 점등 → 닫힌 고리 전체가 빛남
+    // (귀환선=0V여도 전류 흐르면 켜짐 → 회로 완성이 한눈에 보임)
     const bool bHasActualPower = bPoweredFinal && (EffectiveVoltage > 0.f || EffectiveCurrent > 0.f);
 
     // ★ 상태 변화 없으면 스킵

@@ -291,4 +291,8 @@ private:
 
     bool  bIsMergeNode      = false;
     float HeatFollowTargetC = -1.f;
+
+    // [배터리 전용] 직전 solve에서 이 배터리가 전원 준 전선들.
+    // 다음 solve에서 도달 못 하면 즉시 전원 차단 (블럭/전선 제거 즉각 반영).
+    TSet<TWeakObjectPtr<AWire>> PrevSolvedWires;
 };
