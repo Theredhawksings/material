@@ -72,6 +72,10 @@ public:
     // 이 전선의 END에서 연결되는 다음 전선들 (에디터에서 수동 지정)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Connection")
     TArray<TObjectPtr<AWire>> ManualDownstreamWires;
+
+    // [배터리 전용] −단자(귀환)로 들어오는 전선들. 배터리 소스 전선에만 설정.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Connection")
+    TArray<TObjectPtr<AWire>> ManualReturnWires;
     
 protected:
     virtual void BeginPlay() override;
@@ -287,4 +291,8 @@ private:
 
     bool  bIsMergeNode      = false;
     float HeatFollowTargetC = -1.f;
+
+    // [배터리 전용] 직전 solve에서 이 배터리가 전원 준 전선들.
+    // 다음 solve에서 도달 못 하면 즉시 전원 차단 (블럭/전선 제거 즉각 반영).
+    TSet<TWeakObjectPtr<AWire>> PrevSolvedWires;
 };

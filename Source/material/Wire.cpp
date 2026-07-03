@@ -1,5 +1,6 @@
 #include "Wire.h"
 #include "Transformation_actor.h"
+#include "Resistance.h"
 #include "Temperature.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineComponent.h"
@@ -17,6 +18,7 @@
 #include "NiagaraFunctionLibrary.h"
 
 #include "Engine/EngineTypes.h"
+#include "EngineUtils.h"   // TActorIterator
 
 AWire::AWire()
 {
@@ -161,12 +163,9 @@ void AWire::CollectNextWiresWithBlockR(TArray<AWire*>& OutWires, TArray<float>& 
         }
     }
 
-    for (AActor* CA : ConnectedActors)
+    auto AddBlockWires = [&](float BR, const TArray<TObjectPtr<AWire>>& WireList)
     {
-        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
-        if (!C || !C->IsConductive()) continue;
-        const float BR = C->GetBlockResistance();
-        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        for (const TObjectPtr<AWire>& WPtr : WireList)
         {
             AWire* W = WPtr.Get();
             if (W && W != this && !VoltageMap.Contains(W) && !OutWires.Contains(W))
@@ -174,6 +173,19 @@ void AWire::CollectNextWiresWithBlockR(TArray<AWire*>& OutWires, TArray<float>& 
                 OutWires.Add(W);
                 OutBlockR.Add(BR);
             }
+        }
+    };
+
+    for (AActor* CA : ConnectedActors)
+    {
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(CA))
+        {
+            if (C->IsConductive())
+                AddBlockWires(C->GetBlockResistance(), C->GetConnectedWiresList());
+        }
+        else if (AResistance* R = Cast<AResistance>(CA))
+        {
+            AddBlockWires(R->GetBlockResistance(), R->GetConnectedWiresList());
         }
     }
 }
@@ -189,12 +201,9 @@ float AWire::CalcSeriesResistance(TSet<AWire*>& Visited) const
         if (W && !Visited.Contains(W))
             Next.AddUnique(W);
 
-    for (AActor* CA : ConnectedActors)
+    auto AddBlockToNext = [&](float BR, const TArray<TObjectPtr<AWire>>& WireList)
     {
-        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
-        if (!C || !C->IsConductive()) continue;
-        const float BR = C->GetBlockResistance();
-        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+        for (const TObjectPtr<AWire>& WPtr : WireList)
         {
             AWire* W = WPtr.Get();
             if (W && W != this && !Visited.Contains(W) && !Next.Contains(W))
@@ -202,6 +211,19 @@ float AWire::CalcSeriesResistance(TSet<AWire*>& Visited) const
                 Next.Add(W);
                 BlockExtraR.Add(W, BR);
             }
+        }
+    };
+
+    for (AActor* CA : ConnectedActors)
+    {
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(CA))
+        {
+            if (C->IsConductive())
+                AddBlockToNext(C->GetBlockResistance(), C->GetConnectedWiresList());
+        }
+        else if (AResistance* R = Cast<AResistance>(CA))
+        {
+            AddBlockToNext(R->GetBlockResistance(), R->GetConnectedWiresList());
         }
     }
 
@@ -294,160 +316,377 @@ void AWire::ResetVoltageNetwork(TSet<AWire*>& Visited)
             W->ResetVoltageNetwork(Visited);
 }
 
+// 저항 블럭 한 개를 일반화: 저항값 + 연결된 전선 목록
+struct FBlockBridge
+{
+    AActor* Block = nullptr;
+    float   R     = 0.f;
+    TArray<AWire*> Wires;
+};
+
 void AWire::TriggerCircuitSolve()
 {
-    if (!bPoweredBySource) return;
-
-    const float SourceV = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
-
-    // --- Step 1: 직렬 저항 계산 (옴의 법칙으로 전체 전류 산출) ---
-    TArray<AWire*> FirstNext;
-    TArray<float>  FirstBlockR;
+    // 직전에 이 배터리가 켰던 전선 전부 끄기 (배터리 OFF/분리 시 사용)
+    auto PowerDownPrev = [&]()
     {
-        TMap<AWire*, float> Dummy;
-        CollectNextWiresWithBlockR(FirstNext, FirstBlockR, Dummy);
-    }
-
-    float TotalR = Resistance;
-    if (FirstNext.Num() == 1)
-    {
-        TSet<AWire*> Rv; Rv.Add(this);
-        TotalR = Resistance + FirstBlockR[0] + FirstNext[0]->CalcSeriesResistance(Rv);
-    }
-    else if (FirstNext.Num() > 1)
-    {
-        float InvR = 0.f;
-        for (int32 i = 0; i < FirstNext.Num(); ++i)
+        for (const TWeakObjectPtr<AWire>& Prev : PrevSolvedWires)
         {
-            TSet<AWire*> Rv; Rv.Add(this);
-            const float BR = FirstBlockR[i] + FirstNext[i]->CalcSeriesResistance(Rv);
-            if (BR > 0.001f) InvR += 1.f / BR;
-        }
-        TotalR = Resistance + (InvR > 0.f ? 1.f / InvR : 0.f);
-    }
-    const float SourceI = (TotalR > 0.001f) ? SourceV / TotalR : 0.f;
-
-    // 배터리 소스 자신 값 설정
-    EffectiveVoltage   = SourceV;
-    EffectiveCurrent   = SourceI;
-    bCircuitSolved     = true;
-    if (UWorld* W = GetWorld()) LastSolveTimeSeconds = W->GetTimeSeconds();
-
-    // --- Step 2: BFS 위상 정렬로 전파 ---
-    // 각 전선의 상류 입력 개수를 먼저 셈
-    TMap<AWire*, int32> IncomingCountMap;
-    {
-        TSet<AWire*> Visited;
-        BuildCircuitGraph(IncomingCountMap, Visited);
-    }
-
-    struct NodeState
-    {
-        float MaxV   = 0.f;  // 전압: 상류 중 max
-        float TotalI = 0.f;  // 전류: 상류 합산 (KCL)
-        int32 Recv   = 0;    // 받은 입력 수
-    };
-    TMap<AWire*, NodeState> States;
-
-    // 배터리 직결 다음 전선 시드
-    TArray<AWire*> Queue;
-    auto Seed = [&](AWire* W, float V, float I)
-    {
-        if (!W) return;
-        NodeState& S = States.FindOrAdd(W);
-        S.MaxV   = FMath::Max(S.MaxV, V);
-        S.TotalI += I;
-        S.Recv++;
-        const int32 Exp = FMath::Max(IncomingCountMap.FindRef(W), 1);
-        if (S.Recv >= Exp) Queue.AddUnique(W);
-    };
-
-    for (int32 i = 0; i < FirstNext.Num(); ++i)
-    {
-        const float VDrop = SourceI * (Resistance + FirstBlockR[i]);
-        Seed(FirstNext[i], FMath::Max(SourceV - VDrop, 0.f), SourceI);
-    }
-    // 배터리에 직결된 블럭
-    for (AActor* CA : ConnectedActors)
-    {
-        ATransformation_actor* C = Cast<ATransformation_actor>(CA);
-        if (!C || !C->IsConductive()) continue;
-        C->ClearPower(); C->ReceivePower(SourceV, SourceI);
-        const float BR = C->GetBlockResistance();
-        for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
-        {
-            const float VDrop = SourceI * (Resistance + BR);
-            Seed(WPtr.Get(), FMath::Max(SourceV - VDrop, 0.f), SourceI);
-        }
-    }
-
-    // BFS 처리
-    int32 QIdx = 0;
-    while (QIdx < Queue.Num())
-    {
-        AWire* Cur = Queue[QIdx++];
-        NodeState& S = States[Cur];
-
-        Cur->SetPowered(true);
-        Cur->EffectiveVoltage = S.MaxV;
-        Cur->bIsMergeNode     = (S.Recv >= 2);
-
-        float OutI = S.TotalI;
-        if (Cur->bIsParallel && Cur->ParallelBranchCount > 1)
-            OutI = S.TotalI / float(Cur->ParallelBranchCount);
-        Cur->EffectiveCurrent = OutI;
-
-        if (Cur->bIsParallel && Cur->ParallelBranchCount > 1)
-        {
-            Cur->CachedCircuitText  = FString::Printf(TEXT("[병렬가지 1/%d] V:%.2f I:%.2fA"), Cur->ParallelBranchCount, S.MaxV, OutI);
-            Cur->CachedCircuitColor = FColor::Green;
-        }
-        else if (Cur->bIsMergeNode)
-        {
-            Cur->CachedCircuitText  = FString::Printf(TEXT("[합류] V:%.2f I:%.2fA"), S.MaxV, OutI);
-            Cur->CachedCircuitColor = FColor::Orange;
-        }
-        else
-        {
-            Cur->CachedCircuitText  = FString::Printf(TEXT("[직렬] V:%.2f I:%.2fA"), S.MaxV, OutI);
-            Cur->CachedCircuitColor = FColor::Cyan;
-        }
-
-        Cur->bCircuitSolved = true;
-        if (UWorld* W = GetWorld()) Cur->LastSolveTimeSeconds = W->GetTimeSeconds();
-
-        // 블럭에 전력 전달
-        for (AActor* CA : Cur->ConnectedActors)
-        {
-            ATransformation_actor* C = Cast<ATransformation_actor>(CA);
-            if (!C) continue;
-            C->ClearPower(); C->ReceivePower(S.MaxV, OutI);
-        }
-
-        // 다운스트림 전선 시드
-        TArray<AWire*> NextWires; TArray<float> NextBlockR;
-        {
-            TMap<AWire*, float> Dummy;
-            Cur->CollectNextWiresWithBlockR(NextWires, NextBlockR, Dummy);
-        }
-        for (int32 i = 0; i < NextWires.Num(); ++i)
-        {
-            const float VDrop = OutI * (Cur->Resistance + NextBlockR[i]);
-            Seed(NextWires[i], FMath::Max(S.MaxV - VDrop, 0.f), OutI);
-        }
-        // 블럭 경유 다음 전선
-        for (AActor* CA : Cur->ConnectedActors)
-        {
-            ATransformation_actor* C = Cast<ATransformation_actor>(CA);
-            if (!C || !C->IsConductive()) continue;
-            const float BR = C->GetBlockResistance();
-            for (const TObjectPtr<AWire>& WPtr : C->GetConnectedWiresList())
+            if (AWire* W = Prev.Get())
             {
-                const float VDrop = OutI * (Cur->Resistance + BR);
-                Seed(WPtr.Get(), FMath::Max(S.MaxV - VDrop, 0.f), OutI);
+                W->SetPowered(false);
+                W->EffectiveVoltage = 0.f; W->EffectiveCurrent = 0.f;
+                W->bCircuitSolved = false; W->LastSolveTimeSeconds = -999.f;
+                W->CachedCircuitText = TEXT("");
+                W->ApplyPower();
             }
         }
+        PrevSolvedWires.Reset();
+    };
+
+    if (!bPoweredBySource) { PowerDownPrev(); return; }
+
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    const float EMF = (BatteryVoltage > 0.f) ? BatteryVoltage : DefaultVoltage;
+
+    // ============================================================
+    //  1) 모든 전선/저항블럭 수집 + Union-Find 노드 구성
+    // ============================================================
+    TArray<AWire*> AllWires;
+    for (TActorIterator<AWire> It(World); It; ++It)
+        AllWires.Add(*It);
+
+    // 저항 블럭 수집 (AResistance + 전도성 Transformation_actor)
+    // 배터리 본체(this)는 노드가 아니라 전원이므로 블럭 전선 목록에서 제외
+    TArray<FBlockBridge> Bridges;
+    for (TActorIterator<AResistance> It(World); It; ++It)
+    {
+        FBlockBridge B; B.Block = *It; B.R = (*It)->GetBlockResistance();
+        for (const TObjectPtr<AWire>& WPtr : (*It)->GetConnectedWiresList())
+            if (WPtr && WPtr.Get() != this) B.Wires.AddUnique(WPtr.Get());
+        if (B.Wires.Num() > 0) Bridges.Add(B);
     }
+    for (TActorIterator<ATransformation_actor> It(World); It; ++It)
+    {
+        if (!It->IsConductive()) continue;
+        FBlockBridge B; B.Block = *It; B.R = It->GetBlockResistance();
+        for (const TObjectPtr<AWire>& WPtr : It->GetConnectedWiresList())
+            if (WPtr && WPtr.Get() != this) B.Wires.AddUnique(WPtr.Get());
+        if (B.Wires.Num() > 0) Bridges.Add(B);
+    }
+
+    // Union-Find (전선 단위, 직결 wire-wire 만 병합)
+    TMap<AWire*, AWire*> Parent;
+    for (AWire* W : AllWires) Parent.Add(W, W);
+    TFunction<AWire*(AWire*)> Find = [&](AWire* X) -> AWire*
+    {
+        if (!Parent.Contains(X)) Parent.Add(X, X);   // 누락 전선 안전 처리
+        while (Parent[X] != X) { Parent[X] = Parent[Parent[X]]; X = Parent[X]; }
+        return X;
+    };
+    auto Union = [&](AWire* A, AWire* B)
+    {
+        if (!A || !B) return;
+        AWire* ra = Find(A); AWire* rb = Find(B);
+        if (ra != rb) Parent[ra] = rb;
+    };
+
+    // 직결 전선 병합 (배터리는 제외 — 배터리는 두 단자로 분리)
+    for (AWire* A : AllWires)
+    {
+        if (A == this) continue;                 // 배터리 본체 제외
+        for (const TObjectPtr<AWire>& DPtr : A->ManualDownstreamWires)
+        {
+            AWire* B = DPtr.Get();
+            if (B && B != this) Union(A, B);      // 일반 전선끼리만 병합
+        }
+    }
+
+    // 배터리 + 단자(P): 배터리의 다운스트림 전선들
+    TArray<AWire*> Pwires;
+    for (const TObjectPtr<AWire>& DPtr : ManualDownstreamWires)
+        if (DPtr) Pwires.Add(DPtr.Get());
+    for (int32 i = 1; i < Pwires.Num(); ++i) Union(Pwires[0], Pwires[i]);
+
+    // 배터리 − 단자(N): 귀환 전선들
+    //  (1) 명시 지정: 배터리의 ManualReturnWires  ← 가장 확실
+    //  (2) 수동: 배터리를 ManualDownstreamWires로 가리키는 전선
+    //  (3) 자동: 배터리 출력 전선의 START(뒤쪽)에 끝점이 닿은 전선
+    TArray<AWire*> Nwires;
+
+    // (1) 배터리에 직접 지정한 귀환 전선
+    for (const TObjectPtr<AWire>& RPtr : ManualReturnWires)
+        if (RPtr && RPtr.Get() != this && !Pwires.Contains(RPtr.Get()))
+            Nwires.AddUnique(RPtr.Get());
+
+    const FVector MyStart = GetStartPointLocation();
+    const float   ReturnThreshold = OverlapRadius * 2.f;
+    for (AWire* A : AllWires)
+    {
+        if (A == this || Nwires.Contains(A)) continue;
+        if (Pwires.Contains(A)) continue;   // 출발 전선은 귀환이 될 수 없음
+        bool bIsReturn = false;
+
+        // (2) A가 배터리를 다운스트림으로 가리킴
+        for (const TObjectPtr<AWire>& DPtr : A->ManualDownstreamWires)
+            if (DPtr.Get() == this) { bIsReturn = true; break; }
+
+        // (3) 자동 기하 감지: A의 끝점이 배터리 START에 닿음
+        if (!bIsReturn)
+        {
+            const float dEnd   = FVector::Dist(A->GetEndPointLocation(),   MyStart);
+            const float dStart = FVector::Dist(A->GetStartPointLocation(), MyStart);
+            if (FMath::Min(dEnd, dStart) <= ReturnThreshold)
+                bIsReturn = true;
+        }
+
+        if (bIsReturn) Nwires.AddUnique(A);
+    }
+    for (int32 i = 1; i < Nwires.Num(); ++i) Union(Nwires[0], Nwires[i]);
+
+    // 진단 로그: 솔버가 인식한 출발/귀환 전선 수
+    UE_LOG(LogTemp, Warning, TEXT("[배터리 %s] 출발(P):%d개  귀환(N):%d개  저항블럭:%d개"),
+        *GetName(), Pwires.Num(), Nwires.Num(), Bridges.Num());
+
+    // 배터리에서 나가는 전선이 아예 없으면 할 게 없음
+    if (Pwires.Num() == 0)
+    {
+        PowerDownPrev();
+        EffectiveVoltage = EMF; EffectiveCurrent = 0.f;
+        bCircuitSolved = true;
+        LastSolveTimeSeconds = World->GetTimeSeconds();
+        CachedCircuitText  = FString::Printf(TEXT("[배터리 %.1fV] 출발 전선 없음!"), EMF);
+        CachedCircuitColor = FColor::Red;
+        return;
+    }
+
+    const bool bHasReturn = (Nwires.Num() > 0);   // 귀환 경로(폐회로) 존재 여부
+
+    AWire* Proot = Find(Pwires[0]);
+    AWire* Nroot = bHasReturn ? Find(Nwires[0]) : nullptr;
+
+    // ============================================================
+    //  2) 노드 인덱스 + 저항 엣지 구성
+    // ============================================================
+    // 노드 = Union-Find 루트. P/N 은 고정 전압.
+    TMap<AWire*, int32> NodeIdx;
+    auto NodeOf = [&](AWire* W) -> int32
+    {
+        AWire* r = Find(W);
+        if (int32* Found = NodeIdx.Find(r)) return *Found;
+        int32 NewIdx = NodeIdx.Num();
+        NodeIdx.Add(r, NewIdx);
+        return NewIdx;
+    };
+    const int32 PIdx = NodeOf(Pwires[0]);
+    const int32 NIdx = bHasReturn ? NodeOf(Nwires[0]) : -1;
+
+    // 저항 엣지: (노드a, 노드b, R)
+    struct FEdge { int32 A; int32 B; float R; AActor* Block; };
+    TArray<FEdge> Edges;
+    for (const FBlockBridge& Bg : Bridges)
+    {
+        if (Bg.R <= 0.0001f) continue;
+        // 이 블럭이 잇는 서로 다른 노드들
+        TArray<int32> DistinctNodes;
+        for (AWire* W : Bg.Wires)
+            if (W) DistinctNodes.AddUnique(NodeOf(W));
+        // 2개 노드를 잇는 저항 (정상 케이스)
+        if (DistinctNodes.Num() == 2)
+            Edges.Add({ DistinctNodes[0], DistinctNodes[1], Bg.R, Bg.Block });
+        else if (DistinctNodes.Num() > 2)
+        {
+            // 비정상: 첫 노드를 중심으로 별 연결 (드문 케이스 폴백)
+            for (int32 k = 1; k < DistinctNodes.Num(); ++k)
+                Edges.Add({ DistinctNodes[0], DistinctNodes[k], Bg.R, Bg.Block });
+        }
+    }
+
+    const int32 NumNodes = NodeIdx.Num();
+
+    // 노드 인접 리스트 (저항 엣지 기준)
+    TArray<TArray<int32>> Adj; Adj.SetNum(NumNodes);
+    for (const FEdge& E : Edges)
+    {
+        Adj[E.A].AddUnique(E.B);
+        Adj[E.B].AddUnique(E.A);
+    }
+
+    // P에서 도달 가능한 노드 집합 (BFS)
+    TArray<bool> Reach; Reach.Init(false, NumNodes);
+    {
+        TArray<int32> Q; Q.Add(PIdx); Reach[PIdx] = true;
+        int32 qi = 0;
+        while (qi < Q.Num())
+        {
+            const int32 c = Q[qi++];
+            for (int32 nb : Adj[c])
+                if (!Reach[nb]) { Reach[nb] = true; Q.Add(nb); }
+        }
+    }
+
+    // 폐회로 = 귀환 경로 존재 && N이 P에서 저항망 통해 도달 가능
+    const bool bClosedLoop = bHasReturn && (NIdx >= 0) && Reach[NIdx];
+
+    TArray<float> NodeV; NodeV.Init(0.f, NumNodes);
+    NodeV[PIdx] = EMF;
+    if (NIdx >= 0) NodeV[NIdx] = 0.f;
+
+    // ============================================================
+    //  3) 노드 해석
+    // ============================================================
+    if (!bClosedLoop)
+    {
+        // 개방회로: 전류 0 → 전압강하 0 → P에 연결된 모든 노드 = EMF
+        for (int32 n = 0; n < NumNodes; ++n)
+            NodeV[n] = Reach[n] ? EMF : 0.f;
+    }
+    else
+    {
+    // 폐회로 → KCL 연립방정식 (가우스 소거). 고정: P=EMF, N=0.
+    TArray<int32> UnknownNodes;
+    TArray<int32> NodeToUnknown; NodeToUnknown.Init(-1, NumNodes);
+    for (int32 n = 0; n < NumNodes; ++n)
+        if (n != PIdx && n != NIdx)
+        { NodeToUnknown[n] = UnknownNodes.Num(); UnknownNodes.Add(n); }
+
+    const int32 U = UnknownNodes.Num();
+    if (U > 0)
+    {
+        // G * x = b
+        TArray<float> G; G.Init(0.f, U * U);
+        TArray<float> b; b.Init(0.f, U);
+        auto Gat = [&](int32 r, int32 c) -> float& { return G[r * U + c]; };
+
+        for (const FEdge& E : Edges)
+        {
+            const float g = 1.f / E.R;
+            const int32 ua = NodeToUnknown[E.A];
+            const int32 ub = NodeToUnknown[E.B];
+            // 노드 A의 KCL
+            if (ua >= 0)
+            {
+                Gat(ua, ua) += g;
+                if (ub >= 0) Gat(ua, ub) -= g;
+                else         b[ua] += g * NodeV[E.B]; // B 고정
+            }
+            // 노드 B의 KCL
+            if (ub >= 0)
+            {
+                Gat(ub, ub) += g;
+                if (ua >= 0) Gat(ub, ua) -= g;
+                else         b[ub] += g * NodeV[E.A]; // A 고정
+            }
+        }
+
+        // 가우스 소거 (부분 피벗)
+        for (int32 col = 0; col < U; ++col)
+        {
+            int32 piv = col;
+            for (int32 r = col + 1; r < U; ++r)
+                if (FMath::Abs(Gat(r, col)) > FMath::Abs(Gat(piv, col))) piv = r;
+            if (FMath::Abs(Gat(piv, col)) < 1e-9f) continue; // 특이 → 스킵
+            if (piv != col)
+            {
+                for (int32 c = 0; c < U; ++c) Swap(Gat(col, c), Gat(piv, c));
+                Swap(b[col], b[piv]);
+            }
+            const float pivVal = Gat(col, col);
+            for (int32 r = 0; r < U; ++r)
+            {
+                if (r == col) continue;
+                const float f = Gat(r, col) / pivVal;
+                if (f == 0.f) continue;
+                for (int32 c = col; c < U; ++c) Gat(r, c) -= f * Gat(col, c);
+                b[r] -= f * b[col];
+            }
+        }
+        for (int32 r = 0; r < U; ++r)
+        {
+            const float d = Gat(r, r);
+            NodeV[UnknownNodes[r]] = (FMath::Abs(d) > 1e-9f) ? b[r] / d : 0.f;
+        }
+    }
+    } // end 폐회로
+
+    // ============================================================
+    //  4) 결과 반영: 노드별 전압 + 통과 전류
+    // ============================================================
+    // 노드별 통과 전류 = (Σ|엣지 전류|)/2
+    TArray<float> NodeThroughI; NodeThroughI.Init(0.f, NumNodes);
+    for (const FEdge& E : Edges)
+    {
+        const float I = (NodeV[E.A] - NodeV[E.B]) / E.R;
+        NodeThroughI[E.A] += FMath::Abs(I);
+        NodeThroughI[E.B] += FMath::Abs(I);
+        // 블럭에 강하/전류 표시
+        const float Drop = FMath::Abs(NodeV[E.A] - NodeV[E.B]);
+        if (ATransformation_actor* C = Cast<ATransformation_actor>(E.Block))
+        { C->ClearPower(); C->ReceivePower(Drop, FMath::Abs(I)); }
+        else if (AResistance* R = Cast<AResistance>(E.Block))
+        { R->ClearPower(); R->ReceivePower(Drop, FMath::Abs(I)); }
+    }
+    // 내부 노드는 in=out 이므로 Σ|I|/2 = 통과전류.
+    // P/N(배터리 단자)는 한쪽에만 저항 엣지가 있어 /2 하면 안 됨.
+    for (int32 n = 0; n < NumNodes; ++n)
+        if (n != PIdx && n != NIdx) NodeThroughI[n] *= 0.5f;
+
+    // 배터리 전류 = P 노드에서 나가는 전류 합
+    float BatteryI = 0.f;
+    for (const FEdge& E : Edges)
+    {
+        if (E.A == PIdx) BatteryI += (NodeV[PIdx] - NodeV[E.B]) / E.R;
+        else if (E.B == PIdx) BatteryI += (NodeV[PIdx] - NodeV[E.A]) / E.R;
+    }
+
+    // 각 전선에 노드 값 반영 + 이번에 전원 준 전선 집합 수집
+    const float Now = World->GetTimeSeconds();
+    TSet<TWeakObjectPtr<AWire>> NowSolved;
+    for (AWire* W : AllWires)
+    {
+        if (W == this) continue;
+        AWire* r = Find(W);
+        const int32* IdxPtr = NodeIdx.Find(r);
+        if (!IdxPtr) continue;             // 이 회로에 속하지 않음
+        const int32 nidx = *IdxPtr;
+        if (!Reach[nidx]) continue;        // 배터리에서 도달 불가 → 전원 안 줌
+
+        W->SetPowered(true);
+        W->EffectiveVoltage = NodeV[nidx];
+        W->EffectiveCurrent = NodeThroughI[nidx];
+        W->bIsMergeNode     = false;
+        W->bCircuitSolved   = true;
+        W->LastSolveTimeSeconds = Now;
+        W->CachedCircuitText  = FString::Printf(TEXT("[V:%.2f I:%.2fA]"), NodeV[nidx], NodeThroughI[nidx]);
+        W->CachedCircuitColor = FColor::Cyan;
+        NowSolved.Add(W);
+    }
+
+    // 직전엔 켰지만 이번엔 회로에서 빠진 전선 → 즉시 전원 차단
+    for (const TWeakObjectPtr<AWire>& Prev : PrevSolvedWires)
+    {
+        AWire* W = Prev.Get();
+        if (!W || NowSolved.Contains(W)) continue;
+        W->SetPowered(false);
+        W->EffectiveVoltage     = 0.f;
+        W->EffectiveCurrent     = 0.f;
+        W->bCircuitSolved       = false;
+        W->LastSolveTimeSeconds = -999.f;
+        W->CachedCircuitText    = TEXT("");
+        W->ApplyPower();
+    }
+    PrevSolvedWires = MoveTemp(NowSolved);
+
+    // 배터리 본체
+    EffectiveVoltage     = EMF;
+    EffectiveCurrent     = BatteryI;
+    bCircuitSolved       = true;
+    LastSolveTimeSeconds = Now;
+    CachedCircuitText    = FString::Printf(TEXT("[배터리 %.1fV] 출발:%d 귀환:%d %s I:%.2fA"),
+        EMF, Pwires.Num(), Nwires.Num(),
+        bClosedLoop ? TEXT("폐회로") : TEXT("개방"), BatteryI);
+    CachedCircuitColor   = bClosedLoop ? FColor::Red : FColor::Yellow;
 }
 
 void AWire::UpdateFinalPower()
@@ -583,7 +822,7 @@ if (bIsBatterySource && bPoweredFinal)
     for (TObjectPtr<AWire>& W : ManualDownstreamWires)
         if (W) ConnectedWires.AddUnique(W.Get());
 
-    // 블럭은 END sphere로 자동 감지
+    // 블럭은 END sphere로 자동 감지 (Transformation_actor + Resistance 둘 다)
     if (ConnectionSphereEnd)
     {
         TArray<UPrimitiveComponent*> OverlappingComps;
@@ -594,19 +833,12 @@ if (bIsBatterySource && bPoweredFinal)
             AActor* A = Comp->GetOwner();
             if (!A || A == this) continue;
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                    ConnectedActors.AddUnique(Block);
+                ConnectedActors.AddUnique(A);
         }
     }
 
+    // 노드 해석 솔버가 모든 전선·블럭 값을 직접 계산/반영함
     TriggerCircuitSolve();
-
-    for (AActor* Target : ConnectedActors)
-        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
-        {
-            C->ClearPower();
-            C->ReceivePower(EffectiveVoltage, EffectiveCurrent);
-        }
     ApplyPower();
     return;
 }
@@ -647,7 +879,7 @@ if (!bCircuitSolved)
     for (TObjectPtr<AWire>& W : ManualDownstreamWires)
         if (W) ConnectedWires.AddUnique(W.Get());
 
-    // 블럭은 END sphere로 자동 감지
+    // 블럭은 END sphere로 자동 감지 (Transformation_actor + Resistance 둘 다)
     if (ConnectionSphereEnd)
     {
         TArray<UPrimitiveComponent*> OverlappingComps;
@@ -658,19 +890,10 @@ if (!bCircuitSolved)
             AActor* A = Comp->GetOwner();
             if (!A || A == this) continue;
             if (A->ActorHasTag(FName("Metal")) || A->ActorHasTag(FName("Copper")))
-            {
-                if (ATransformation_actor* Block = Cast<ATransformation_actor>(A))
-                    ConnectedActors.AddUnique(Block);
-            }
+                ConnectedActors.AddUnique(A);
         }
     }
 
-    for (AActor* Target : ConnectedActors)
-        if (ATransformation_actor* C = Cast<ATransformation_actor>(Target))
-        {
-            C->ClearPower();
-            C->ReceivePower(EffectiveVoltage, EffectiveCurrent);
-        }
         // ★ 전선-전선 연결 시 스파크
     // 전압과 전류가 모두 0 초과일 때만 스파크 표시
     const bool bHasRealPower = bPoweredFinal && EffectiveVoltage > 0.f && EffectiveCurrent > 0.f;
@@ -779,7 +1002,9 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    const bool bHasActualPower = bPoweredFinal && EffectiveVoltage > 0.f;
+    // 전류가 흐르거나 전압이 있으면 점등 → 닫힌 고리 전체가 빛남
+    // (귀환선=0V여도 전류 흐르면 켜짐 → 회로 완성이 한눈에 보임)
+    const bool bHasActualPower = bPoweredFinal && (EffectiveVoltage > 0.f || EffectiveCurrent > 0.f);
 
     // ★ 상태 변화 없으면 스킵
     if (bHasActualPower == bLastAppliedPowerState && SegmentMIDs.Num() == SegmentMeshes.Num())
