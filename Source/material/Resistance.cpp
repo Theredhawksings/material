@@ -1,6 +1,7 @@
 #include "Resistance.h"
 #include "Wire.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
@@ -18,10 +19,17 @@ AResistance::AResistance()
     MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
     MeshComp->SetGenerateOverlapEvents(true);
 
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> BoxMesh(
-        TEXT("/Game/modeling/Object/Box/Box1.Box1"));
-    if (BoxMesh.Succeeded())
-        MeshComp->SetStaticMesh(BoxMesh.Object);
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> ResistorMesh(
+        TEXT("/Game/modeling/Object/newBlock/Rasistance_Block.Rasistance_Block"));
+    if (ResistorMesh.Succeeded())
+        MeshComp->SetStaticMesh(ResistorMesh.Object);
+
+    MeshComp->SetRelativeScale3D(FVector(0.6f, 0.6f, 0.6f));
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> ResistorMat(
+        TEXT("/Game/modeling/Object/newBlock/M_Rasistance.M_Rasistance"));
+    if (ResistorMat.Succeeded())
+        MeshComp->SetMaterial(0, ResistorMat.Object);
 }
 
 void AResistance::BeginPlay()
