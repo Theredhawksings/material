@@ -167,6 +167,11 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wire|Thermal")
     float WireTemperatureC = 20.f;
 
+    // 발열 전용 저항: 회로 계산(Resistance=0, 이상 도체)과 분리.
+    // 전선은 전기적으론 저항 0이지만 열화상용으로는 이 값으로 I^2R 발열 계산.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Thermal")
+    float HeatingResistance = 2.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Thermal")
     float MaxWireTemperatureC = 800.f;
 

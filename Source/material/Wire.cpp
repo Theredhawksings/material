@@ -729,12 +729,14 @@ void AWire::SetBatteryVoltage(float NewVoltage)
 
 void AWire::UpdateJouleHeating(float DeltaTime)
 {
-    // 저항이 0이면 이상 도체 → 발열 없음
-    if (bPoweredFinal && EffectiveCurrent > 0.f && Resistance > 0.f)
+    // 발열 계산은 전기적 Resistance(=0, 이상 도체)가 아니라
+    // 발열 전용 HeatingResistance 를 사용 → 전류가 흐르면 열화상이 작동.
+    const float HeatR = (Resistance > 0.f) ? Resistance : HeatingResistance;
+    if (bPoweredFinal && EffectiveCurrent > 0.f && HeatR > 0.f)
     {
         CurrentAmps = EffectiveCurrent;
 
-        const float EnergyJ = CurrentAmps * CurrentAmps * Resistance * DeltaTime * FMath::Max(SimTimeScale, 0.f);
+        const float EnergyJ = CurrentAmps * CurrentAmps * HeatR * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);
     }
     else
