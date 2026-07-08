@@ -7,6 +7,7 @@
 class UStaticMeshComponent;
 class AWire;
 class AResistance;
+class USoundBase;
 
 UCLASS()
 class MATERIAL_API AVoltageTester : public AActor
@@ -56,6 +57,10 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "Tester|Door")
     float OpenSpeed = 200.f;
+
+    // 문 열릴 때 재생할 효과음
+    UPROPERTY(EditAnywhere, Category = "Tester|Sound")
+    TObjectPtr<USoundBase> DoorOpenSound;
 
     // ── 디버그 ──
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tester|Debug")

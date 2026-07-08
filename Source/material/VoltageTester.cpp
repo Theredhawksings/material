@@ -7,6 +7,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"   // TActorIterator
 #include "DrawDebugHelpers.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
 AVoltageTester::AVoltageTester()
@@ -28,6 +30,12 @@ AVoltageTester::AVoltageTester()
         TEXT("/Game/modeling/Object/Voltage_tester/M_Voltage.M_Voltage"));
     if (TesterMat.Succeeded())
         MeshComp->SetMaterial(0, TesterMat.Object);
+
+    // 문 열림 효과음 (고정)
+    static ConstructorHelpers::FObjectFinder<USoundBase> DoorSound(
+        TEXT("/Game/Sound/sound_door_opening.sound_door_opening"));
+    if (DoorSound.Succeeded())
+        DoorOpenSound = DoorSound.Object;
 }
 
 void AVoltageTester::BeginPlay()
@@ -89,7 +97,17 @@ void AVoltageTester::Tick(float DeltaTime)
         {
             HoldTimer += DeltaTime;
             if (HoldTimer >= RequiredHoldTime)
+            {
                 bSolved = true;
+
+                // 문 열림 효과음 (정답 확정 순간 1회 재생)
+                if (DoorOpenSound)
+                {
+                    const FVector SoundPos = LeftDoorActor
+                        ? LeftDoorActor->GetActorLocation() : GetActorLocation();
+                    UGameplayStatics::PlaySoundAtLocation(this, DoorOpenSound, SoundPos);
+                }
+            }
         }
         else
         {
