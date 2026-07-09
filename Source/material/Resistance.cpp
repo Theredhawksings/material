@@ -1,6 +1,7 @@
 #include "Resistance.h"
 #include "Wire.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
@@ -30,6 +31,26 @@ AResistance::AResistance()
         TEXT("/Game/modeling/Object/newBlock/M_Rasistance.M_Rasistance"));
     if (ResistorMat.Succeeded())
         MeshComp->SetMaterial(0, ResistorMat.Object);
+
+    // 옴 값 표시 텍스트
+    OhmText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("OhmText"));
+    OhmText->SetupAttachment(MeshComp);
+    OhmText->SetRelativeLocation(FVector(0.f, 0.f, 150.f));
+    OhmText->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+    OhmText->SetHorizontalAlignment(EHTA_Center);
+    OhmText->SetVerticalAlignment(EVRTA_TextCenter);
+    OhmText->SetWorldSize(80.f);
+    OhmText->SetTextRenderColor(FColor::White);
+}
+
+void AResistance::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+
+    // 에디터에서 ResistanceOhm 값을 바꾸면 텍스트도 즉시 갱신
+    if (OhmText)
+        OhmText->SetText(FText::FromString(
+            FString::Printf(TEXT("%g"), ResistanceOhm)));
 }
 
 void AResistance::BeginPlay()

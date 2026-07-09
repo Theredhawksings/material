@@ -6,6 +6,7 @@
 
 class UStaticMeshComponent;
 class USphereComponent;
+class UTextRenderComponent;
 class AWire;
 
 UCLASS()
@@ -32,6 +33,10 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     TObjectPtr<UStaticMeshComponent> MeshComp;
 
+    // 옴 값 표시 텍스트 (ResistanceOhm 바꾸면 자동 갱신)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    TObjectPtr<UTextRenderComponent> OhmText;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance")
     float ResistanceOhm = 1.f;
 
@@ -55,6 +60,7 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void Tick(float DeltaTime) override;
+    virtual void OnConstruction(const FTransform& Transform) override;
 
 private:
     void RefreshConnectedWires();
