@@ -2,6 +2,7 @@
 #include "Wire.h"
 #include "Resistance.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
@@ -36,6 +37,49 @@ AVoltageTester::AVoltageTester()
         TEXT("/Game/Sound/sound_door_opening.sound_door_opening"));
     if (DoorSound.Succeeded())
         DoorOpenSound = DoorSound.Object;
+
+    // 목표/현재 전압 표시 텍스트
+    StatusText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("StatusText"));
+    StatusText->SetupAttachment(MeshComp);
+    StatusText->SetRelativeLocation(FVector(0.f, 0.f, 150.f));
+    StatusText->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+    StatusText->SetHorizontalAlignment(EHTA_Center);
+    StatusText->SetVerticalAlignment(EVRTA_TextCenter);
+    StatusText->SetWorldSize(50.f);
+    StatusText->SetTextRenderColor(FColor::White);
+}
+
+void AVoltageTester::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+    UpdateStatusText();
+}
+
+void AVoltageTester::UpdateStatusText()
+{
+    if (!StatusText) return;
+
+    FString Text;
+    FColor  Col;
+    if (bSolved)
+    {
+        Text = FString::Printf(TEXT("Target %.1fV\nNow %.2fV\nCLEAR!"), TargetVoltage, MeasuredVoltage);
+        Col  = FColor::Green;
+    }
+    else if (MeasuredResistor)
+    {
+        Text = FString::Printf(TEXT("Target %.1fV\nNow %.2fV"), TargetVoltage, MeasuredVoltage);
+        const bool bMatch = FMath::Abs(MeasuredVoltage - TargetVoltage) <= Tolerance;
+        Col  = bMatch ? FColor::Yellow : FColor::White;
+    }
+    else
+    {
+        Text = FString::Printf(TEXT("Target %.1fV\nNow ---"), TargetVoltage);
+        Col  = FColor::White;
+    }
+
+    StatusText->SetText(FText::FromString(Text));
+    StatusText->SetTextRenderColor(Col);
 }
 
 void AVoltageTester::BeginPlay()
@@ -81,6 +125,8 @@ void AVoltageTester::RefreshMeasurement()
         MeasuredVoltage  = R->GetEffectiveVoltage();  // 저항 양단 전압강하
         break;
     }
+
+    UpdateStatusText();
 }
 
 void AVoltageTester::Tick(float DeltaTime)

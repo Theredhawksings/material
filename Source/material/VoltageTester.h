@@ -5,6 +5,7 @@
 #include "VoltageTester.generated.h"
 
 class UStaticMeshComponent;
+class UTextRenderComponent;
 class AWire;
 class AResistance;
 class USoundBase;
@@ -19,6 +20,10 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     TObjectPtr<UStaticMeshComponent> MeshComp;
+
+    // 목표/현재 전압 표시 텍스트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    TObjectPtr<UTextRenderComponent> StatusText;
 
     // ── 퍼즐 설정 ──
     // 측정할 전선 (에디터에서 지정). 이 전선 끝에 달린 저항의 전압강하를 측정.
@@ -75,9 +80,11 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void Tick(float DeltaTime) override;
+    virtual void OnConstruction(const FTransform& Transform) override;
 
 private:
     void RefreshMeasurement();
+    void UpdateStatusText();
 
     // 이번 측정에서 찾은 저항 블럭 (MeasureWire 끝에 달린 것)
     UPROPERTY(Transient)
