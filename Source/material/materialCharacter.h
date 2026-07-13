@@ -147,6 +147,8 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Interaction") float InteractRange = 2000.f;
 	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 0;
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
+	// 애니메이션 전환 크로스페이드 시간 (0이면 기존처럼 즉시 전환)
+	UPROPERTY(EditAnywhere, Category = "Animation") float AnimBlendTime = 0.2f;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Material Gauge", meta = (AllowPrivateAccess = "true"))
 	int32 RubberGauge = 0;
@@ -201,6 +203,8 @@ private:
 	void RestoreWalkSpeed();
 	void UpdateAnimation();
 	void PlayAnimIfValid(UAnimSequence* Anim, bool bLooping) const;
+	// 크로스페이드 재생 (PlayRate < 0 이면 StartPosition에서 역재생)
+	void PlaySmoothAnim(UAnimSequence* Anim, bool bLooping, float PlayRate = 1.f, float StartPosition = 0.f) const;
 	UAnimSequence* GetAnimForState(bool bMoving, bool bHolding) const;
 	void SetPrimitiveComponentsPhysics(AActor* Actor, bool bEnable) const;
 
@@ -293,6 +297,15 @@ private:
 	USoundBase* GetRandomMetallicSound() const;
 	USoundBase* GetRandomRubberSound() const;   // ★ 추가
 	USoundBase* GetRandomWoodSound() const;
+
+	// 태그 → 게이지 변수 매핑 (모르는 태그면 nullptr)
+	const int32* GetGaugeRefByTag(const FName& MaterialTag) const;
+	int32* GetGaugeRefByTag(const FName& MaterialTag);
+
+	// 물체 내릴 때 1초 뒤 사운드 예약
+	void ScheduleDropSound(USoundBase* Sound);
+	// 착지/충돌 시 재질별 사운드 (쿨다운 포함)
+	void TryPlayImpactSound(AActor* OtherActor, const FVector& Location);
 
 	// 부딪침 사운드 중복 재생 방지용 쿨다운
 	float LastImpactSoundTime = 0.f;

@@ -1,4 +1,5 @@
 #include "materialCharacter.h"
+#include "materialAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -25,6 +26,15 @@
 
 FVector AmaterialCharacter::PendingSpawnLocation = FVector::ZeroVector;
 bool    AmaterialCharacter::bHasPendingSpawn    = false;
+
+// 틱 경로에서 FName을 매번 새로 만들지 않도록 태그 상수로 재사용
+static const FName Tag_Metal(TEXT("Metal"));
+static const FName Tag_Ice(TEXT("Ice"));
+static const FName Tag_Copper(TEXT("Copper"));
+static const FName Tag_Magnet(TEXT("Magnet"));
+static const FName Tag_Rubber(TEXT("Rubber"));
+static const FName Tag_Wood(TEXT("Wood"));
+static const FName Tag_Joker(TEXT("Joker"));
 
 AmaterialCharacter::AmaterialCharacter()
 	: HeldActor(nullptr), PendingPickupActor(nullptr), bIsPlayingWalk(false), bWasHolding(false), bIsPickingUp(false)
@@ -295,6 +305,50 @@ USoundBase* AmaterialCharacter::GetRandomWoodSound() const
 	return WoodSounds[Idx];
 }
 
+void AmaterialCharacter::ScheduleDropSound(USoundBase* Sound)
+{
+	if (!Sound)
+		return;
+
+	const FVector SoundLoc = GetActorLocation();
+	FTimerHandle DropSoundHandle;
+	GetWorld()->GetTimerManager().SetTimer(DropSoundHandle,
+		[this, Sound, SoundLoc]()
+		{
+			UGameplayStatics::PlaySoundAtLocation(this, Sound, SoundLoc);
+		},
+		1.0f, false);
+}
+
+void AmaterialCharacter::TryPlayImpactSound(AActor* OtherActor, const FVector& Location)
+{
+	if (!OtherActor)
+		return;
+
+	USoundBase* Snd = nullptr;
+	if (OtherActor->ActorHasTag(Tag_Metal)  ||
+		OtherActor->ActorHasTag(Tag_Ice)    ||
+		OtherActor->ActorHasTag(Tag_Copper) ||
+		OtherActor->ActorHasTag(Tag_Magnet))
+	{
+		Snd = GetRandomMetallicSound();
+	}
+	else if (OtherActor->ActorHasTag(Tag_Wood))
+	{
+		Snd = GetRandomWoodSound();
+	}
+
+	if (!Snd)
+		return;
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastImpactSoundTime < ImpactSoundCooldown)
+		return;
+
+	UGameplayStatics::PlaySoundAtLocation(this, Snd, Location);
+	LastImpactSoundTime = Now;
+}
+
 void AmaterialCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -317,7 +371,9 @@ void AmaterialCharacter::BeginPlay()
 
 	MeshComp->SetRenderCustomDepth(false);
 	MeshComp->SetCustomDepthStencilValue(0);
-	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	// 크로스페이드 지원 커스텀 AnimInstance 사용 (기존 SingleNode 즉시 전환 → 부드러운 전환)
+	MeshComp->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	MeshComp->SetAnimInstanceClass(UmaterialAnimInstance::StaticClass());
 	PlayAnimIfValid(IdleAnim, true);
 
 	if (HoldPivot && MeshComp->DoesSocketExist(HoldSocketName))
@@ -408,16 +464,15 @@ void AmaterialCharacter::Tick(float DeltaTime)
 	if (HeldActor)
 	{
 		UpdateHoldPivotTransform();
-	}
 
-	if (BackpackComp && HeldActor)
-	{
-		BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
-		BackpackComp->SetRelativeRotation(BackpackRotWhenHolding);
-	}
+		if (BackpackComp)
+		{
+			BackpackComp->SetRelativeLocation(BackpackRelativeLocation);
+			BackpackComp->SetRelativeRotation(BackpackRotWhenHolding);
+		}
 
-	if (HeldActor)
 		UpdateHeldMagnetism();
+	}
 
 	UpdateAnimation();
 	UpdateGroundFriction();
@@ -518,7 +573,7 @@ void AmaterialCharacter::ChangeForm()
 
 	if (UseEAnim && GetMesh())
 	{
-		GetMesh()->PlayAnimation(UseEAnim, false);
+		PlaySmoothAnim(UseEAnim, false);
 		bIsPickingUp = true;
 
 		// 애니 재생 후 0.2초 뒤에 터치패드 사운드
@@ -686,7 +741,7 @@ bool AmaterialCharacter::TryPickup()
 
 	if (PickupAnim && GetMesh())
 	{
-		GetMesh()->PlayAnimation(PickupAnim, false);
+		PlaySmoothAnim(PickupAnim, false);
 		bIsPickingUp = true;
 		GetWorld()->GetTimerManager().SetTimer(AttachmentTimerHandle, this,
 											   &AmaterialCharacter::HandleActualAttachment, PickupAnimAttachTime, false);
@@ -751,72 +806,29 @@ void AmaterialCharacter::DropHeld()
 {
 	if (!HeldActor)
 		return;
-	USkeletalMeshComponent *MeshComp = GetMesh();
-	if (!PickupAnim || !MeshComp)
+	if (!PickupAnim || !GetMesh())
 		return;
 
-// ★ 물체 내릴 때 메탈릭 사운드 (0.3초 뒤 무작위 재생)
-	if (HeldActor &&
-		(HeldActor->ActorHasTag(TEXT("Metal"))   ||
-		 HeldActor->ActorHasTag(TEXT("Ice"))     ||
-		 HeldActor->ActorHasTag(TEXT("Copper"))  ||
-		 HeldActor->ActorHasTag(TEXT("Magnet"))))
+	// ★ 물체 내릴 때 재질별 사운드 (1초 뒤 무작위 재생)
+	if (HeldActor->ActorHasTag(Tag_Metal)  ||
+		HeldActor->ActorHasTag(Tag_Ice)    ||
+		HeldActor->ActorHasTag(Tag_Copper) ||
+		HeldActor->ActorHasTag(Tag_Magnet))
 	{
-		if (USoundBase* Snd = GetRandomMetallicSound())
-		{
-			const FVector SoundLoc = GetActorLocation();
-			FTimerHandle DropSoundHandle;
-			GetWorld()->GetTimerManager().SetTimer(DropSoundHandle,
-				[this, Snd, SoundLoc]()
-				{
-					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
-				},
-				1.0f, false);
-		}
+		ScheduleDropSound(GetRandomMetallicSound());
 	}
-
-	// ★ 고무 내릴 때 고무 사운드 (0.3초 뒤 무작위 재생)
-	if (HeldActor && HeldActor->ActorHasTag(TEXT("Rubber")))
-	{
-		if (USoundBase* Snd = GetRandomRubberSound())
-		{
-			const FVector SoundLoc = GetActorLocation();
-			FTimerHandle DropRubberSoundHandle;
-			GetWorld()->GetTimerManager().SetTimer(DropRubberSoundHandle,
-				[this, Snd, SoundLoc]()
-				{
-					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
-				},
-				1.0f, false);
-		}
-	}
-
-	// ★ 나무 내릴 때 나무 사운드 (0.3초 뒤 무작위 재생)
-	if (HeldActor && HeldActor->ActorHasTag(TEXT("Wood")))
-	{
-		if (USoundBase* Snd = GetRandomWoodSound())
-		{
-			const FVector SoundLoc = GetActorLocation();
-			FTimerHandle DropWoodSoundHandle;
-			GetWorld()->GetTimerManager().SetTimer(DropWoodSoundHandle,
-				[this, Snd, SoundLoc]()
-				{
-					UGameplayStatics::PlaySoundAtLocation(this, Snd, SoundLoc);
-				},
-				1.0f, false);
-		}
-	}
+	if (HeldActor->ActorHasTag(Tag_Rubber))
+		ScheduleDropSound(GetRandomRubberSound());
+	if (HeldActor->ActorHasTag(Tag_Wood))
+		ScheduleDropSound(GetRandomWoodSound());
 
 	if (HoldPivot)
 	{
 		HeldActor->AttachToComponent(HoldPivot, FAttachmentTransformRules::KeepWorldTransform);
 	}
 
-	MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-	MeshComp->SetAnimation(PickupAnim);
-	MeshComp->SetPlayRate(-1.0f);
-	MeshComp->SetPosition(PickupAnim->GetPlayLength());
-	MeshComp->Play(false);
+	// 픽업 애니메이션을 끝에서부터 역재생 (내려놓기 동작)
+	PlaySmoothAnim(PickupAnim, false, -1.0f, PickupAnim->GetPlayLength());
 	bIsPickingUp = true;
 
 	FTimerHandle DropTimerHandle;
@@ -947,8 +959,18 @@ UAnimSequence *AmaterialCharacter::GetAnimForState(bool bMoving, bool bHolding) 
 
 void AmaterialCharacter::PlayAnimIfValid(UAnimSequence *Anim, bool bLooping) const
 {
-	if (Anim && GetMesh())
-		GetMesh()->PlayAnimation(Anim, bLooping);
+	PlaySmoothAnim(Anim, bLooping);
+}
+
+void AmaterialCharacter::PlaySmoothAnim(UAnimSequence *Anim, bool bLooping, float PlayRate, float StartPosition) const
+{
+	if (!Anim || !GetMesh())
+		return;
+
+	if (UmaterialAnimInstance *AnimInst = Cast<UmaterialAnimInstance>(GetMesh()->GetAnimInstance()))
+		AnimInst->PlayAnimationSmooth(Anim, bLooping, AnimBlendTime, PlayRate, StartPosition);
+	else
+		GetMesh()->PlayAnimation(Anim, bLooping); // 커스텀 인스턴스가 없으면 기존 방식
 }
 
 void AmaterialCharacter::SetPrimitiveComponentsPhysics(AActor *Actor, bool bEnable) const
@@ -1020,42 +1042,37 @@ void AmaterialCharacter::OnEscapePressed()
 	bIsProcessing = false;
 }
 
+const int32* AmaterialCharacter::GetGaugeRefByTag(const FName &MaterialTag) const
+{
+	if (MaterialTag == Tag_Rubber) return &RubberGauge;
+	if (MaterialTag == Tag_Metal)  return &MetalGauge;
+	if (MaterialTag == Tag_Copper) return &CopperGauge;
+	if (MaterialTag == Tag_Ice)    return &IceGauge;
+	if (MaterialTag == Tag_Wood)   return &WoodGauge;
+	if (MaterialTag == Tag_Magnet) return &MagnetGauge;
+	return nullptr;
+}
+
+int32* AmaterialCharacter::GetGaugeRefByTag(const FName &MaterialTag)
+{
+	return const_cast<int32*>(static_cast<const AmaterialCharacter*>(this)->GetGaugeRefByTag(MaterialTag));
+}
+
 void AmaterialCharacter::DecreaseGaugeForMaterial(const FName &MaterialTag)
 {
 	UE_LOG(LogTemp, Warning, TEXT("DecreaseGauge: %s"), *MaterialTag.ToString());
 
-	if (MaterialTag == TEXT("Joker"))
+	if (MaterialTag == Tag_Joker)
 		return;
 
-	if (MaterialTag == TEXT("Rubber"))
-		RubberGauge = FMath::Clamp(RubberGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Metal"))
-		MetalGauge = FMath::Clamp(MetalGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Copper"))
-		CopperGauge = FMath::Clamp(CopperGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Ice"))
-		IceGauge = FMath::Clamp(IceGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Wood"))
-		WoodGauge = FMath::Clamp(WoodGauge - GaugeDecreaseAmount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Magnet"))
-		MagnetGauge = FMath::Clamp(MagnetGauge - GaugeDecreaseAmount, 0, MaxGauge);
+	if (int32* Gauge = GetGaugeRefByTag(MaterialTag))
+		*Gauge = FMath::Clamp(*Gauge - GaugeDecreaseAmount, 0, MaxGauge);
 }
 
 int32 AmaterialCharacter::GetGaugeByTag(const FName &MaterialTag) const
 {
-	if (MaterialTag == TEXT("Rubber"))
-		return RubberGauge;
-	if (MaterialTag == TEXT("Metal"))
-		return MetalGauge;
-	if (MaterialTag == TEXT("Copper"))
-		return CopperGauge;
-	if (MaterialTag == TEXT("Ice"))
-		return IceGauge;
-	if (MaterialTag == TEXT("Wood"))
-		return WoodGauge;
-	if (MaterialTag == TEXT("Magnet"))
-		return MagnetGauge;
-	return 0;
+	const int32* Gauge = GetGaugeRefByTag(MaterialTag);
+	return Gauge ? *Gauge : 0;
 }
 
 void AmaterialCharacter::ChargeGaugeForMaterial(const FName &MaterialTag, int32 Amount)
@@ -1063,18 +1080,8 @@ void AmaterialCharacter::ChargeGaugeForMaterial(const FName &MaterialTag, int32 
 	if (Amount <= 0)
 		return;
 
-	if (MaterialTag == TEXT("Rubber"))
-		RubberGauge = FMath::Clamp(RubberGauge + Amount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Metal"))
-		MetalGauge = FMath::Clamp(MetalGauge + Amount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Copper"))
-		CopperGauge = FMath::Clamp(CopperGauge + Amount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Ice"))
-		IceGauge = FMath::Clamp(IceGauge + Amount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Wood"))
-		WoodGauge = FMath::Clamp(WoodGauge + Amount, 0, MaxGauge);
-	else if (MaterialTag == TEXT("Magnet"))
-		MagnetGauge = FMath::Clamp(MagnetGauge + Amount, 0, MaxGauge);
+	if (int32* Gauge = GetGaugeRefByTag(MaterialTag))
+		*Gauge = FMath::Clamp(*Gauge + Amount, 0, MaxGauge);
 
 	UE_LOG(LogTemp, Warning, TEXT("ChargeGauge: %s +%d"), *MaterialTag.ToString(), Amount);
 }
@@ -1232,7 +1239,7 @@ void AmaterialCharacter::UseSyringePressed()
 
 	if (InsertAnim && GetMesh())
 	{
-		GetMesh()->PlayAnimation(InsertAnim, false);
+		PlaySmoothAnim(InsertAnim, false);
 		bIsUsingSyringe = true;
 		bIsPickingUp = true;
 
@@ -1263,8 +1270,8 @@ void AmaterialCharacter::UpdateHeldMagnetism()
 	if (!HeldActor)
 		return;
 
-	const bool bHoldingMagnet = HeldActor->ActorHasTag(TEXT("Magnet"));
-	const bool bHoldingMetal = HeldActor->ActorHasTag(TEXT("Metal"));
+	const bool bHoldingMagnet = HeldActor->ActorHasTag(Tag_Magnet);
+	const bool bHoldingMetal = HeldActor->ActorHasTag(Tag_Metal);
 	if (!bHoldingMagnet && !bHoldingMetal)
 		return;
 
@@ -1308,7 +1315,7 @@ const FVector Center = GetActorLocation();
 			continue;
 		if (!PrimComp->IsSimulatingPhysics())
 		{
-			if (OtherActor->ActorHasTag(TEXT("Magnet")))
+			if (OtherActor->ActorHasTag(Tag_Magnet))
 				PrimComp->WakeRigidBody();
 			else
 				continue;
@@ -1325,7 +1332,7 @@ const FVector Center = GetActorLocation();
 
 		if (bHoldingMagnet)
 		{
-			if (OtherActor->ActorHasTag(TEXT("Metal")))
+			if (OtherActor->ActorHasTag(Tag_Metal))
 			{
 				float ForceMag = MagnetForceStrength * SizeScale * 800.f;
 				ForceMag *= FMath::Clamp(1.f - (SafeDist / MagnetScanRange), 0.1f, 1.f);
@@ -1344,7 +1351,7 @@ const FVector Center = GetActorLocation();
 
 				MetalCount++;
 			}
-			else if (OtherActor->ActorHasTag(TEXT("Magnet")))
+			else if (OtherActor->ActorHasTag(Tag_Magnet))
 			{
 				ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
 				if (!OtherMagnet || !HeldMagnet)
@@ -1387,7 +1394,7 @@ const FVector Center = GetActorLocation();
 		}
 		else if (bHoldingMetal)
 		{
-			if (!OtherActor->ActorHasTag(TEXT("Magnet")))
+			if (!OtherActor->ActorHasTag(Tag_Magnet))
 				continue;
 
 			ATransformation_actor *OtherMagnet = Cast<ATransformation_actor>(OtherActor);
@@ -1451,7 +1458,7 @@ void AmaterialCharacter::FireMaterialShot()
 
 	if (UseLeftAnim && GetMesh())
 	{
-		GetMesh()->PlayAnimation(UseLeftAnim, false);
+		PlaySmoothAnim(UseLeftAnim, false);
 		bIsPickingUp = true;
 		FTimerHandle ShotApplyHandle;
 		GetWorld()->GetTimerManager().SetTimer(ShotApplyHandle, [this]()
@@ -1518,7 +1525,7 @@ void AmaterialCharacter::UpdateGroundFriction()
         const FHitResult& Floor = Move->CurrentFloor.HitResult;
         if (AActor* FloorActor = Floor.GetActor())
         {
-            bOnIce = FloorActor->ActorHasTag(TEXT("Ice"));
+            bOnIce = FloorActor->ActorHasTag(Tag_Ice);
         }
     }
 
@@ -1571,37 +1578,8 @@ void AmaterialCharacter::Landed(const FHitResult& Hit)
 {
     Super::Landed(Hit);
 
-if (AActor* HitActor = Hit.GetActor())
-	{
-		if (HitActor->ActorHasTag(TEXT("Metal"))  ||
-			HitActor->ActorHasTag(TEXT("Ice"))    ||
-			HitActor->ActorHasTag(TEXT("Copper")) ||
-			HitActor->ActorHasTag(TEXT("Magnet")))
-		{
-			const float Now = GetWorld()->GetTimeSeconds();
-			if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
-			{
-				if (USoundBase* Snd = GetRandomMetallicSound())
-					UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
-				LastImpactSoundTime = Now;
-			}
-		}
-	
-
-			if (HitActor && HitActor->ActorHasTag(TEXT("Wood")))
-	{
-		const float Now = GetWorld()->GetTimeSeconds();
-		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
-		{
-			if (USoundBase* Snd = GetRandomWoodSound())
-				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
-			LastImpactSoundTime = Now;
-		}
-	}
-	}
-
-
-
+    // ★ 착지 시 재질별 사운드 (쿨다운 포함)
+    TryPlayImpactSound(Hit.GetActor(), Hit.ImpactPoint);
 
     ATransformation_actor* Block = Cast<ATransformation_actor>(Hit.GetActor());
     if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
@@ -1613,41 +1591,14 @@ if (AActor* HitActor = Hit.GetActor())
 void AmaterialCharacter::OnCapsuleHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-    // ★ 철/얼음에 부딪치면 메탈릭 사운드 (쿨다운으로 연속 충돌 시 중복 방지)
-if (OtherActor &&
-		(OtherActor->ActorHasTag(TEXT("Metal"))   ||
-		 OtherActor->ActorHasTag(TEXT("Ice"))     ||
-		 OtherActor->ActorHasTag(TEXT("Copper"))  ||
-		 OtherActor->ActorHasTag(TEXT("Magnet"))))
-	{
-		const float Now = GetWorld()->GetTimeSeconds();
-		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
-		{
-			if (USoundBase* Snd = GetRandomMetallicSound())
-				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
-			LastImpactSoundTime = Now;
-		}
-		
-	}
-// ★ 나무 충돌 사운드
-	if (OtherActor && OtherActor->ActorHasTag(TEXT("Wood")))
-	{
-		const float Now = GetWorld()->GetTimeSeconds();
-		if (Now - LastImpactSoundTime >= ImpactSoundCooldown)
-		{
-			if (USoundBase* Snd = GetRandomWoodSound())
-				UGameplayStatics::PlaySoundAtLocation(this, Snd, Hit.ImpactPoint);
-			LastImpactSoundTime = Now;
-		}
-	}
+    // ★ 부딪친 재질별 사운드 (쿨다운으로 연속 충돌 시 중복 방지)
+    TryPlayImpactSound(OtherActor, Hit.ImpactPoint);
 
     ATransformation_actor* Block = Cast<ATransformation_actor>(OtherActor);
     if (!Block || Block->GetCurrentForm() != EBlockForm::Rubber)
         return;
 
     DoRubberBounce(Hit.ImpactNormal);
-
-
 }
 
 void AmaterialCharacter::OnResetMap()
