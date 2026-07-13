@@ -658,6 +658,8 @@ void AWire::TriggerCircuitSolve()
         W->bIsMergeNode     = false;
         W->bCircuitSolved   = true;
         W->LastSolveTimeSeconds = Now;
+        // 발전기 소스면 하류 전선도 개방회로 발열 (일반 배터리면 false 로 초기화)
+        W->bOpenCircuitHeating = bOpenCircuitHeating;
         W->CachedCircuitText  = FString::Printf(TEXT("[V:%.2f I:%.2fA]"), NodeV[nidx], NodeThroughI[nidx]);
         W->CachedCircuitColor = FColor::Cyan;
         NowSolved.Add(W);
@@ -732,9 +734,16 @@ void AWire::UpdateJouleHeating(float DeltaTime)
     // 발열 계산은 전기적 Resistance(=0, 이상 도체)가 아니라
     // 발열 전용 HeatingResistance 를 사용 → 전류가 흐르면 열화상이 작동.
     const float HeatR = (Resistance > 0.f) ? Resistance : HeatingResistance;
-    if (bPoweredFinal && EffectiveCurrent > 0.f && HeatR > 0.f)
+
+    // 발전기/코일 전선: 폐회로가 아니어서 전류가 0이어도
+    // 전압이 걸려 있으면 V/R 로 발열 전류 환산 (예전 방식 복원)
+    float HeatI = EffectiveCurrent;
+    if (HeatI <= 0.f && bOpenCircuitHeating && bPoweredFinal && EffectiveVoltage > 0.f)
+        HeatI = EffectiveVoltage / FMath::Max(HeatR, 0.1f);
+
+    if (bPoweredFinal && HeatI > 0.f && HeatR > 0.f)
     {
-        CurrentAmps = EffectiveCurrent;
+        CurrentAmps = HeatI;
 
         const float EnergyJ = CurrentAmps * CurrentAmps * HeatR * DeltaTime * FMath::Max(SimTimeScale, 0.f);
         WireTemperatureC += EnergyJ / FMath::Max(WireMassKg * SpecificHeatJPerKgK, 0.01f);

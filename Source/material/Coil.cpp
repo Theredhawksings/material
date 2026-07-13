@@ -255,6 +255,7 @@ void ACoil::UpdateCircuit()
 
 		Wire->SetBatterySource(true);
 		Wire->SetBatteryVoltage(CurrentEMF);
+		Wire->SetOpenCircuitHeating(true);   // 개방 회로여도 발열
 		Wire->SetPowered(true);
 		Wire->RefreshConnectedActors();
 		ConnectedWires.Add(Wire);
@@ -268,6 +269,7 @@ void ACoil::ShutdownConnectedWires()
 		if (AWire* W = Cast<AWire>(WirePtr.Get()))
 		{
 			W->SetBatterySource(false);
+			W->SetOpenCircuitHeating(false);
 			W->SetPowered(false);
 		}
 	}

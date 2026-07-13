@@ -290,12 +290,14 @@ void AGenerator::UpdateCircuit()
         {
             Wire->SetBatterySource(true);
             Wire->SetBatteryVoltage(AbsEMF);
+            Wire->SetOpenCircuitHeating(true);   // 개방 회로여도 발열
             Wire->SetPowered(true);
         }
         else
         {
             Wire->SetBatterySource(false);
             Wire->SetBatteryVoltage(0.f);
+            Wire->SetOpenCircuitHeating(false);
             Wire->SetPowered(false);
         }
     }
@@ -307,6 +309,7 @@ void AGenerator::UpdateCircuit()
         if (!Wire) continue;
         Wire->SetBatterySource(false);
         Wire->SetBatteryVoltage(0.f);
+        Wire->SetOpenCircuitHeating(false);
         Wire->SetPowered(false);
     }
     BoxPoweredWires.Reset(); 
@@ -346,6 +349,7 @@ void AGenerator::UpdateCircuit()
 
         Wire->SetBatterySource(true);
         Wire->SetBatteryVoltage(AbsEMF);
+        Wire->SetOpenCircuitHeating(true);   // 개방 회로여도 발열
         Wire->SetPowered(true);
 
         BoxPoweredWires.Add(Wire);

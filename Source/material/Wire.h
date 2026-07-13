@@ -63,6 +63,9 @@ public:
 
     void SetBatterySource(bool bIsSource) { bIsBatterySource = bIsSource; }
 
+    // 발전기/코일용: 개방 회로(전류 0)여도 V/HeatingResistance 로 발열
+    void SetOpenCircuitHeating(bool bEnable) { bOpenCircuitHeating = bEnable; }
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Source")
     TObjectPtr<AWire> SourceWire = nullptr;
 
@@ -287,6 +290,7 @@ private:
 
     bool  bCircuitSolved       = false;
     bool  bIsBatterySource     = false;
+    bool  bOpenCircuitHeating  = false;   // 발전기 전선: 개방 회로에서도 발열
     float LastSolveTimeSeconds = -999.f;  // PropagateVoltage가 마지막으로 세팅한 시각
 
     UNiagaraSystem* SparkEffect = nullptr;

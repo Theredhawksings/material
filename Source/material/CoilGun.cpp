@@ -40,22 +40,46 @@ void ACoilGun::Tick(float DeltaTime)
     switch (CurrentState)
     {
     case ECoilGunState::Idle:
-        if (CurrentVoltage > 0.f)
+        // 양의 반주기에만 감지 시작 → 흡입 없이 바로 발사되는 것 방지
+        if (CurrentVoltage > 0.f && bCurrentPositive)
             DetectIron();
         break;
 
     case ECoilGunState::Charging:
+    {
         if (!LoadedIron || !IsValid(LoadedIron.Get()))
         {
             CurrentState = ECoilGunState::Idle;
             break;
         }
 
+        ChargeTimer += DeltaTime;
+
+        // ── 발사 트리거: 철이 코일 중심에 도달하는 순간 (실제 코일건의 전류 차단 타이밍) ──
+        const FVector FireDir  = GetFireWorldDir();
+        const float   AxisDist = FVector::DotProduct(
+            GetActorLocation() - LoadedIron->GetComponentLocation(), FireDir);
+
+        // AxisDist: 축방향으로 중심까지 남은 거리 (음수면 이미 중심을 지남)
+        if (AxisDist <= FireTriggerDistance)
+        {
+            ReleaseFire();
+            break;
+        }
+
+        // 시간 초과 → 무한 대기 방지용 강제 발사
+        if (ChargeTimer >= MaxChargeTime)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("CoilGun: 흡입 시간 초과 → 강제 발사"));
+            ReleaseFire();
+            break;
+        }
+
+        // 양의 반주기에만 흡입, 음의 반주기에는 발사하지 않고 대기
         if (bCurrentPositive)
             ApplyMagneticForce();
-        else
-            ReleaseFire();
         break;
+    }
 
     case ECoilGunState::Fired:
         CurrentState  = ECoilGunState::Cooldown;
@@ -167,6 +191,7 @@ void ACoilGun::DetectIron()
 
         LoadedIron   = Comp;
         CurrentState = ECoilGunState::Charging;
+        ChargeTimer  = 0.f;
         UE_LOG(LogTemp, Log, TEXT("CoilGun: 철 감지 → 흡입 시작"));
         break;
     }
@@ -225,7 +250,8 @@ void ACoilGun::ReleaseFire()
     const FVector CurVel     = LoadedIron->GetPhysicsLinearVelocity();
     const float   ForwardSpd = FVector::DotProduct(CurVel, FireDir);
 
-    const float LaunchSpd = FMath::Max(FMath::Abs(ForwardSpd), 50.f);
+    // 흡입으로 얻은 속도가 LaunchSpeed보다 크면 그 속도로, 아니면 LaunchSpeed로 발사
+    const float LaunchSpd = FMath::Max(FMath::Abs(ForwardSpd), LaunchSpeed);
     LoadedIron->SetPhysicsLinearVelocity(FireDir * LaunchSpd);
 
     // ★ 발사 순간의 철 온도를 "날아가는 탄"에 넘김 → 잔열 띠고 식어가며 비행

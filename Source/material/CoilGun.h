@@ -78,6 +78,18 @@ private:
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
     float MaxPullSpeed = 300.f;
 
+    // 발사 속도 (cm/s) — 흡입 속도가 이보다 크면 흡입 속도로 발사
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float LaunchSpeed = 2000.f;
+
+    // 발사 트리거 거리 (cm) — 철이 코일 중심에서 이 거리 안에 오면 발사
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float FireTriggerDistance = 10.f;
+
+    // 최대 흡입 시간 (초) — 이 시간 안에 중심에 못 오면 그냥 발사 (무한 대기 방지)
+    UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
+    float MaxChargeTime = 5.f;
+
     // 쿨다운 시간
     UPROPERTY(EditAnywhere, Category = "CoilGun|Physics")
     float CooldownTime = 1.f;
@@ -109,6 +121,7 @@ private:
     TArray<TObjectPtr<AWire>> ConnectedWires;
 
     float CooldownTimer = 0.f;
+    float ChargeTimer = 0.f;
 
     FVector GetFireWorldDir() const;
     void    ReadWireState();
