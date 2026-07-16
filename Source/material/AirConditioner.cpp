@@ -113,7 +113,12 @@ void AAirConditioner::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
 
     if (bIsRunning)
-        HeatNearbyTemperatureBlocks(DeltaTime);
+    {
+        if (WindMode == EAirconWindMode::Hot)
+            HeatNearbyTemperatureBlocks(DeltaTime);
+        else
+            CoolNearbyTemperatureBlocks(DeltaTime);
+    }
 
     // ★ WireframeMeshComp stencil 동기화
     if (WireframeMeshComp)
@@ -127,8 +132,9 @@ void AAirConditioner::Tick(float DeltaTime)
     if (GEngine)
     {
         FString DebugMsg = FString::Printf(
-            TEXT("=== 에어컨(히터) ===\n작동: %s\n상시활성화: %s\n에어컨온도: %.1f\n"),
+            TEXT("=== 에어컨(히터) ===\n작동: %s\n모드: %s\n상시활성화: %s\n에어컨온도: %.1f\n"),
             bIsRunning ? TEXT("ON") : TEXT("OFF"),
+            WindMode == EAirconWindMode::Hot ? TEXT("뜨거운 바람") : TEXT("차가운 바람"),
             bAlwaysOn ? TEXT("ON") : TEXT("OFF"),
             Temperature);
 
@@ -203,6 +209,55 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
     }
 }
 
+// ★ 차가운 바람: 주변 ATemperature 블럭 냉각 (가열과 동일한 복사 공식, 방향만 반대)
+void AAirConditioner::CoolNearbyTemperatureBlocks(float DeltaTime)
+{
+    if (!HeatSphere) return;
+
+    TArray<AActor*> OverlappingActors;
+    HeatSphere->GetOverlappingActors(OverlappingActors);
+
+    static const FName StartHeatingName(TEXT("StartHeating"));
+
+    // 냉각 세기 계산 동안만 복사 공식용 온도로 교체 (계산 후 원복)
+    const float SavedTemperature = Temperature;
+    Temperature = ColdWindTemperature;
+
+    for (AActor* Actor : OverlappingActors)
+    {
+        if (!Actor || Actor == this) continue;
+        if (Actor->IsA<AAirConditioner>()) continue;
+
+        // 얼음(StartHeating 보유 액터)은 차가운 바람으로 녹지 않음 → 건너뜀
+        if (Actor->FindFunction(StartHeatingName)) continue;
+
+        ATemperature* TempBlock = Cast<ATemperature>(Actor);
+        if (!TempBlock) continue;
+
+        const float ReceivedW = GetReceivedPowerW(
+            TempBlock->GetActorLocation(),
+            BlockReceiverAreaM2);
+
+        if (ReceivedW <= 0.f) continue;
+
+        const float DeltaT = (ReceivedW * DeltaTime * HeatSimTimeScale)
+                           / (BlockMassKg * BlockSpecificHeatJPerKgK);
+
+        TempBlock->Temperature = FMath::Max(
+            TempBlock->Temperature - DeltaT,
+            ColdTargetTemperature);
+
+        if (bDebugHeat)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Cyan,
+                FString::Printf(TEXT("[냉각] %s → ReceivedW: %.2fW | ΔT: -%.4f | 현재: %.1f℃"),
+                    *Actor->GetName(), ReceivedW, DeltaT, TempBlock->Temperature));
+        }
+    }
+
+    Temperature = SavedTemperature;
+}
+
 void AAirConditioner::SetSmokeActive(bool bActive)
 {
     for (UNiagaraComponent* Nozzle : SmokeComponents)
@@ -254,12 +309,15 @@ void AAirConditioner::ActivateAircon()
     if (bIsRunning) return;
 
     bIsRunning = true;
-    Temperature = HeatTemperature;
+    // ★ 차가운 바람 모드일 땐 본체가 뜨거워지지 않음 (스텐실/복사열 방지)
+    Temperature = (WindMode == EAirconWindMode::Hot) ? HeatTemperature : 0.f;
 
     SetSmokeActive(true);   // ★ 연기 ON (+ 0.3초 뒤 사운드)
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-        TEXT("[에어컨] 작동 시작 (ON)"));
+        WindMode == EAirconWindMode::Hot
+            ? TEXT("[에어컨] 작동 시작 (ON, 뜨거운 바람)")
+            : TEXT("[에어컨] 작동 시작 (ON, 차가운 바람)"));
 }
 
 void AAirConditioner::DeactivateAircon()
@@ -273,24 +331,63 @@ void AAirConditioner::DeactivateAircon()
     SetSmokeActive(false);  // ★ 연기 OFF (+ 사운드 정지)
 
     // ★ 범위 안 얼음(및 모든 가열 대상)에게 StopHeating 전송
-    if (HeatSphere)
-    {
-        TArray<AActor*> OverlappingActors;
-        HeatSphere->GetOverlappingActors(OverlappingActors);
-
-        static const FName StopHeatingName(TEXT("StopHeating"));
-        for (AActor* Actor : OverlappingActors)
-        {
-            if (!Actor || Actor == this) continue;
-            if (Actor->IsA<AAirConditioner>()) continue;
-
-            if (UFunction* StopFn = Actor->FindFunction(StopHeatingName))
-            {
-                Actor->ProcessEvent(StopFn, nullptr);
-            }
-        }
-    }
+    StopHeatingNearbyBlocks();
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::White,
         TEXT("[에어컨] 작동 정지 (OFF)"));
+}
+
+// ★ 범위 안 가열 대상에게 StopHeating 전송 (끄기/모드 전환 공용)
+void AAirConditioner::StopHeatingNearbyBlocks()
+{
+    if (!HeatSphere) return;
+
+    TArray<AActor*> OverlappingActors;
+    HeatSphere->GetOverlappingActors(OverlappingActors);
+
+    static const FName StopHeatingName(TEXT("StopHeating"));
+    for (AActor* Actor : OverlappingActors)
+    {
+        if (!Actor || Actor == this) continue;
+        if (Actor->IsA<AAirConditioner>()) continue;
+
+        if (UFunction* StopFn = Actor->FindFunction(StopHeatingName))
+        {
+            Actor->ProcessEvent(StopFn, nullptr);
+        }
+    }
+}
+
+// ★ 바람 모드 전환 (발판에서 호출)
+void AAirConditioner::SetWindMode(EAirconWindMode NewMode)
+{
+    if (WindMode == NewMode) return;
+
+    WindMode = NewMode;
+
+    // 작동 중이면 새 모드에 맞게 즉시 상태 갱신
+    if (bIsRunning)
+    {
+        if (WindMode == EAirconWindMode::Cold)
+        {
+            Temperature = 0.f;
+            StopHeatingNearbyBlocks();  // 가열 중이던 얼음 등록 해제
+        }
+        else
+        {
+            Temperature = HeatTemperature;
+        }
+    }
+
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
+        WindMode == EAirconWindMode::Hot
+            ? TEXT("[에어컨] 모드 전환 → 뜨거운 바람")
+            : TEXT("[에어컨] 모드 전환 → 차가운 바람"));
+}
+
+void AAirConditioner::ToggleWindMode()
+{
+    SetWindMode(WindMode == EAirconWindMode::Hot
+        ? EAirconWindMode::Cold
+        : EAirconWindMode::Hot);
 }
