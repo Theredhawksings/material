@@ -1,4 +1,5 @@
 #include "AirConditioner.h"
+#include "Transformation_actor.h" // ★ 차가운 바람 폼 냉각용
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/AudioComponent.h" // ★ 추가
@@ -202,7 +203,18 @@ void AAirConditioner::CoolNearbyTemperatureBlocks(float DeltaTime)
         if (!Actor || Actor == this) continue;
         if (Actor->IsA<AAirConditioner>()) continue;
 
-        // 얼음(StartHeating 보유 액터)은 차가운 바람으로 녹지 않음 → 건너뜀
+        // ★ 트랜스폼 액터: 폼 온도(자석/금속/고무/구리)를 직접 냉각
+        //    (얼음/나무는 폼 온도를 안 쓰므로 영향 없음 → 차가운 바람에 안 녹음)
+        if (ATransformation_actor* TransformActor = Cast<ATransformation_actor>(Actor))
+        {
+            const float ReceivedW = GetReceivedPowerW(
+                TransformActor->GetActorLocation(), 1.0f);
+
+            TransformActor->ApplyFormCoolingPower(ReceivedW, DeltaTime);
+            continue;
+        }
+
+        // 그 외 StartHeating 보유 액터(블루프린트 얼음 등)는 차가운 바람으로 녹지 않음 → 건너뜀
         if (Actor->FindFunction(StartHeatingName)) continue;
 
         ATemperature* TempBlock = Cast<ATemperature>(Actor);

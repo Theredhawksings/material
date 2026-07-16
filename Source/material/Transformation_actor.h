@@ -109,6 +109,15 @@ public:
 
     void AddFormHeat(float DeltaC) { FormTemperatureC += DeltaC; }
 
+    // ★ 차가운 바람: 받은 냉각 파워로 폼 온도를 직접 냉각 (상온 20℃까지)
+    void ApplyFormCoolingPower(float ReceivedW, float DeltaTime)
+    {
+        if (ReceivedW <= 0.f) return;
+        const float DeltaC = (ReceivedW * DeltaTime * FormHeatSimTimeScale)
+                           / (FormMassKg * FormSpecificHeatJPerKgK);
+        FormTemperatureC = FMath::Max(FormTemperatureC - DeltaC, 20.f);
+    }
+
     float GetBlockResistance() const
 {
     if (CurrentForm == EBlockForm::Copper) return CopperResistance;
