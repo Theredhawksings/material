@@ -129,25 +129,6 @@ void AAirConditioner::Tick(float DeltaTime)
         WireframeMeshComp->SetRenderCustomDepth(Temperature > 1.f);
     }
 
-    if (GEngine)
-    {
-        FString DebugMsg = FString::Printf(
-            TEXT("=== 에어컨(히터) ===\n작동: %s\n모드: %s\n상시활성화: %s\n에어컨온도: %.1f\n"),
-            bIsRunning ? TEXT("ON") : TEXT("OFF"),
-            WindMode == EAirconWindMode::Hot ? TEXT("뜨거운 바람") : TEXT("차가운 바람"),
-            bAlwaysOn ? TEXT("ON") : TEXT("OFF"),
-            Temperature);
-
-        GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Cyan, DebugMsg);
-    }
-
-    if (bShowDebugShapes && HeatSphere)
-    {
-        GEngine->AddOnScreenDebugMessage(
-            static_cast<int32>(GetUniqueID()) + 1, 0.f, FColor::Red,
-            FString::Printf(TEXT("[%s] MaxHeatDist: %.1f | SphereR: %.1f"),
-                *GetName(), MaxHeatDistance, HeatSphere->GetScaledSphereRadius()));
-    }
 }
 
 void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
@@ -199,13 +180,6 @@ void AAirConditioner::HeatNearbyTemperatureBlocks(float DeltaTime)
         TempBlock->Temperature = FMath::Min(
             TempBlock->Temperature + DeltaT,
             HeatTemperature);
-
-        if (bDebugHeat)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Orange,
-                FString::Printf(TEXT("[가열] %s → ReceivedW: %.2fW | ΔT: %.4f | 현재: %.1f℃"),
-                    *Actor->GetName(), ReceivedW, DeltaT, TempBlock->Temperature));
-        }
     }
 }
 
@@ -246,13 +220,6 @@ void AAirConditioner::CoolNearbyTemperatureBlocks(float DeltaTime)
         TempBlock->Temperature = FMath::Max(
             TempBlock->Temperature - DeltaT,
             ColdTargetTemperature);
-
-        if (bDebugHeat)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Cyan,
-                FString::Printf(TEXT("[냉각] %s → ReceivedW: %.2fW | ΔT: -%.4f | 현재: %.1f℃"),
-                    *Actor->GetName(), ReceivedW, DeltaT, TempBlock->Temperature));
-        }
     }
 
     Temperature = SavedTemperature;
@@ -313,11 +280,6 @@ void AAirConditioner::ActivateAircon()
     Temperature = (WindMode == EAirconWindMode::Hot) ? HeatTemperature : 0.f;
 
     SetSmokeActive(true);   // ★ 연기 ON (+ 0.3초 뒤 사운드)
-
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-        WindMode == EAirconWindMode::Hot
-            ? TEXT("[에어컨] 작동 시작 (ON, 뜨거운 바람)")
-            : TEXT("[에어컨] 작동 시작 (ON, 차가운 바람)"));
 }
 
 void AAirConditioner::DeactivateAircon()
@@ -332,9 +294,6 @@ void AAirConditioner::DeactivateAircon()
 
     // ★ 범위 안 얼음(및 모든 가열 대상)에게 StopHeating 전송
     StopHeatingNearbyBlocks();
-
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::White,
-        TEXT("[에어컨] 작동 정지 (OFF)"));
 }
 
 // ★ 범위 안 가열 대상에게 StopHeating 전송 (끄기/모드 전환 공용)

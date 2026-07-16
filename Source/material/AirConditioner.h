@@ -71,9 +71,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Physics")
     float HeatSimTimeScale = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Debug")
-    bool bDebugHeat = false;
-
     // ★ 연기(나이아가라) 관련
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AirConditioner|Smoke")
     TObjectPtr<UNiagaraSystem> SmokeEffect;
