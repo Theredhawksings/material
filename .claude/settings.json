@@ -3,7 +3,8 @@
     "allow": [
       "PowerShell(& \"C:\\\\Program Files\\\\Epic Games\\\\UE_5.7\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" materialEditor Win64 Development -Project=\"c:\\\\Users\\\\myeos\\\\Documents\\\\GitHub\\\\Mateiral\\\\material\\\\material.uproject\" -WaitMutex)",
       "PowerShell(& \"C:\\\\Program Files\\\\Epic Games\\\\UE_5.7\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" materialEditor Win64 Development -project=\"c:\\\\Users\\\\myeos\\\\Documents\\\\GitHub\\\\Mateiral\\\\material\\\\material.uproject\" -WaitMutex)",
-      "PowerShell(& \"C:\\\\Program Files\\\\Epic Games\\\\UE_5.7\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" materialEditor Win64 Development -project=\"C:\\\\Users\\\\myeos\\\\Documents\\\\GitHub\\\\Mateiral\\\\material\\\\material.uproject\" -WaitMutex)"
+      "PowerShell(& \"C:\\\\Program Files\\\\Epic Games\\\\UE_5.7\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" materialEditor Win64 Development -project=\"C:\\\\Users\\\\myeos\\\\Documents\\\\GitHub\\\\Mateiral\\\\material\\\\material.uproject\" -WaitMutex)",
+      "PowerShell(& \"C:\\\\Program Files\\\\Epic Games\\\\UE_5.7\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" materialEditor Win64 Development -Project=\"C:\\\\Users\\\\myeos\\\\Documents\\\\GitHub\\\\Mateiral\\\\material\\\\material.uproject\" -WaitMutex)"
     ]
   }
 }

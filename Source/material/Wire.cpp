@@ -1013,24 +1013,37 @@ void AWire::UpdateConnectionPoint()
 
 void AWire::ApplyPower()
 {
-    // 전류가 흐르거나 전압이 있으면 점등 → 닫힌 고리 전체가 빛남
-    // (귀환선=0V여도 전류 흐르면 켜짐 → 회로 완성이 한눈에 보임)
-    const bool bHasActualPower = bPoweredFinal && (EffectiveVoltage > 0.f || EffectiveCurrent > 0.f);
+    // 3단계 시각 상태:
+    //  2 = 전류 흐름(밝음) — 폐회로 완성, 귀환선 포함 / 발전기 전선
+    //  1 = 전압만(희미)   — 전원은 닿았지만 회로가 안 닫힘
+    //  0 = 꺼짐          — 전원 없음
+    const bool bCurrentFlow = bPoweredFinal &&
+        (EffectiveCurrent > 0.01f || (bOpenCircuitHeating && EffectiveVoltage > 0.f));
+    const bool bVoltageOnly = bPoweredFinal && !bCurrentFlow && EffectiveVoltage > 0.f;
+    const int32 NewState = bCurrentFlow ? 2 : (bVoltageOnly ? 1 : 0);
 
-    // ★ 상태 변화 없으면 스킵
-    if (bHasActualPower == bLastAppliedPowerState && SegmentMIDs.Num() == SegmentMeshes.Num())
+    // 상태 변화 없으면 스킵
+    if (NewState == LastVisualState &&
+        (NewState == 0 || SegmentMIDs.Num() == SegmentMeshes.Num()))
         return;
 
-    if (bHasActualPower && OnMaterial)
+    if (NewState > 0 && OnMaterial)
     {
-        SegmentMIDs.Reset();
-        for (USplineMeshComponent* Mesh : SegmentMeshes)
+        if (SegmentMIDs.Num() != SegmentMeshes.Num())
         {
-            if (!IsValid(Mesh)) continue;
-            UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
-            Mesh->SetMaterial(0, MID);
-            SegmentMIDs.Add(MID);
+            SegmentMIDs.Reset();
+            for (USplineMeshComponent* Mesh : SegmentMeshes)
+            {
+                if (!IsValid(Mesh)) continue;
+                UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OnMaterial, this);
+                Mesh->SetMaterial(0, MID);
+                SegmentMIDs.Add(MID);
+            }
         }
+        // 머티리얼의 GlowIntensity 는 emissive 배수(기본 60) 그 자체
+        const float Glow = (NewState == 2) ? FullGlowValue : FullGlowValue * VoltageOnlyGlow;
+        for (UMaterialInstanceDynamic* MID : SegmentMIDs)
+            if (MID) MID->SetScalarParameterValue(WireGlowParamName, Glow);
     }
     else
     {
@@ -1041,7 +1054,7 @@ void AWire::ApplyPower()
             Mesh->SetMaterial(0, OffMaterial);
         }
     }
-    bLastAppliedPowerState = bHasActualPower;
+    LastVisualState = NewState;
 }
 
 void AWire::UpdateWireVisual()

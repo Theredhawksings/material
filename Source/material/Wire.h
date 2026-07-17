@@ -120,6 +120,19 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
     FName WireHeatParamName = TEXT("HeatAlpha");
 
+    // OnMaterial 의 밝기 파라미터 (3단계 표시용)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
+    FName WireGlowParamName = TEXT("GlowIntensity");
+
+    // 전류가 흐를 때의 밝기 값 (머티리얼의 원래 emissive 배수 = 60)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
+    float FullGlowValue = 60.f;
+
+    // 전압만 걸린 상태(전류 0)의 희미한 비율 (0~1, FullGlowValue 에 곱해짐)
+    // 0.02 → emissive 1.2 수준: 블룸 없이 은은하게만 빛남
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
+    float VoltageOnlyGlow = 0.02f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wire|Visual")
     float WireTempVisualScale = 0.002f;
 
@@ -272,7 +285,7 @@ private:
 
     bool  bPoweredBySource       = false;
     bool  bPoweredByMetal        = false;
-    bool  bLastAppliedPowerState = false;
+    int32 LastVisualState = -1;   // 0=꺼짐, 1=전압만(희미), 2=전류(밝음)
     bool  bInputIsStart          = true;
 
     float CurrentAmps            = 0.f;
