@@ -28,8 +28,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "AirConditioner")
     void ActivateAircon();
 
+    // bForce = true 면 상시 작동(bAlwaysOn) 에어컨도 강제로 끔 (스테이지 클리어 등)
     UFUNCTION(BlueprintCallable, Category = "AirConditioner")
-    void DeactivateAircon();
+    void DeactivateAircon(bool bForce = false);
 
     // ★ 바람 모드 전환 (발판에서 호출)
     UFUNCTION(BlueprintCallable, Category = "AirConditioner")

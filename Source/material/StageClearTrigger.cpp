@@ -36,10 +36,10 @@ void AStageClearTrigger::OnOverlapBegin(UPrimitiveComponent*, AActor* OtherActor
         TargetSpawner->DeactivateSpawner();
     }
 
-    // ★ 에어컨 멈추기
+    // ★ 에어컨 멈추기 (상시 작동이어도 강제로 끔)
     if (TargetAircon)
     {
-        TargetAircon->DeactivateAircon();
+        TargetAircon->DeactivateAircon(true);
     }
 
     TriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);

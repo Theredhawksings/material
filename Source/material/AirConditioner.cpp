@@ -294,10 +294,14 @@ void AAirConditioner::ActivateAircon()
     SetSmokeActive(true);   // ★ 연기 ON (+ 0.3초 뒤 사운드)
 }
 
-void AAirConditioner::DeactivateAircon()
+void AAirConditioner::DeactivateAircon(bool bForce)
 {
-    if (bAlwaysOn) return;
+    if (bAlwaysOn && !bForce) return;
     if (!bIsRunning) return;
+
+    // ★ 강제 종료 시 상시 작동 해제 (다시 켜지지 않도록)
+    if (bForce)
+        bAlwaysOn = false;
 
     bIsRunning = false;
     Temperature = 0.f;
