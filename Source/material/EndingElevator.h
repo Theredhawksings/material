@@ -49,6 +49,11 @@ protected:
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 		bool bFromSweep, const FHitResult& SweepResult);
 
+	// 문이 닫히기 전에 플레이어가 트리거를 벗어나면 탑승 취소
+	UFUNCTION()
+	void OnEndingTriggerEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 	void StartEnding();
 	void ShowEndingText();
 

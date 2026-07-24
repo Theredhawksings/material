@@ -24,6 +24,7 @@ void AEndingElevator::BeginPlay()
 	if (TriggerBox)
 	{
 		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerBegin);
+		TriggerBox->OnComponentEndOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerEnd);
 	}
 }
 
@@ -37,8 +38,19 @@ void AEndingElevator::Tick(float DeltaTime)
 
 		if (BoardElapsed >= EndingStartDelay)
 		{
-			bEndingStarted = true;
-			StartEnding();
+			// ★ 최종 확인: 플레이어가 실제로 트리거 안에 있을 때만 엔딩 시작
+			APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+			if (PlayerPawn && TriggerBox && TriggerBox->IsOverlappingActor(PlayerPawn))
+			{
+				bEndingStarted = true;
+				StartEnding();
+			}
+			else
+			{
+				// 플레이어가 없는데 탑승 상태로 남아있으면 상태 초기화
+				bPlayerBoarded = false;
+				BoardElapsed = 0.f;
+			}
 		}
 	}
 }
@@ -47,12 +59,34 @@ void AEndingElevator::OnEndingTriggerBegin(UPrimitiveComponent* OverlappedComp, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
 {
+	// 맵 로드 직후 자동 발송되는 초기 오버랩은 무시 (패키징 빌드 오작동 방지)
+	if (IsTriggerGraceActive()) return;
+
 	if (bPlayerBoarded) return;
 
 	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
 	if (OtherActor && OtherActor == PlayerPawn)
 	{
 		bPlayerBoarded = true;
+	}
+}
+
+void AEndingElevator::OnEndingTriggerEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (bEndingStarted || !bPlayerBoarded) return;
+
+	// 문이 닫힌 뒤(이동 중 텔레포트 포함)에는 취소하지 않음
+	if (State != EElevatorState::Idle &&
+		State != EElevatorState::DoorOpening &&
+		State != EElevatorState::Boarding)
+		return;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (OtherActor && OtherActor == PlayerPawn)
+	{
+		bPlayerBoarded = false;
+		BoardElapsed = 0.f;
 	}
 }
 

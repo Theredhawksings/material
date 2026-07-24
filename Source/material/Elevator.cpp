@@ -96,6 +96,7 @@ void AElevator::DebugMsg(const FString& Msg, const FColor& Color)
 void AElevator::BeginPlay()
 {
     Super::BeginPlay();
+    BeginPlayTimeSeconds = GetWorld()->GetTimeSeconds();
     SetDoorYaw(DoorClosedYaw);
     TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AElevator::OnTriggerBegin);
     DebugMsg(FString::Printf(TEXT("BeginPlay. DoorL mesh=%s"),
@@ -120,10 +121,22 @@ void AElevator::PlayCloseSound()
         UGameplayStatics::PlaySoundAtLocation(this, CloseSound, GetActorLocation());
 }
 
+bool AElevator::IsTriggerGraceActive() const
+{
+    return GetWorld()->GetTimeSeconds() - BeginPlayTimeSeconds < TriggerGraceTime;
+}
+
 void AElevator::OnTriggerBegin(UPrimitiveComponent* /*OverlappedComp*/, AActor* OtherActor,
     UPrimitiveComponent* /*OtherComp*/, int32 /*OtherBodyIndex*/,
     bool /*bFromSweep*/, const FHitResult& /*SweepResult*/)
 {
+    // 맵 로드 직후 자동 발송되는 초기 오버랩은 무시
+    if (IsTriggerGraceActive())
+    {
+        DebugMsg(TEXT("맵 로드 직후 오버랩 무시 (grace)"), FColor::Orange);
+        return;
+    }
+
     if (State != EElevatorState::Idle) return;
     if (!Cast<ACharacter>(OtherActor) && !Cast<APawn>(OtherActor)) return;
 

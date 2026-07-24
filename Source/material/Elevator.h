@@ -64,6 +64,11 @@ public:
     UPROPERTY(EditAnywhere, Category = "Elevator|Debug")
     bool bDebug = true;
 
+    // 맵 로드 직후 이 시간(초) 동안은 트리거 오버랩 무시
+    // (패키징 빌드에서 스폰 시 초기 오버랩 이벤트가 자동 발송되는 문제 방지)
+    UPROPERTY(EditAnywhere, Category = "Elevator|Trigger")
+    float TriggerGraceTime = 2.0f;
+
     // ★ 진동 세기 조절 (에디터에서 조절 가능)
     UPROPERTY(EditAnywhere, Category = "Elevator|Shake")
     float ShakeIntensity = 3.0f;   // 기본값 1.0 -> 3.0으로 상향
@@ -86,6 +91,8 @@ protected:
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
         bool bFromSweep, const FHitResult& SweepResult);
 
+    bool IsTriggerGraceActive() const;
+
     void CloseDoors();
     void TeleportPlayer();
     void SetDoorYaw(float Yaw);
@@ -95,6 +102,7 @@ protected:
 
     EElevatorState State = EElevatorState::Idle;
     float PhaseElapsed = 0.f;
+    float BeginPlayTimeSeconds = 0.f;
 
     UPROPERTY(Transient)
     TObjectPtr<AActor> Passenger;
