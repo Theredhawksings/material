@@ -21,6 +21,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
+	// 엔딩 엘리베이터는 어디로도 이동하지 않음 - 이동 연출이 끝나면 그 자리에서 엔딩 시작
+	virtual void TeleportPlayer() override;
+
 	// ─── 엔딩 설정 (에디터에서 조절) ───
 
 	UPROPERTY(EditAnywhere, Category = "Ending")

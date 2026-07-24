@@ -83,6 +83,15 @@ AElevator::AElevator()
     TriggerBox->SetCollisionObjectType(ECC_WorldDynamic);
     TriggerBox->SetCollisionResponseToAllChannels(ECR_Overlap);
     TriggerBox->SetGenerateOverlapEvents(true);
+
+    // 중앙 탑승 확인용 박스 - 기본값은 작게 잡아두고 에디터에서 내부 바닥 크기에 맞게 조정
+    BoardingBox = CreateDefaultSubobject<UBoxComponent>(TEXT("BoardingBox"));
+    BoardingBox->SetupAttachment(SceneRoot);
+    BoardingBox->SetBoxExtent(FVector(100.f, 100.f, 120.f));
+    BoardingBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    BoardingBox->SetCollisionObjectType(ECC_WorldDynamic);
+    BoardingBox->SetCollisionResponseToAllChannels(ECR_Overlap);
+    BoardingBox->SetGenerateOverlapEvents(true);
 }
 
 void AElevator::DebugMsg(const FString& Msg, const FColor& Color)
@@ -99,6 +108,8 @@ void AElevator::BeginPlay()
     BeginPlayTimeSeconds = GetWorld()->GetTimeSeconds();
     SetDoorYaw(DoorClosedYaw);
     TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AElevator::OnTriggerBegin);
+    BoardingBox->OnComponentBeginOverlap.AddDynamic(this, &AElevator::OnBoardingBoxBegin);
+    BoardingBox->OnComponentEndOverlap.AddDynamic(this, &AElevator::OnBoardingBoxEnd);
     DebugMsg(FString::Printf(TEXT("BeginPlay. DoorL mesh=%s"),
         DoorL && DoorL->GetStaticMesh() ? TEXT("OK") : TEXT("NULL")), FColor::Cyan);
 }
@@ -137,15 +148,64 @@ void AElevator::OnTriggerBegin(UPrimitiveComponent* /*OverlappedComp*/, AActor* 
         return;
     }
 
-    if (State != EElevatorState::Idle) return;
     if (!Cast<ACharacter>(OtherActor) && !Cast<APawn>(OtherActor)) return;
 
-    Passenger = OtherActor;
-    State = EElevatorState::DoorOpening;
-    PhaseElapsed = 0.f;
+    if (State == EElevatorState::Idle)
+    {
+        Passenger = OtherActor;
+        State = EElevatorState::DoorOpening;
+        PhaseElapsed = 0.f;
 
-    GetWorldTimerManager().SetTimer(SoundTimer, this, &AElevator::PlayOpenSound, SoundDelay, false);
-    DebugMsg(TEXT(">>> 탑승 확인! 문 열기 시작"), FColor::Green);
+        GetWorldTimerManager().SetTimer(SoundTimer, this, &AElevator::PlayOpenSound, SoundDelay, false);
+        DebugMsg(TEXT(">>> 근처 접근 감지! 문 열기 시작"), FColor::Green);
+    }
+    // Boarding 상태에서는 BoardingBox가 탑승 확정을 담당하므로 여기서는 아무것도 안 함
+}
+
+void AElevator::OnBoardingBoxBegin(UPrimitiveComponent* /*OverlappedComp*/, AActor* OtherActor,
+    UPrimitiveComponent* /*OtherComp*/, int32 /*OtherBodyIndex*/,
+    bool /*bFromSweep*/, const FHitResult& /*SweepResult*/)
+{
+    // 문이 열려 대기 중일 때 실제로 중앙(탑승 공간)에 들어온 경우에만 탑승 확정
+    if (State == EElevatorState::Boarding && !bBoardConfirmed && OtherActor == Passenger)
+    {
+        OnBoardingConfirmed();
+    }
+}
+
+void AElevator::OnBoardingBoxEnd(UPrimitiveComponent* /*OverlappedComp*/, AActor* OtherActor,
+    UPrimitiveComponent* /*OtherComp*/, int32 /*OtherBodyIndex*/)
+{
+    if (State != EElevatorState::Boarding) return;
+    if (!bBoardConfirmed || OtherActor != Passenger) return;
+
+    // 문 닫히기 전에 다시 나감 - 탑승 취소, 계속 대기
+    GetWorldTimerManager().ClearTimer(BoardConfirmTimer);
+    bBoardConfirmed = false;
+
+    // 탑승 확정 때 껐던 타임아웃 타이머를 다시 켬
+    // (안 켜면 플레이어가 나간 뒤 문이 영원히 열린 채로 대기하게 됨)
+    GetWorldTimerManager().SetTimer(BoardTimer, this, &AElevator::OnBoardingTimeout, BoardingTime, false);
+    DebugMsg(TEXT(">>> 탑승 취소됨 - 다시 대기 중..."), FColor::Orange);
+}
+
+void AElevator::OnBoardingConfirmed()
+{
+    if (bBoardConfirmed) return;
+    bBoardConfirmed = true;
+
+    GetWorldTimerManager().ClearTimer(BoardTimer);
+    GetWorldTimerManager().SetTimer(BoardConfirmTimer, this, &AElevator::CloseDoors, PostBoardCloseDelay, false);
+    DebugMsg(FString::Printf(TEXT(">>> 탑승 확정! %.1f초 후 문 닫힘"), PostBoardCloseDelay), FColor::Green);
+}
+
+void AElevator::OnBoardingTimeout()
+{
+    if (bBoardConfirmed) return;
+
+    Passenger = nullptr;
+    CloseDoors();
+    DebugMsg(TEXT(">>> 탑승 대기 시간 초과 - 아무도 타지 않음, 문 닫음"), FColor::Orange);
 }
 
 void AElevator::CloseDoors()
@@ -207,10 +267,21 @@ void AElevator::Tick(float DeltaTime)
         SetDoorYaw(FMath::Lerp(DoorClosedYaw, DoorOpenYaw, A));
         if (A >= 1.f)
         {
-            // ★ 문 열림 완료 → 탑승 대기 (Boarding). BoardingTime 뒤 문 닫힘
+            // ★ 문 열림 완료 → 탑승 대기 (Boarding). 실제 탑승 확인 전엔 확정하지 않음
             State = EElevatorState::Boarding;
-            GetWorldTimerManager().SetTimer(BoardTimer, this, &AElevator::CloseDoors, BoardingTime, false);
-            DebugMsg(TEXT("문 열림 완료 → 대기 중..."), FColor::White);
+            bBoardConfirmed = false;
+
+            if (Passenger && BoardingBox->IsOverlappingActor(Passenger))
+            {
+                // 문이 열리는 동안 이미 중앙 탑승 공간에 있었던 경우 - 바로 탑승 확정
+                OnBoardingConfirmed();
+            }
+            else
+            {
+                // 아직 안 탐 - 최대 BoardingTime 만큼 탑승을 기다림
+                GetWorldTimerManager().SetTimer(BoardTimer, this, &AElevator::OnBoardingTimeout, BoardingTime, false);
+                DebugMsg(TEXT("문 열림 완료 → 탑승 대기 중..."), FColor::White);
+            }
         }
         break;
     }
@@ -221,24 +292,36 @@ void AElevator::Tick(float DeltaTime)
         SetDoorYaw(FMath::Lerp(DoorOpenYaw, DoorClosedYaw, A));
         if (A >= 1.f)
         {
-            // ★ 문 닫힘 완료 → 이동 시작 (Done). 여기서부터 진동
-            State = EElevatorState::Done;
-            ShakeElapsed = 0.f;
-            OriginalLocation = GetActorLocation();
-
-            // ★ 출발 0.3초 뒤 이동 사운드 재생
-            GetWorldTimerManager().SetTimer(SoundTimer, [this]()
+            // ★ 문 닫힘 완료 직전 최종 확인: 탑승객이 실제로 안에 있을 때만 이동 시작
+            const bool bPassengerPresent = Passenger && BoardingBox->IsOverlappingActor(Passenger);
+            if (bPassengerPresent)
             {
-                if (TeleportAudioComp && TeleportSound)
-                {
-                    TeleportAudioComp->SetSound(TeleportSound);
-                    TeleportAudioComp->SetVolumeMultiplier(0.4f);
-                    TeleportAudioComp->Play();
-                }
-            }, 0.3f, false);
+                // ★ 이동 시작 (Done). 여기서부터 진동
+                State = EElevatorState::Done;
+                ShakeElapsed = 0.f;
+                OriginalLocation = GetActorLocation();
 
-            GetWorldTimerManager().SetTimer(TeleportTimer, this, &AElevator::TeleportPlayer, TravelTime, false);
-            DebugMsg(TEXT("문 닫힘 완료 → 목적지로 이동 중..."), FColor::Yellow);
+                // ★ 출발 0.3초 뒤 이동 사운드 재생
+                GetWorldTimerManager().SetTimer(SoundTimer, [this]()
+                {
+                    if (TeleportAudioComp && TeleportSound)
+                    {
+                        TeleportAudioComp->SetSound(TeleportSound);
+                        TeleportAudioComp->SetVolumeMultiplier(0.4f);
+                        TeleportAudioComp->Play();
+                    }
+                }, 0.3f, false);
+
+                GetWorldTimerManager().SetTimer(TeleportTimer, this, &AElevator::TeleportPlayer, TravelTime, false);
+                DebugMsg(TEXT("문 닫힘 완료 → 목적지로 이동 중..."), FColor::Yellow);
+            }
+            else
+            {
+                // 탑승객이 없음 - 이동 취소하고 대기 상태로 복귀
+                Passenger = nullptr;
+                State = EElevatorState::Idle;
+                DebugMsg(TEXT("문 닫힘 완료 → 탑승객 없음, 이동 취소"), FColor::Orange);
+            }
         }
         break;
     }

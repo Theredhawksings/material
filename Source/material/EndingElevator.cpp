@@ -20,11 +20,12 @@ void AEndingElevator::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 기존 엘리베이터의 TriggerBox에 엔딩용 오버랩 이벤트 추가 바인딩
-	if (TriggerBox)
+	// 엔딩 탑승 판정은 중앙 BoardingBox 기준
+	// (문 앞 TriggerBox는 스치기만 해도 발동해서 오작동의 원인이 됐음)
+	if (BoardingBox)
 	{
-		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerBegin);
-		TriggerBox->OnComponentEndOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerEnd);
+		BoardingBox->OnComponentBeginOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerBegin);
+		BoardingBox->OnComponentEndOverlap.AddDynamic(this, &AEndingElevator::OnEndingTriggerEnd);
 	}
 }
 
@@ -38,9 +39,9 @@ void AEndingElevator::Tick(float DeltaTime)
 
 		if (BoardElapsed >= EndingStartDelay)
 		{
-			// ★ 최종 확인: 플레이어가 실제로 트리거 안에 있을 때만 엔딩 시작
+			// ★ 최종 확인: 플레이어가 실제로 탑승 공간 안에 있을 때만 엔딩 시작
 			APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
-			if (PlayerPawn && TriggerBox && TriggerBox->IsOverlappingActor(PlayerPawn))
+			if (PlayerPawn && BoardingBox && BoardingBox->IsOverlappingActor(PlayerPawn))
 			{
 				bEndingStarted = true;
 				StartEnding();
@@ -87,6 +88,23 @@ void AEndingElevator::OnEndingTriggerEnd(UPrimitiveComponent* OverlappedComp, AA
 	{
 		bPlayerBoarded = false;
 		BoardElapsed = 0.f;
+	}
+}
+
+void AEndingElevator::TeleportPlayer()
+{
+	// ★ 부모의 텔레포트를 대체: 엔딩 엘리베이터는 어디로도 이동하지 않고
+	//    이동 연출(진동)이 끝나는 순간 그 자리에서 엔딩을 시작
+	if (TeleportAudioComp && TeleportAudioComp->IsPlaying())
+		TeleportAudioComp->Stop();
+
+	Passenger = nullptr;
+	State = EElevatorState::Disabled;
+
+	if (!bEndingStarted)
+	{
+		bEndingStarted = true;
+		StartEnding();
 	}
 }
 
