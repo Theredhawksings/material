@@ -106,6 +106,12 @@ void AElevator::BeginPlay()
 {
     Super::BeginPlay();
     BeginPlayTimeSeconds = GetWorld()->GetTimeSeconds();
+
+    // 에디터에서 배치한 문의 원래 회전을 닫힘 기준값으로 저장
+    // (이걸 기준으로 열림/닫힘 각도를 얹어야 닫힐 때 원래 모습으로 정확히 복구됨)
+    if (DoorL) DoorLBaseQuat = DoorL->GetRelativeRotation().Quaternion();
+    if (DoorR) DoorRBaseQuat = DoorR->GetRelativeRotation().Quaternion();
+
     SetDoorYaw(DoorClosedYaw);
     TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &AElevator::OnTriggerBegin);
     BoardingBox->OnComponentBeginOverlap.AddDynamic(this, &AElevator::OnBoardingBoxBegin);
@@ -116,8 +122,12 @@ void AElevator::BeginPlay()
 
 void AElevator::SetDoorYaw(float Yaw)
 {
-    if (DoorL) DoorL->SetRelativeRotation(FRotator(0.f, Yaw, 0.f));
-    if (DoorR) DoorR->SetRelativeRotation(FRotator(0.f, -Yaw, 0.f));
+    // 에디터 배치 회전(Base) 위에 열림 각도를 오프셋으로 얹음
+    // Yaw=0(닫힘)이면 정확히 원래 배치 모습으로 복구됨
+    // DoorL은 +Yaw, DoorR은 -Yaw 방향으로 회전
+    const float Rad = FMath::DegreesToRadians(Yaw);
+    if (DoorL) DoorL->SetRelativeRotation((DoorLBaseQuat * FQuat(FVector::UpVector, Rad)).Rotator());
+    if (DoorR) DoorR->SetRelativeRotation((DoorRBaseQuat * FQuat(FVector::UpVector, -Rad)).Rotator());
 }
 
 void AElevator::PlayOpenSound()

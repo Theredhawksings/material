@@ -104,4 +104,3 @@ private:
     UPROPERTY(EditAnywhere, Category = "Battery|Electrical")
     TObjectPtr<AWire> ReturnWire; // −단자: 회로가 배터리로 돌아오는 귀환 전선
 };
-\

@@ -37,8 +37,9 @@ public:
     UPROPERTY(EditAnywhere, Category = "Elevator|Door")
     float DoorClosedYaw = 0.f;
 
+    // 열릴 때 문이 도는 각도 (DoorL은 +값, DoorR은 -값 방향으로 회전)
     UPROPERTY(EditAnywhere, Category = "Elevator|Door")
-    float DoorOpenYaw = 90.f;
+    float DoorOpenYaw = 40.f;
 
     UPROPERTY(EditAnywhere, Category = "Elevator|Door")
     float DoorMoveDuration = 1.5f;
@@ -143,4 +144,8 @@ protected:
     // ★ 진동용
     FVector OriginalLocation = FVector::ZeroVector;
     float ShakeElapsed = 0.f;
+
+    // 에디터에서 배치한 문의 원래 회전 (닫힘 기준값 - 게임 시작 시 저장)
+    FQuat DoorLBaseQuat = FQuat::Identity;
+    FQuat DoorRBaseQuat = FQuat::Identity;
 };
