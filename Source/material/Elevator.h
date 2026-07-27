@@ -75,9 +75,14 @@ public:
     UPROPERTY(EditAnywhere, Category = "Elevator|Trigger")
     float TriggerGraceTime = 2.0f;
 
-    // ★ 진동 세기 조절 (에디터에서 조절 가능)
+    // ★ 도착 직전 카메라 흔들림 (물리 진동 대신 카메라만 움직임)
+    // 도착 몇 초 전에 카메라 셰이크를 시작할지
     UPROPERTY(EditAnywhere, Category = "Elevator|Shake")
-    float ShakeIntensity = 3.0f;   // 기본값 1.0 -> 3.0으로 상향
+    float ArrivalCamShakeLeadTime = 0.6f;
+
+    // 카메라 셰이크 세기 배율
+    UPROPERTY(EditAnywhere, Category = "Elevator|Shake")
+    float ArrivalCamShakeScale = 1.0f;
 
 protected:
     virtual void BeginPlay() override;
@@ -141,9 +146,9 @@ protected:
     FTimerHandle TeleportTimer;
     FTimerHandle SoundTimer;
 
-    // ★ 진동용
-    FVector OriginalLocation = FVector::ZeroVector;
-    float ShakeElapsed = 0.f;
+    // ★ 이동(Done) 상태 경과 시간 - 도착 직전 카메라 셰이크 타이밍용
+    float TravelElapsed = 0.f;
+    bool bArrivalCamShakePlayed = false;
 
     // 에디터에서 배치한 문의 원래 회전 (닫힘 기준값 - 게임 시작 시 저장)
     FQuat DoorLBaseQuat = FQuat::Identity;

@@ -21,7 +21,8 @@ public class material : ModuleRules
 			"Slate",
 			"SlateCore",  
 			"PhysicsCore",
-			"Niagara"
+			"Niagara",
+			"EngineCameras"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

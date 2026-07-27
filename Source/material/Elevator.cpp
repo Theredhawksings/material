@@ -1,4 +1,5 @@
 #include "Elevator.h"
+#include "ElevatorCameraShake.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -239,7 +240,6 @@ void AElevator::TeleportPlayer()
         PlayerOffset.Z += 50.f;
 
         SetActorLocation(DestinationLocation, false, nullptr, ETeleportType::TeleportPhysics);
-        OriginalLocation = DestinationLocation;
 
         FVector TargetPlayerLoc = GetActorLocation() + PlayerOffset;
         Passenger->TeleportTo(TargetPlayerLoc, Passenger->GetActorRotation(), false, true);
@@ -306,10 +306,10 @@ void AElevator::Tick(float DeltaTime)
             const bool bPassengerPresent = Passenger && BoardingBox->IsOverlappingActor(Passenger);
             if (bPassengerPresent)
             {
-                // ★ 이동 시작 (Done). 여기서부터 진동
+                // ★ 이동 시작 (Done)
                 State = EElevatorState::Done;
-                ShakeElapsed = 0.f;
-                OriginalLocation = GetActorLocation();
+                TravelElapsed = 0.f;
+                bArrivalCamShakePlayed = false;
 
                 // ★ 출발 0.3초 뒤 이동 사운드 재생
                 GetWorldTimerManager().SetTimer(SoundTimer, [this]()
@@ -337,49 +337,18 @@ void AElevator::Tick(float DeltaTime)
     }
     case EElevatorState::Done:
     {
-        // ★ 이동 중 진동 (세기 ShakeIntensity 기본 3.0)
-        ShakeElapsed += DeltaTime;
-        const float T = ShakeElapsed;
-        const float I = ShakeIntensity;
+        // ★ 이동 중에는 물리 진동 없음 (피드백 반영: 캐릭터/엘리베이터를 직접 흔들지 않음)
+        //    도착 직전에 카메라 셰이크만 재생
+        TravelElapsed += DeltaTime;
 
-        FVector ShakeOffset = FVector::ZeroVector;
-
-        // 출발 눌림 (0~0.4초): 아래로 눌렸다가 복귀
-        if (T < 0.4f)
+        if (!bArrivalCamShakePlayed && TravelElapsed >= TravelTime - ArrivalCamShakeLeadTime)
         {
-            ShakeOffset.Z = -4.f * I * FMath::Sin(T / 0.4f * PI);
-        }
-        // 이동 중: Z + 좌우 흔들림 (세기 상향)
-        else if (T < TravelTime - 0.3f)
-        {
-            ShakeOffset.Z = I * (1.5f * FMath::Sin(T * 7.3f)
-                              + 0.6f * FMath::Sin(T * 13.1f)
-                              + 0.3f * FMath::Sin(T * 19.7f));
-            ShakeOffset.X = I * (0.8f * FMath::Sin(T * 5.7f + 1.2f)
-                              + 0.3f * FMath::Sin(T * 11.3f + 0.5f));
-            ShakeOffset.Y = I * (0.6f * FMath::Sin(T * 8.9f + 0.7f)
-                              + 0.2f * FMath::Sin(T * 15.1f + 1.1f));
-        }
-        // 도착 직전 (마지막 0.3초): 위로 튀었다가 안착
-        else
-        {
-            const float Remain = TravelTime - T;
-            ShakeOffset.Z = I * 3.f * FMath::Sin(Remain / 0.3f * PI);
-        }
-
-        // 엘리베이터 위치 적용
-        SetActorLocation(OriginalLocation + ShakeOffset,
-            false, nullptr, ETeleportType::TeleportPhysics);
-
-        // 플레이어도 같이 흔들림
-        if (Passenger)
-        {
-            const FVector PassengerBase = Passenger->GetActorLocation();
-            Passenger->SetActorLocation(
-                FVector(PassengerBase.X + ShakeOffset.X,
-                        PassengerBase.Y + ShakeOffset.Y,
-                        PassengerBase.Z + ShakeOffset.Z),
-                false, nullptr, ETeleportType::TeleportPhysics);
+            bArrivalCamShakePlayed = true;
+            if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+            {
+                PC->ClientStartCameraShake(UElevatorCameraShake::StaticClass(), ArrivalCamShakeScale);
+                DebugMsg(TEXT("도착 직전 카메라 셰이크 재생"), FColor::Cyan);
+            }
         }
         break;
     }
