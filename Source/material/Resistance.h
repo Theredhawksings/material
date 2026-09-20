@@ -47,6 +47,22 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance")
     float RefreshInterval = 0.1f;
 
+    // ── 물리 ──
+    // 플레이어가 부딪쳐도 잘 안 밀리도록 무겁게 (기본 250kg)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance|Physics")
+    float MassKg = 250.f;
+
+    // 밀려도 금방 멈추게 하는 감쇠
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance|Physics")
+    float LinearDamping = 4.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance|Physics")
+    float AngularDamping = 6.f;
+
+    // 완전 고정. 밀어도 절대 안 움직이고 들어올릴 수도 없음
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resistance|Physics")
+    bool bFixedInPlace = false;
+
     // 디버그용 표시
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Resistance|Debug")
     float DebugVoltage = 0.f;
@@ -64,6 +80,7 @@ protected:
 
 private:
     void RefreshConnectedWires();
+    void ApplyPhysicsSettings();
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<AWire>> ConnectedWires;

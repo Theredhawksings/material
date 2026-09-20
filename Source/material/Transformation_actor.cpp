@@ -1144,10 +1144,14 @@ void ATransformation_actor::UpdateFormHeat(float DeltaTime)
             FormTemperatureC += (ReceivedW * DeltaTime * FormHeatSimTimeScale * ConductivityMul) / (FormMassKg * FormSpecificHeatJPerKgK);
         }
     }
-    else if (FormTemperatureC > 20.f)
+    else if (ExternalHeatTimer <= 0.f && FormTemperatureC > 20.f)
     {
+        // 외부 열원(인덕션 플레이트)에서 열을 받는 동안은 냉각하지 않음
         FormTemperatureC = FMath::Max(FormTemperatureC - FormCoolingRatePerSec * DeltaTime, 20.f);
     }
+
+    if (ExternalHeatTimer > 0.f)
+        ExternalHeatTimer = FMath::Max(ExternalHeatTimer - DeltaTime, 0.f);
 
     FormTemperatureC = FMath::Min(FormTemperatureC, MaxTempC);
 

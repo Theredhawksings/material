@@ -46,6 +46,19 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
 	float WireHeatingRate = 0.2f;
 
+	// 저항 없는 회로는 전류가 0이라 V*I = 0 이 된다.
+	// 그럴 때 I = V / 이 값 으로 환산해서 가열 (전선의 HeatingResistance 와 동일 개념)
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float OpenCircuitResistance = 2.0f;
+
+	// 전선이 실제로 달아올라 있을 때(발전기·코일 등) 그 온도를 전력으로 환산하는 비율
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float WireTempHeatRate = 2.0f;
+
+	// 플레이트가 올라갈 수 있는 최고 온도
+	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
+	float PlateMaxTemperatureC = 800.f;
+
 	// 플레이트가 한 프레임에 오를 최대 온도 (급상승 방지)
 	UPROPERTY(EditAnywhere, Category = "Plate|HeatTransfer")
 	float PlateMaxRisePerCall = 1.0f;

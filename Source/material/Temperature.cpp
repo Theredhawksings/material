@@ -210,13 +210,19 @@ void ATemperature::UpdateVisuals()
 
 void ATemperature::ApplyDebugVisibility()
 {
-	if (HeatSphere)
-	{
-		HeatSphere->SetHiddenInGame(!bShowDebugShapes);
-		HeatSphere->SetVisibility(bShowDebugShapes);
-		HeatSphere->bDrawOnlyIfSelected = !bShowDebugShapes;
-		HeatSphere->MarkRenderStateDirty();
-	}
+	if (!HeatSphere) return;
+
+	// 패키징 빌드에서는 디버그 구체를 항상 숨긴다.
+	// (레벨에 bShowDebugShapes=true 로 저장된 액터까지 전부 덮어씀)
+	bool bShow = bShowDebugShapes;
+#if !WITH_EDITOR
+	bShow = false;
+#endif
+
+	HeatSphere->SetHiddenInGame(!bShow);
+	HeatSphere->SetVisibility(bShow);
+	HeatSphere->bDrawOnlyIfSelected = !bShow;
+	HeatSphere->MarkRenderStateDirty();
 }
 
 #if WITH_EDITOR

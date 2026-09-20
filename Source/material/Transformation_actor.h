@@ -107,7 +107,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "CameraSystem", meta = (WorldContext = "WorldContextObject"))
     static void SetGlobalMagneticCameraState(const UObject* WorldContextObject, bool bIsCameraOn);
 
-    void AddFormHeat(float DeltaC) { FormTemperatureC += DeltaC; }
+    // 인덕션 플레이트 등 외부 열원이 호출. 호출 중에는 자연 냉각을 잠시 멈춘다
+    // (안 그러면 FormCoolingRatePerSec(30℃/s)가 넣은 열을 전부 상쇄해 버림)
+    void AddFormHeat(float DeltaC)
+    {
+        FormTemperatureC += DeltaC;
+        ExternalHeatTimer = ExternalHeatHoldTime;
+    }
 
     // ★ 차가운 바람: 받은 냉각 파워로 폼 온도를 직접 냉각 (상온 20℃까지)
     void ApplyFormCoolingPower(float ReceivedW, float DeltaTime)
@@ -314,6 +320,10 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "Form|Heat")
     float FormCoolingRatePerSec = 30.f;
+
+    // 외부 열원(인덕션 플레이트 등)에서 열을 받은 뒤 이 시간(초) 동안 자연 냉각 정지
+    UPROPERTY(EditAnywhere, Category = "Form|Heat")
+    float ExternalHeatHoldTime = 0.25f;
     UPROPERTY(EditAnywhere, Category = "Form|Heat")
     float FormHeatSimTimeScale = 500.f;
     UPROPERTY(EditAnywhere, Category = "Form|Heat")
@@ -436,6 +446,7 @@ private:
     float TimeSinceLastMagnetRefresh = 0.f;
     float BaseMagnetStrength = 0.f;
     float FormTemperatureC = 20.f;
+    float ExternalHeatTimer = 0.f;   // > 0 이면 외부 가열 중 → 자연 냉각 정지
     float BaseArrowPower = 5.f;
 
     int32 CachedStencilValue = -1;

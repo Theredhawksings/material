@@ -41,6 +41,7 @@ void AInductionPlate::Tick(float DeltaTime)
 
     // 2. 전선 연결 및 가열 로직 (기존 유지)
     int32 ConnectedWireCount = 0;
+    int32 HeatedBlockCount = 0;
     float LastPowerW = 0.f;
     float LastEnergyAdded = 0.f;
     bool bIsHeating = false; // 가열 중인지 체크하기 위한 변수
@@ -71,9 +72,22 @@ void AInductionPlate::Tick(float DeltaTime)
 
             if (!bPow || V <= 0.f || MinDist > WireConnectRadius) continue;
 
-            const float PowerW = V * I;
+            // 저항 블럭이 없는 회로는 노드 솔버가 전류를 0으로 내보낸다.
+            // 그대로 V*I 를 쓰면 전력이 0 이라 플레이트가 영원히 안 뎁혀지므로,
+            // 전류가 없으면 전압만으로 전류를 환산해서 쓴다.
+            float HeatI = I;
+            if (HeatI <= 0.f)
+                HeatI = V / FMath::Max(OpenCircuitResistance, 0.1f);
+
+            float PowerW = V * HeatI;
+
+            // 전선이 실제로 달아올라 있으면(발전기·코일) 그 온도도 열원으로 반영
+            const float WireTempC = Wire->GetWireTemperature();
+            if (WireTempC > 20.f)
+                PowerW = FMath::Max(PowerW, (WireTempC - 20.f) * WireTempHeatRate);
+
             const float Energy = PowerW * WireHeatingRate * DeltaTime;
-            
+
             ReceiveInductionHeat(Energy);
             bIsHeating = true; // 열을 공급받고 있음!
 
@@ -123,6 +137,7 @@ void AInductionPlate::Tick(float DeltaTime)
             Block->AddFormHeat(Energy);
 
             HeatedBlocks.Add(Block);
+            HeatedBlockCount++;
         }
     }
 
@@ -137,8 +152,9 @@ void AInductionPlate::Tick(float DeltaTime)
     if (bDebugDraw && GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Yellow,
-            FString::Printf(TEXT("[Plate] Temp:%.1f | 연결전선:%d | P=V*I:%.2f | 스텐실 값:%d"),
-                TemperatureC, ConnectedWireCount, LastPowerW, FMath::RoundToInt(FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f) * 255.f)));
+            FString::Printf(TEXT("[Plate] Temp:%.1f | 연결전선:%d | 가열중인블럭:%d | P:%.2f | 스텐실:%d"),
+                TemperatureC, ConnectedWireCount, HeatedBlockCount, LastPowerW,
+                FMath::RoundToInt(FMath::Clamp((TemperatureC - 20.f) / 780.f, 0.f, 1.f) * 255.f)));
     }
 #endif
 }
@@ -150,5 +166,5 @@ void AInductionPlate::ReceiveInductionHeat(float EnergyJ)
 	// 한 번에 올라갈 수 있는 온도 상한 (급상승 방지)
 	EnergyJ = FMath::Min(EnergyJ, PlateMaxRisePerCall);
 
-	TemperatureC += EnergyJ;
+	TemperatureC = FMath::Min(TemperatureC + EnergyJ, PlateMaxTemperatureC);
 }

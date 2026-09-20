@@ -60,6 +60,8 @@ void AResistance::BeginPlay()
     // Wire 의 END sphere 가 태그로 블럭을 감지 → "Metal" 태그 필요
     Tags.AddUnique(FName("Metal"));
 
+    ApplyPhysicsSettings();
+
     if (RefreshInterval > 0.f)
         GetWorldTimerManager().SetTimer(RefreshTimerHandle, this,
             &AResistance::RefreshConnectedWires, RefreshInterval, true);
@@ -86,6 +88,25 @@ void AResistance::Tick(float DeltaTime)
             ResistanceOhm, StoredVoltage, StoredCurrent, WireCount),
         nullptr, Col, 0.f, true);
 #endif
+}
+
+void AResistance::ApplyPhysicsSettings()
+{
+    if (!MeshComp) return;
+
+    if (bFixedInPlace)
+    {
+        // 완전 고정: 물리 끄고 충돌만 유지
+        MeshComp->SetSimulatePhysics(false);
+        MeshComp->SetEnableGravity(false);
+        MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        return;
+    }
+
+    // 무겁게 + 금방 멈추게 → 플레이어가 지나가며 밀어도 회로에서 안 빠짐
+    MeshComp->SetMassOverrideInKg(NAME_None, FMath::Max(MassKg, 1.f), true);
+    MeshComp->SetLinearDamping(LinearDamping);
+    MeshComp->SetAngularDamping(AngularDamping);
 }
 
 void AResistance::RefreshConnectedWires()
