@@ -507,7 +507,6 @@ void AmaterialCharacter::SetupPlayerInputComponent(UInputComponent *PlayerInputC
 	PlayerInputComponent->BindAction("laboratory", IE_Pressed, this, &AmaterialCharacter::OnWarpLaboratory);
 	PlayerInputComponent->BindAction("Stage1", IE_Pressed, this, &AmaterialCharacter::OnWarpStage1);
 	PlayerInputComponent->BindAction("Stage2", IE_Pressed, this, &AmaterialCharacter::OnWarpStage2);
-	PlayerInputComponent->BindAction("Stage3", IE_Pressed, this, &AmaterialCharacter::OnResetMap);
 
 	UEnhancedInputComponent *EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent);
 	if (!EIC)
@@ -1213,11 +1212,6 @@ void AmaterialCharacter::OnWarpStage2()
 
 	UE_LOG(LogTemp, Warning, TEXT("[Warp] MainStage1 리셋 후 이동"));
 	WarpToLevel(TEXT("/Game/stage/MainStage/MainStage1"));
-}
-
-void AmaterialCharacter::OnWarpStage3()
-{
-	WarpToLevel(TEXT("/Game/stage/Stage3/Stage3"));
 }
 
 void AmaterialCharacter::UseSyringePressed()

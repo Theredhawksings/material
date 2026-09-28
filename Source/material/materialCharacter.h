@@ -242,7 +242,6 @@ private:
 	void OnWarpLaboratory();
 	void OnWarpStage1();
 	void OnWarpStage2();
-	void OnWarpStage3();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> BackpackUIComp;
