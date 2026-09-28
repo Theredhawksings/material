@@ -1190,41 +1190,29 @@ void AmaterialCharacter::WarpToLevel(const FString &LevelPath)
 
 void AmaterialCharacter::OnWarpLaboratory()
 {
+	bHasPendingSpawn = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Warp] 연구실 리셋 후 이동"));
 	WarpToLevel(TEXT("/Game/ThirdPerson/Lvl_ThirdPerson"));
 }
 
 void AmaterialCharacter::OnWarpStage1()
 {
+	// 스폰 좌표 지정 없음 → PlayerStart 에서 시작 (이전 워프의 좌표가 남지 않게 해제)
+	bHasPendingSpawn = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Warp] Stage1 리셋 후 이동"));
 	WarpToLevel(TEXT("/Game/stage/Stage1/Stage1"));
 }
 
 void AmaterialCharacter::OnWarpStage2()
 {
-	const FVector  DestLocation = FVector(5020.0, 37394.0, 290.0);
-	const FString  DestLevel    = TEXT("/Game/stage/MainStage/MainStage1");
+	// 같은 맵이어도 항상 레벨을 다시 로드해서 맵 상태를 리셋한 뒤 지정 좌표에서 시작
+	PendingSpawnLocation = FVector(5020.0, 37394.0, 290.0);
+	bHasPendingSpawn     = true;
 
-	// PIE 접두사(UEDPIE_0_)를 정확히 제거
-	const FString CleanCurrent = UWorld::RemovePIEPrefix(GetWorld()->GetMapName());
-
-	FString DestMapName = DestLevel;
-	int32 SlashIdx;
-	if (DestLevel.FindLastChar('/', SlashIdx))
-		DestMapName = DestLevel.RightChop(SlashIdx + 1);
-
-	UE_LOG(LogTemp, Warning, TEXT("[Warp] Current='%s' Dest='%s'"), *CleanCurrent, *DestMapName);
-
-	if (CleanCurrent.Equals(DestMapName, ESearchCase::IgnoreCase))
-	{
-		SetActorLocation(DestLocation, false, nullptr, ETeleportType::TeleportPhysics);
-		UE_LOG(LogTemp, Warning, TEXT("[Warp] 같은 맵 - 순간이동만"));
-	}
-	else
-	{
-		PendingSpawnLocation = DestLocation;
-		bHasPendingSpawn = true;
-		WarpToLevel(DestLevel);
-		UE_LOG(LogTemp, Warning, TEXT("[Warp] 다른 맵 - 레벨 로드"));
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[Warp] MainStage1 리셋 후 이동"));
+	WarpToLevel(TEXT("/Game/stage/MainStage/MainStage1"));
 }
 
 void AmaterialCharacter::OnWarpStage3()
