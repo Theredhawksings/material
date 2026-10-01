@@ -50,7 +50,8 @@ AmaterialCharacter::AmaterialCharacter()
 	Movement->bOrientRotationToMovement = true;
 	Movement->RotationRate = FRotator(0.f, RotationRate, 0.f);
 	Movement->JumpZVelocity = JumpVelocity;
-	Movement->AirControl = AirControl;
+	Movement->AirControl    = JumpAirControl;
+	Movement->GravityScale  = JumpGravityScale;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -353,6 +354,9 @@ void AmaterialCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	ApplyJumpSettings();
+	ApplyMovementFeel();
+
 	if (const APlayerController *PC = Cast<APlayerController>(GetController()))
 	{
 		if (UEnhancedInputLocalPlayerSubsystem *Subsystem =
@@ -548,6 +552,40 @@ void AmaterialCharacter::Look(const FInputActionValue &Value)
 	const FVector2D Axis = Value.Get<FVector2D>();
 	AddControllerYawInput(Axis.X);
 	AddControllerPitchInput(Axis.Y);
+}
+
+void AmaterialCharacter::ApplyMovementFeel()
+{
+	if (UCharacterMovementComponent *Move = GetCharacterMovement())
+	{
+		Move->MaxAcceleration             = MaxAcceleration;
+		Move->BrakingDecelerationWalking  = BrakingDecelerationWalking;
+		Move->RotationRate                = FRotator(0.f, TurnRate, 0.f);
+
+		// 걷기 애니메이션 속도 기준값 (물건을 들어 속도가 줄어도 기준은 그대로)
+		BaseWalkSpeed = Move->MaxWalkSpeed;
+
+		// 빙판 복귀용 기본값도 여기서 갱신
+		DefaultBrakingDeceleration = BrakingDecelerationWalking;
+	}
+
+	if (CameraBoom)
+	{
+		CameraBoom->bEnableCameraLag = bUseCameraLocationLag;
+		CameraBoom->CameraLagSpeed   = CameraLocationLagSpeed;
+	}
+}
+
+void AmaterialCharacter::ApplyJumpSettings()
+{
+	// 생성자에서 한 번 적용되지만, 블루프린트/레벨에서 값을 바꾸면
+	// 생성자가 다시 돌지 않으므로 BeginPlay 에서 한 번 더 반영한다.
+	if (UCharacterMovementComponent *Movement = GetCharacterMovement())
+	{
+		Movement->JumpZVelocity = JumpVelocity;
+		Movement->AirControl    = JumpAirControl;
+		Movement->GravityScale  = JumpGravityScale;
+	}
 }
 
 void AmaterialCharacter::JumpStarted()
@@ -938,14 +976,35 @@ void AmaterialCharacter::UpdateAnimation()
 {
 	if (bIsPickingUp || !GetMesh())
 		return;
-	const bool bMoving = IsMoving();
+
+	const float Speed2D = GetVelocity().Size2D();
+
+	// 히스테리시스: 걷기 시작은 WalkSpeedThreshold, 멈춤은 그보다 낮은 값에서.
+	// 임계값이 하나뿐이면 경계 근처에서 걷기/정지가 깜빡이고, 그때마다
+	// 애니메이션이 0프레임부터 다시 시작해 뚝뚝 끊겨 보인다.
+	const bool bMoving = bIsPlayingWalk
+		? (Speed2D > FMath::Min(WalkStopSpeedThreshold, WalkSpeedThreshold))
+		: (Speed2D > WalkSpeedThreshold);
+
 	const bool bHolding = (HeldActor != nullptr);
+
 	if (bWasHolding != bHolding || bMoving != bIsPlayingWalk)
 	{
 		PlayAnimIfValid(GetAnimForState(bMoving, bHolding), true);
 
 		bWasHolding = bHolding;
 		bIsPlayingWalk = bMoving;
+	}
+
+	// 실제 이동 속도에 맞춰 걷기 애니메이션 속도를 조절한다.
+	// (물건을 들면 걷기 속도가 절반이 되는데 애니메이션은 그대로라 발이 미끄러져 보였음)
+	if (UmaterialAnimInstance *AnimInst = Cast<UmaterialAnimInstance>(GetMesh()->GetAnimInstance()))
+	{
+		float Rate = 1.f;
+		if (bScaleWalkAnimBySpeed && bMoving && BaseWalkSpeed > 0.f)
+			Rate = FMath::Clamp(Speed2D / BaseWalkSpeed, MinWalkPlayRate, MaxWalkPlayRate);
+
+		AnimInst->SetPlayRate(Rate);
 	}
 }
 

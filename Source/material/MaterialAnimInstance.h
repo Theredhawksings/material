@@ -36,6 +36,12 @@ public:
 	void PlayAnimationSmooth(UAnimSequence* Anim, bool bLooping, float BlendTime = 0.2f,
 							 float PlayRate = 1.f, float StartPosition = 0.f);
 
+	// 재생 중인 애니메이션을 처음으로 되돌리지 않고 속도만 바꾼다.
+	// (걷는 속도에 맞춰 매 프레임 조절 → 발 미끄러짐 방지)
+	void SetPlayRate(float NewRate) { CurrentRate = NewRate; }
+
+	bool IsPlayingSequence(const UAnimSequence* Anim) const { return CurrentSequence == Anim; }
+
 protected:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;

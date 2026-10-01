@@ -147,6 +147,15 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Interaction") float InteractRange = 2000.f;
 	UPROPERTY(EditAnywhere, Category = "Rendering") int32 CustomDepthStencilValue = 0;
 	UPROPERTY(EditAnywhere, Category = "Animation") float WalkSpeedThreshold = 10.f;
+
+	// 걷기 → 정지로 되돌아가는 속도. WalkSpeedThreshold 보다 낮게 둬서
+	// 경계 근처에서 걷기/정지가 깜빡이는 걸 막는다 (히스테리시스)
+	UPROPERTY(EditAnywhere, Category = "Animation") float WalkStopSpeedThreshold = 4.f;
+
+	// 실제 이동 속도에 맞춰 걷기 애니메이션 재생 속도를 조절 (발 미끄러짐 방지)
+	UPROPERTY(EditAnywhere, Category = "Animation") bool bScaleWalkAnimBySpeed = true;
+	UPROPERTY(EditAnywhere, Category = "Animation") float MinWalkPlayRate = 0.6f;
+	UPROPERTY(EditAnywhere, Category = "Animation") float MaxWalkPlayRate = 1.4f;
 	// 애니메이션 전환 크로스페이드 시간 (0이면 기존처럼 즉시 전환)
 	UPROPERTY(EditAnywhere, Category = "Animation") float AnimBlendTime = 0.2f;
 	
@@ -215,8 +224,6 @@ private:
 	static constexpr float CameraSocketOffsetY = 55.f;
 	static constexpr float CameraLagSpeed       = 6.0f;
 	static constexpr float CameraRotLagSpeed    = 12.0f;
-	static constexpr float JumpVelocity         = 600.f;
-	static constexpr float AirControl            = 0.2f;
 	static constexpr float RotationRate         = 540.f;
 	static constexpr float MeshOffsetZ          = -90.f;
 	static constexpr float MeshRotationYaw      = 90.f;
@@ -332,6 +339,36 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerRestitution   = 0.7f;   // 속도 대비 (물체랑 동일)
 	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerStopThreshold = 100.f;  // 이 속도 미만은 안 튕김
 	UPROPERTY(EditAnywhere, Category = "Rubber Bounce") float RubberPlayerMaxBounce     = 1800.f; // 최대 튕김 속도
+
+	// ── 점프 ──
+	// 점프 속도. 점프 높이 = JumpVelocity^2 / (2 * 980 * GravityScale)
+	// 600 → 약 183cm, 500 → 약 128cm, 450 → 약 103cm
+	UPROPERTY(EditAnywhere, Category = "Jump") float JumpVelocity = 420.f;
+
+	// 공중에서 조작 가능한 정도 (0 = 조작 불가, 1 = 지상과 동일)
+	UPROPERTY(EditAnywhere, Category = "Jump") float JumpAirControl = 0.2f;
+
+	// 중력 배수. 키우면 더 빨리 떨어져서 점프가 가볍게 느껴짐
+	UPROPERTY(EditAnywhere, Category = "Jump") float JumpGravityScale = 1.0f;
+
+	void ApplyJumpSettings();
+
+	// ── 이동 감촉 ──
+	// 가속/제동이 클수록 딱딱 끊기는 느낌. 낮추면 부드럽게 출발하고 멈춘다.
+	UPROPERTY(EditAnywhere, Category = "Movement Feel") float MaxAcceleration = 1200.f;
+	UPROPERTY(EditAnywhere, Category = "Movement Feel") float BrakingDecelerationWalking = 1400.f;
+
+	// 방향 전환 속도. 낮출수록 부드럽게 돌아선다 (기존 540)
+	UPROPERTY(EditAnywhere, Category = "Movement Feel") float TurnRate = 400.f;
+
+	// 카메라가 캐릭터를 따라오는 지연. 켜면 화면이 덜 튄다.
+	UPROPERTY(EditAnywhere, Category = "Movement Feel") bool bUseCameraLocationLag = true;
+	UPROPERTY(EditAnywhere, Category = "Movement Feel") float CameraLocationLagSpeed = 12.f;
+
+	void ApplyMovementFeel();
+
+	// 걷기 애니메이션 속도 기준이 되는 원래 걷기 속도 (들고 있을 때 절반으로 줄어도 기준은 유지)
+	float BaseWalkSpeed = 600.f;
 
 
 	static FVector PendingSpawnLocation;
